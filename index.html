@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talkomatic Lobby</title>
+    <style>
+        @font-face {
+            font-family: talkoSS;
+            src: url(stylesheets/fonts/Sansation_Light.ttf);
+        }
+        
+        @font-face {
+            font-family: talkoSS;
+            src: url(stylesheets/fonts/Sansation_Bold.ttf);
+            font-weight: bold;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: talkoSS, Arial, sans-serif;
+            background-color: #202020;
+        }
+        .container {
+            display: flex;
+            height: 100%;
+        }
+        .left-panel, .right-panel {
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .left-panel {
+            width: 320px;
+            background-color: #616161;
+            color: white;
+            margin-top: 23.5px;
+            transition: transform 0.3s ease-in-out;
+        }
+        .right-panel {
+            flex-grow: 1;
+            background-color: #202020;
+            color: white;
+            padding-top: 70px;
+        }
+        .toggle-button, .hide-menu-button {
+            display: none;
+            color: white;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+            font-family: talkoSS, Arial, sans-serif;
+            transition: opacity 0.3s ease-in-out;
+        }
+        .toggle-button {
+            position: fixed;
+            top: 23.5px;
+            left: 0;
+            z-index: 1001;
+            border-top-right-radius: 5px;
+            border-bottom-right-radius: 5px;
+            background-color: #9E9E9E;
+            font-size: 18px;
+            padding: 10px 15px 10px 10px;
+            opacity: 0;
+        }
+        .toggle-button::after {
+            content: '≡';
+            margin-left: 10px;
+            font-size: 24px;
+        }
+        .hide-menu-button {
+            margin-bottom: 20px;
+            background-color: #333;
+        }
+        h2 {
+            font-weight: bold;
+        }
+        @media (max-width: 992px) {
+            .container {
+                flex-direction: column;
+            }
+            .left-panel {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100%;
+                width: 320px;
+                max-width: 100%;
+                z-index: 1000;
+                transform: translateX(-100%);
+            }
+            .left-panel.open {
+                transform: translateX(0);
+            }
+            .right-panel {
+                width: 100%;
+                min-height: 100vh;
+            }
+            .toggle-button, .hide-menu-button {
+                display: block;
+            }
+            .toggle-button {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="toggle-button" onclick="toggleLeftPanel()">Menu</button>
+    <div class="container">
+        <div class="left-panel" id="leftPanel">
+            <button class="hide-menu-button" onclick="hideLeftPanel()">Hide Menu</button>
+            <h2>Enter Username and Location</h2>
+            <!-- Add form elements here later -->
+        </div>
+        <div class="right-panel">
+            <h2>Join a Room</h2>
+            <!-- Add room list or join options here later -->
+        </div>
+    </div>
+    <script>
+        const leftPanel = document.getElementById('leftPanel');
+        const toggleButton = document.querySelector('.toggle-button');
+        const hideMenuButton = document.querySelector('.hide-menu-button');
+
+        function toggleLeftPanel() {
+            leftPanel.classList.add('open');
+            toggleButton.style.opacity = '0';
+        }
+
+        function hideLeftPanel() {
+            leftPanel.classList.remove('open');
+            setTimeout(() => {
+                toggleButton.style.opacity = '1';
+            }, 300);
+        }
+
+        // Hide menu on click outside
+        document.addEventListener('click', function(event) {
+            const isClickInside = leftPanel.contains(event.target) || toggleButton.contains(event.target);
+            if (!isClickInside && leftPanel.classList.contains('open')) {
+                hideLeftPanel();
+            }
+        });
+
+        // Handle resize events
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 992) {
+                leftPanel.classList.remove('open');
+                toggleButton.style.opacity = '0';
+                hideMenuButton.style.display = 'none';
+            } else {
+                if (!leftPanel.classList.contains('open')) {
+                    toggleButton.style.opacity = '1';
+                }
+                hideMenuButton.style.display = 'block';
+            }
+        });
+
+        // Initial setup
+        if (window.innerWidth <= 992) {
+            toggleButton.style.opacity = '1';
+        }
+    </script>
+</body>
+</html>
