@@ -1,0 +1,209 @@
+/* ==========================================================================
+   Talkomatic Room Styles
+   ========================================================================== */
+
+/* Font Declarations
+   ========================================================================== */
+   @font-face {
+    font-family: 'talkoSS';
+    src: url(../fonts/Sansation_Light.ttf);
+  }
+  
+  @font-face {
+    font-family: 'talkoSS';
+    src: url(../fonts/Sansation_Bold.ttf);
+    font-weight: bold;
+  }
+  
+  @font-face {
+    font-family: 'talkoText';
+    src: url(../fonts/dited.otf);
+  }
+  
+  /* Base Styles
+     ========================================================================== */
+  body, html {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    font-family: talkoSS, Arial, sans-serif;
+    background-color: #f0f0f0;
+    font-size: 16px;
+    overflow: hidden;
+  }
+  
+  .page-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  
+  /* Navigation Styles
+     ========================================================================== */
+  /* Common navbar styles */
+  .top-navbar,
+  .second-navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background-color: black;
+    color: white;
+  }
+  
+  .navbar-section {
+    flex: 1;
+    display: flex;
+    align-items: center;
+  }
+  
+  .navbar-left { justify-content: flex-start; }
+  .navbar-center { justify-content: center; }
+  .navbar-right { justify-content: flex-end; }
+  
+  /* Top navbar specific styles */
+  .date-time {
+    font-size: 14px;
+    color: #ffff00;
+  }
+  
+  .brand {
+    font-size: 24px;
+    color: #FF9800;
+    text-align: center;
+  }
+  
+  .leave-room {
+    font-size: 14px;
+    cursor: pointer;
+    background-color: black;
+    color: white;
+    border: 1px solid #FF9800;
+    padding: 10px;
+    border-radius: 5px;
+    font-family: talkoSS, Arial, sans-serif;
+    white-space: nowrap;
+  }
+  
+  /* Second navbar specific styles */
+  .second-navbar { 
+    background-color: #1a1a1a; 
+  }
+  
+  .room-type { 
+    color: cyan; 
+  }
+  
+  .room-name {
+    font-size: 18px;
+    font-weight: bold;
+    text-align: center;
+  }
+  
+  .room-id { 
+    color: #FF9800; 
+  }
+  
+  /* Chat Container Styles
+     ========================================================================== */
+  .chat-container {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 0 5px;
+    background-color: #202020;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+  
+  .chat-row {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    border: 1px solid #ccc;
+    box-sizing: border-box;
+  }
+  
+  .user-info {
+    font-size: 14px;
+    padding: 8px;
+    color: #ffffff;
+    background-color: #616161;
+  }
+  
+  .chat-input {
+    width: 100%;
+    padding: 5px;
+    border: none;
+    font-family: talkoText, Arial, sans-serif;
+    font-size: 18px;
+    resize: none;
+    box-sizing: border-box;
+    background-color: black;
+    color: #FF9800;
+  }
+  
+  /* Invite Section Styles
+     ========================================================================== */
+  .invite-section {
+    background-color: #1a1a1a;
+    padding: 10px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .invite-text {
+    color: #ffff00;
+    font-size: 14px;
+    margin-bottom: 5px;
+  }
+  
+  .invite-link {
+    color: cyan;
+    font-size: 16px;
+    word-break: break-all;
+  }
+  
+  /* Responsive Styles
+     ========================================================================== */
+  /* Tablet and smaller desktop screens */
+  @media screen and (max-width: 768px) {
+    .brand { font-size: 20px; }
+    .leave-room { padding: 8px; }
+    .room-name { font-size: 16px; }
+    
+    .date-time {
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .date-time .date { margin-bottom: 2px; }
+    .date-time .time { font-size: 10px; }
+    
+    .user-info { font-size: 12px; }
+    .chat-input { font-size: 12px; }
+    
+    .invite-section { padding: 5px 10px; }
+    .invite-text { font-size: 12px; }
+    .invite-link { font-size: 14px; }
+  }
+  
+  /* Mobile devices */
+  @media screen and (max-width: 576px) {
+    body { font-size: 12px; }
+    .brand { font-size: 18px; }
+    .leave-room { padding: 6px; }
+    .room-name { font-size: 14px; }
+    
+    .date-time { font-size: 10px; }
+    .date-time .time { font-size: 9px; }
+    
+    .chat-container { padding: 5px; }
+    
+    .invite-section { padding: 3px 5px; }
+    .invite-text { font-size: 10px; }
+    .invite-link { font-size: 12px; }
+  }
