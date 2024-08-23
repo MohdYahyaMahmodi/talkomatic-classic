@@ -59,7 +59,7 @@
             font-weight: normal;
             font-size: 25px;
             color: #FF9800;
-            margin-bottom: 16px;
+            margin-bottom: 40px;
             padding-left: 8px;
         }
 
@@ -77,12 +77,27 @@
         .copyright-info {
             padding: 20px;
             text-align: center;
-            font-size: 14px;
+            font-size: 12px;
+            color: #ffffff;
+            font-family: talkoss, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .copyright-info .version {
+            color: #FF9800;
+            margin-right: 5px;
+        }
+
+        .copyright-info .dot {
+            margin: 0 5px;
         }
 
         .room {
             background-color: #000000;
-            padding: 20px;
+            padding: 8px 8px 0 8px;
             position: relative;
             border-top: 1px solid white;
         }
@@ -90,7 +105,6 @@
         .room-top {
             display: flex;
             flex-direction: column;
-            margin-bottom: 15px;
         }
 
         .room-info {
@@ -99,7 +113,6 @@
 
         .room-name {
             font-size: 16px;
-            font-weight: bold;
             color: #ffffff;
             margin-bottom: 5px;
         }
@@ -107,27 +120,28 @@
         .room-details {
             font-size: 14px;
             color: #01ffff;
-            margin-bottom: 10px;
+            margin-bottom: 5px;
         }
 
         .users-detail {
             display: flex;
             flex-direction: column;
+            margin-bottom: 8px;
         }
 
         .users-detail div {
-            font-size: 12px;
-            color: #cccccc;
-            margin-bottom: 3px;
+            font-size: 15px;
+            color: #ffffff;
+            margin-bottom: 4px;
         }
 
         .users-detail .user-number {
-            color: #cccccc;
+            color: #ffffff;
             margin-right: 5px;
         }
 
         .users-detail .user-name {
-            color: #FF9800;
+            color: #FF9800; /* Slightly brighter orange */
         }
 
         .enter-button {
@@ -414,6 +428,20 @@
             background-color: #F57C00;
         }
 
+        @media (max-width: 600px) {
+            .copyright-info {
+                flex-direction: column;
+            }
+
+            .copyright-info .dot {
+                display: none;
+            }
+
+            .copyright-info .copyright {
+                margin-top: 5px;
+            }
+        }
+
         @media (max-width: 992px) {
             .container {
                 flex-direction: column;
@@ -539,9 +567,49 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="room-bottom">
-                            Welcome, Traveler. Come on in!
+                    </div>
+                    <div class="room">
+                        <button class="enter-button">Enter</button>
+                        <div class="room-top">
+                            <div class="room-info">
+                                <div class="room-name">Cozy Chat Corner (4 People)</div>
+                                <div class="room-details">Public Room</div>
+                                <div class="users-detail">
+                                    <div><span class="user-number">1.</span><span class="user-name">JohnDoe</span> / New York</div>
+                                    <div><span class="user-number">2.</span><span class="user-name">ChatMaster</span> / Tokyo</div>
+                                    <div><span class="user-number">3.</span><span class="user-name">TechGuru</span> / San Francisco</div>
+                                    <div><span class="user-number">4.</span><span class="user-name">Traveler22</span> / Unknown</div>
+                                </div>
+                            </div>
                         </div>
+                    </div>
+                    <div class="room">
+                        <button class="enter-button">Enter</button>
+                        <div class="room-top">
+                            <div class="room-info">
+                                <div class="room-name">Cozy Chat Corner (3 People)</div>
+                                <div class="room-details">Public Room</div>
+                                <div class="users-detail">
+                                    <div><span class="user-number">1.</span><span class="user-name">JohnDoe</span> / New York</div>
+                                    <div><span class="user-number">2.</span><span class="user-name">Alice123</span> / London</div>
+                                    <div><span class="user-number">3.</span><span class="user-name">ChatMaster</span> / Tokyo</div>
+                                </div>
+                            </div>
+                        </div>
+ 
+                    </div>
+                    <div class="room">
+                        <button class="enter-button">Enter</button>
+                        <div class="room-top">
+                            <div class="room-info">
+                                <div class="room-name">Cozy Chat Corner (1 People)</div>
+                                <div class="room-details">Public Room</div>
+                                <div class="users-detail">
+                                    <div><span class="user-number">1.</span><span class="user-name">JohnDoe</span> / New York</div>
+                                </div>
+                            </div>
+                        </div>
+ 
                     </div>
                     <div class="room">
                         <button class="enter-button">Enter</button>
@@ -558,166 +626,86 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="room-bottom">
-                            Welcome, Traveler. Come on in!
-                        </div>
+ 
                     </div>
                     <div class="room">
                         <button class="enter-button">Enter</button>
                         <div class="room-top">
                             <div class="room-info">
-                                <div class="room-name">Cozy Chat Corner (5 People)</div>
+                                <div class="room-name">Cozy Chat Corner (2 People)</div>
                                 <div class="room-details">Public Room</div>
                                 <div class="users-detail">
-                                    <div><span class="user-number">1.</span><span class="user-name">JohnDoe</span> / New York</div>
-                                    <div><span class="user-number">2.</span><span class="user-name">Alice123</span> / London</div>
-                                    <div><span class="user-number">3.</span><span class="user-name">ChatMaster</span> / Tokyo</div>
-                                    <div><span class="user-number">4.</span><span class="user-name">TechGuru</span> / San Francisco</div>
-                                    <div><span class="user-number">5.</span><span class="user-name">Traveler22</span> / Unknown</div>
+        
+                                    <div><span class="user-number">1.</span><span class="user-name">TechGuru</span> / San Francisco</div>
+                                    <div><span class="user-number">2.</span><span class="user-name">Traveler22</span> / Unknown</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="room-bottom">
-                            Welcome, Traveler. Come on in!
-                        </div>
+ 
                     </div>
                     <div class="room">
                         <button class="enter-button">Enter</button>
                         <div class="room-top">
                             <div class="room-info">
-                                <div class="room-name">Cozy Chat Corner (5 People)</div>
+                                <div class="room-name">Cozy Chat Corner (3 People)</div>
                                 <div class="room-details">Public Room</div>
                                 <div class="users-detail">
                                     <div><span class="user-number">1.</span><span class="user-name">JohnDoe</span> / New York</div>
-                                    <div><span class="user-number">2.</span><span class="user-name">Alice123</span> / London</div>
-                                    <div><span class="user-number">3.</span><span class="user-name">ChatMaster</span> / Tokyo</div>
-                                    <div><span class="user-number">4.</span><span class="user-name">TechGuru</span> / San Francisco</div>
-                                    <div><span class="user-number">5.</span><span class="user-name">Traveler22</span> / Unknown</div>
+                                    <div><span class="user-number">2.</span><span class="user-name">TechGuru</span> / San Francisco</div>
+                                    <div><span class="user-number">3.</span><span class="user-name">Traveler22</span> / Unknown</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="room-bottom">
-                            Welcome, Traveler. Come on in!
-                        </div>
+ 
                     </div>
                     <div class="room">
                         <button class="enter-button">Enter</button>
                         <div class="room-top">
                             <div class="room-info">
-                                <div class="room-name">Cozy Chat Corner (5 People)</div>
+                                <div class="room-name">Cozy Chat Corner (2 People)</div>
                                 <div class="room-details">Public Room</div>
                                 <div class="users-detail">
                                     <div><span class="user-number">1.</span><span class="user-name">JohnDoe</span> / New York</div>
-                                    <div><span class="user-number">2.</span><span class="user-name">Alice123</span> / London</div>
-                                    <div><span class="user-number">3.</span><span class="user-name">ChatMaster</span> / Tokyo</div>
-                                    <div><span class="user-number">4.</span><span class="user-name">TechGuru</span> / San Francisco</div>
-                                    <div><span class="user-number">5.</span><span class="user-name">Traveler22</span> / Unknown</div>
+                                    <div><span class="user-number">2.</span><span class="user-name">Traveler22</span> / Unknown</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="room-bottom">
-                            Welcome, Traveler. Come on in!
-                        </div>
+ 
                     </div>
                     <div class="room">
                         <button class="enter-button">Enter</button>
                         <div class="room-top">
                             <div class="room-info">
-                                <div class="room-name">Cozy Chat Corner (5 People)</div>
+                                <div class="room-name">Cozy Chat Corner (4 People)</div>
                                 <div class="room-details">Public Room</div>
                                 <div class="users-detail">
                                     <div><span class="user-number">1.</span><span class="user-name">JohnDoe</span> / New York</div>
                                     <div><span class="user-number">2.</span><span class="user-name">Alice123</span> / London</div>
-                                    <div><span class="user-number">3.</span><span class="user-name">ChatMaster</span> / Tokyo</div>
-                                    <div><span class="user-number">4.</span><span class="user-name">TechGuru</span> / San Francisco</div>
-                                    <div><span class="user-number">5.</span><span class="user-name">Traveler22</span> / Unknown</div>
+                                    <div><span class="user-number">3.</span><span class="user-name">TechGuru</span> / San Francisco</div>
+                                    <div><span class="user-number">4.</span><span class="user-name">Traveler22</span> / Unknown</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="room-bottom">
-                            Welcome, Traveler. Come on in!
-                        </div>
+ 
                     </div>
                     <div class="room">
                         <button class="enter-button">Enter</button>
                         <div class="room-top">
                             <div class="room-info">
-                                <div class="room-name">Cozy Chat Corner (5 People)</div>
+                                <div class="room-name">Cozy Chat Corner (1 People)</div>
                                 <div class="room-details">Public Room</div>
                                 <div class="users-detail">
                                     <div><span class="user-number">1.</span><span class="user-name">JohnDoe</span> / New York</div>
-                                    <div><span class="user-number">2.</span><span class="user-name">Alice123</span> / London</div>
-                                    <div><span class="user-number">3.</span><span class="user-name">ChatMaster</span> / Tokyo</div>
-                                    <div><span class="user-number">4.</span><span class="user-name">TechGuru</span> / San Francisco</div>
-                                    <div><span class="user-number">5.</span><span class="user-name">Traveler22</span> / Unknown</div>
                                 </div>
                             </div>
-                        </div>
-                        <div class="room-bottom">
-                            Welcome, Traveler. Come on in!
-                        </div>
-                    </div>
-                    <div class="room">
-                        <button class="enter-button">Enter</button>
-                        <div class="room-top">
-                            <div class="room-info">
-                                <div class="room-name">Cozy Chat Corner (5 People)</div>
-                                <div class="room-details">Public Room</div>
-                                <div class="users-detail">
-                                    <div><span class="user-number">1.</span><span class="user-name">JohnDoe</span> / New York</div>
-                                    <div><span class="user-number">2.</span><span class="user-name">Alice123</span> / London</div>
-                                    <div><span class="user-number">3.</span><span class="user-name">ChatMaster</span> / Tokyo</div>
-                                    <div><span class="user-number">4.</span><span class="user-name">TechGuru</span> / San Francisco</div>
-                                    <div><span class="user-number">5.</span><span class="user-name">Traveler22</span> / Unknown</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="room-bottom">
-                            Welcome, Traveler. Come on in!
-                        </div>
-                    </div>
-                    <div class="room">
-                        <button class="enter-button">Enter</button>
-                        <div class="room-top">
-                            <div class="room-info">
-                                <div class="room-name">Cozy Chat Corner (5 People)</div>
-                                <div class="room-details">Public Room</div>
-                                <div class="users-detail">
-                                    <div><span class="user-number">1.</span><span class="user-name">JohnDoe</span> / New York</div>
-                                    <div><span class="user-number">2.</span><span class="user-name">Alice123</span> / London</div>
-                                    <div><span class="user-number">3.</span><span class="user-name">ChatMaster</span> / Tokyo</div>
-                                    <div><span class="user-number">4.</span><span class="user-name">TechGuru</span> / San Francisco</div>
-                                    <div><span class="user-number">5.</span><span class="user-name">Traveler22</span> / Unknown</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="room-bottom">
-                            Welcome, Traveler. Come on in!
-                        </div>
-                    </div>
-                    <div class="room">
-                        <button class="enter-button">Enter</button>
-                        <div class="room-top">
-                            <div class="room-info">
-                                <div class="room-name">Cozy Chat Corner (5 People)</div>
-                                <div class="room-details">Public Room</div>
-                                <div class="users-detail">
-                                    <div><span class="user-number">1.</span><span class="user-name">JohnDoe</span> / New York</div>
-                                    <div><span class="user-number">2.</span><span class="user-name">Alice123</span> / London</div>
-                                    <div><span class="user-number">3.</span><span class="user-name">ChatMaster</span> / Tokyo</div>
-                                    <div><span class="user-number">4.</span><span class="user-name">TechGuru</span> / San Francisco</div>
-                                    <div><span class="user-number">5.</span><span class="user-name">Traveler22</span> / Unknown</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="room-bottom">
-                            Welcome, Traveler. Come on in!
                         </div>
                     </div>
                     <!-- You can add more room divs here -->
                 </div>
                 <div class="copyright-info">
-                    © 2024 Talkomatic. All rights reserved.
+                    <span class="version">Talkomatic v3.0 (Classic)</span>
+                    <span class="dot">•</span>
+                    <span class="copyright">Copyright © 2024 Mahmodi Foundation</span>
                 </div>
             </div>
         </div>
