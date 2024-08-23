@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talkomatic Room</title>
+    <style>
+        /* Font Declarations */
+        @font-face {
+            font-family: talkoSS;
+            src: url(stylesheets/fonts/Sansation_Light.ttf);
+        }
+        @font-face {
+            font-family: talkoSS;
+            src: url(stylesheets/fonts/Sansation_Bold.ttf);
+            font-weight: bold;
+        }
+        @font-face {
+            font-family: talkoText;
+            src: url(stylesheets/fonts/dited.otf);
+        }
+
+        /* Global Styles */
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            font-family: talkoSS, Arial, sans-serif;
+            background-color: #f0f0f0;
+            font-size: 16px;
+            overflow: hidden;
+        }
+        .page-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        /* Navbar Styles */
+        .top-navbar, .second-navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background-color: black;
+            color: white;
+        }
+        .navbar-section {
+            flex: 1;
+            display: flex;
+            align-items: center;
+        }
+        .navbar-left { justify-content: flex-start; }
+        .navbar-center { justify-content: center; }
+        .navbar-right { justify-content: flex-end; }
+        .second-navbar { background-color: #1a1a1a; }
+        .date-time {
+            font-size: 14px;
+            color: #ffff00;
+        }
+        .brand {
+            font-size: 24px;
+            color: #FF9800;
+            text-align: center;
+        }
+        .leave-room {
+            font-size: 14px;
+            cursor: pointer;
+            background-color: black;
+            color: white;
+            border: 1px solid #FF9800;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: talkoSS, Arial, sans-serif;
+            white-space: nowrap;
+        }
+        .room-type { color: cyan; }
+        .room-name {
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+        }
+        .room-id { color: #FF9800; }
+
+        /* Chat Container Styles */
+        .chat-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding-left: 5px;
+            padding-right: 5px;
+            background-color: #202020;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+        .chat-row {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+        }
+        .user-info {
+            font-size: 14px;
+            padding: 8px;
+            color: #ffffff;
+            background-color: #616161;
+        }
+        .chat-input {
+            width: 100%;
+            padding: 5px;
+            border: none;
+            font-family: talkoText, Arial, sans-serif;
+            font-size: 18px;
+            resize: none;
+            box-sizing: border-box;
+            background-color: black;
+            color: #FF9800;
+        }
+
+        /* Invite Section Styles */
+        .invite-section {
+            background-color: #1a1a1a;
+            padding: 10px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .invite-text {
+            color: #ffff00;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        .invite-link {
+            color: cyan;
+            font-size: 16px;
+            word-break: break-all;
+        }
+
+        /* Responsive Styles */
+        @media screen and (max-width: 768px) {
+            .brand { font-size: 20px; }
+            .leave-room { padding: 8px; }
+            .room-name { font-size: 16px; }
+            .date-time {
+                font-size: 12px;
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .date-time .date { margin-bottom: 2px; }
+            .date-time .time { font-size: 10px; }
+            .user-info { font-size: 12px; }
+            .chat-input { font-size: 12px; }
+            .invite-section { padding: 5px 10px; }
+            .invite-text { font-size: 12px; }
+            .invite-link { font-size: 14px; }
+        }
+        @media screen and (max-width: 576px) {
+            body { font-size: 12px; }
+            .brand { font-size: 18px; }
+            .leave-room { padding: 6px; }
+            .room-name { font-size: 14px; }
+            .date-time { font-size: 10px; }
+            .date-time .time { font-size: 9px; }
+            .chat-container { padding: 5px; }
+            .invite-section { padding: 3px 5px; }
+            .invite-text { font-size: 10px; }
+            .invite-link { font-size: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <nav class="top-navbar">
+            <div class="navbar-section navbar-left">
+                <div id="dateTime" class="date-time">
+                    <span class="date"></span>
+                    <span class="time"></span>
+                </div>
+            </div>
+            <div class="navbar-section navbar-center">
+                <div class="brand">Talkomatic™</div>
+            </div>
+            <div class="navbar-section navbar-right">
+                <div class="leave-room">Leave Room</div>
+            </div>
+        </nav>
+        <div class="second-navbar">
+            <div class="room-type">Public Room</div>
+            <div class="room-name">Cozy Chat Corner</div>
+            <div class="room-id">Room ID: 12345</div>
+        </div>
+        <div class="chat-container">
+            <div class="chat-row">
+                <span class="user-info">User1 / New York</span>
+                <textarea class="chat-input"></textarea>
+            </div>
+            <div class="chat-row">
+                <span class="user-info">User2 / London</span>
+                <textarea class="chat-input"></textarea>
+            </div>
+            <div class="chat-row">
+                <span class="user-info">User3 / Tokyo</span>
+                <textarea class="chat-input"></textarea>
+            </div>
+            <div class="chat-row">
+                <span class="user-info">User4 / Sydney</span>
+                <textarea class="chat-input"></textarea>
+            </div>
+            <div class="chat-row">
+                <span class="user-info">User5 / Paris</span>
+                <textarea class="chat-input"></textarea>
+            </div>
+        </div>
+        <div class="invite-section">
+            <div class="invite-text">Invite friends to your room with this link:</div>
+            <div class="invite-link">https://talkomatic.com/room/12345</div>
+        </div>
+    </div>
+
+    <script>
+        function updateDateTime() {
+            const now = new Date();
+            const dateOptions = { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric'
+            };
+            const timeOptions = {
+                hour: '2-digit', 
+                minute: '2-digit', 
+                hour12: true 
+            };
+            const formattedDate = now.toLocaleDateString('en-US', dateOptions);
+            const formattedTime = now.toLocaleTimeString('en-US', timeOptions);
+            document.querySelector('#dateTime .date').textContent = formattedDate;
+            document.querySelector('#dateTime .time').textContent = formattedTime;
+        }
+
+        function adjustLayout() {
+            const chatContainer = document.querySelector('.chat-container');
+            const topNavbar = document.querySelector('.top-navbar');
+            const secondNavbar = document.querySelector('.second-navbar');
+            const inviteSection = document.querySelector('.invite-section');
+            
+            const availableHeight = window.innerHeight - 
+                                    topNavbar.offsetHeight - 
+                                    secondNavbar.offsetHeight - 
+                                    inviteSection.offsetHeight;
+            
+            chatContainer.style.height = `${availableHeight}px`;
+            
+            const chatRows = document.querySelectorAll('.chat-row');
+            const totalGap = (chatRows.length - 1) * 10; // 10px gap between rows
+            const chatRowHeight = Math.floor((availableHeight - totalGap) / chatRows.length);
+            
+            chatRows.forEach(row => {
+                row.style.height = `${chatRowHeight}px`;
+                const userInfo = row.querySelector('.user-info');
+                const chatInput = row.querySelector('.chat-input');
+                const inputHeight = chatRowHeight - userInfo.offsetHeight - 2; // 2px for borders
+                chatInput.style.height = `${inputHeight}px`;
+            });
+        }
+
+        // Initial calls
+        updateDateTime();
+        adjustLayout();
+
+        // Set up interval for date/time update
+        setInterval(updateDateTime, 1000);
+
+        // Adjust layout on window resize
+        window.addEventListener('resize', adjustLayout);
+    </script>
+</body>
+</html>
