@@ -1,12 +1,12 @@
 /* Font Declarations */
 @font-face {
   font-family: talkoSS;
-  src: url(stylesheets/fonts/Sansation_Light.ttf);
+  src: url(../fonts/Sansation_Light.ttf);
 }
 
 @font-face {
   font-family: talkoSS;
-  src: url(stylesheets/fonts/Sansation_Bold.ttf);
+  src: url(../fonts/Sansation_Bold.ttf);
   font-weight: bold;
 }
 
