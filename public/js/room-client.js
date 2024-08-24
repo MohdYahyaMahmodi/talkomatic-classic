@@ -8,7 +8,24 @@ let currentRoomLayout = 'horizontal';
 let lastSentMessage = '';
 let typingTimeout;
 
+const joinSound = document.getElementById('joinSound');
+const leaveSound = document.getElementById('leaveSound');
+let soundEnabled = true; // You can add a UI toggle for this if you want
+
 const MAX_MESSAGE_LENGTH = 5000;
+
+function playJoinSound() {
+    if (soundEnabled) {
+        joinSound.play().catch(error => console.error('Error playing join sound:', error));
+    }
+}
+
+// Function to play leave sound
+function playLeaveSound() {
+    if (soundEnabled) {
+        leaveSound.play().catch(error => console.error('Error playing leave sound:', error));
+    }
+}
 
 // Get room information from sessionStorage
 function getRoomInfo() {
@@ -77,12 +94,14 @@ socket.on('room not found', () => {
 socket.on('user joined', (user) => {
     console.log(`User joined:`, user);
     addUserToRoom(user);
+    playJoinSound();
 });
 
 // Handle user left event
 socket.on('user left', (userId) => {
     console.log(`User left: ${userId}`);
     removeUserFromRoom(userId);
+    playLeaveSound();
 });
 
 // Handle room update event
