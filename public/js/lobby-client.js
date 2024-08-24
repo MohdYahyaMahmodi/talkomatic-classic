@@ -17,6 +17,11 @@ let currentUsername = '';
 let currentLocation = '';
 let isSignedIn = false;
 
+const MAX_USERNAME_LENGTH = 12;
+const MAX_LOCATION_LENGTH = 12;
+const MAX_ROOM_NAME_LENGTH = 20;
+
+
 function checkSignInStatus() {
     console.log('Checking sign-in status');
     socket.emit('check signin status');
@@ -25,8 +30,8 @@ function checkSignInStatus() {
 // Handle user sign in
 logForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const newUsername = usernameInput.value.trim();
-    const newLocation = locationInput.value.trim() || 'Earth';
+    const newUsername = usernameInput.value.trim().slice(0, MAX_USERNAME_LENGTH);
+    const newLocation = locationInput.value.trim().slice(0, MAX_LOCATION_LENGTH) || 'On The Web';
     if (newUsername) {
         if (currentUsername) {
             // Changing existing username/location

@@ -5,6 +5,10 @@ let currentLocation = '';
 let currentRoomId = '';
 let currentUserId = '';
 let currentRoomLayout = 'horizontal';
+let lastSentMessage = '';
+let typingTimeout;
+
+const MAX_MESSAGE_LENGTH = 5000;
 
 // Get room information from sessionStorage
 function getRoomInfo() {
@@ -90,9 +94,9 @@ socket.on('room update', (roomData) => {
     updateRoomUI(roomData);
 });
 
-// Handle chat message event
-socket.on('chat message', (data) => {
-    console.log(`Chat message from ${data.username}: ${data.message}`);
+// Handle chat update event
+socket.on('chat update', (data) => {
+    console.log(`Chat update from ${data.username}:`, data.diff);
     displayChatMessage(data);
 });
 
@@ -180,7 +184,24 @@ function updateRoomUI(roomData) {
 function displayChatMessage(data) {
     const chatInput = document.querySelector(`.chat-row[data-user-id="${data.userId}"] .chat-input`);
     if (chatInput) {
-        chatInput.value = data.message;
+        if (data.diff) {
+            const currentText = chatInput.value;
+            let newText;
+            switch (data.diff.type) {
+                case 'add':
+                    newText = currentText.slice(0, data.diff.index) + data.diff.text + currentText.slice(data.diff.index);
+                    break;
+                case 'delete':
+                    newText = currentText.slice(0, data.diff.index) + currentText.slice(data.diff.index + data.diff.count);
+                    break;
+                case 'replace':
+                    newText = currentText.slice(0, data.diff.index) + data.diff.text + currentText.slice(data.diff.index + data.diff.text.length);
+                    break;
+            }
+            chatInput.value = newText.slice(0, MAX_MESSAGE_LENGTH);
+        } else {
+            chatInput.value = data.message.slice(0, MAX_MESSAGE_LENGTH);
+        }
     }
 }
 
@@ -238,12 +259,49 @@ function adjustLayout() {
     }
 }
 
-// Event listener for sending chat messages
+// Function to calculate the difference between two strings
+function getDiff(oldStr, newStr) {
+    let i = 0;
+    while (i < oldStr.length && i < newStr.length && oldStr[i] === newStr[i]) i++;
+    
+    if (i === oldStr.length && i === newStr.length) return null; // No change
+    
+    if (i === oldStr.length) {
+        // Addition
+        return { type: 'add', text: newStr.slice(i), index: i };
+    } else if (i === newStr.length) {
+        // Deletion
+        return { type: 'delete', count: oldStr.length - i, index: i };
+    } else {
+        // Replacement
+        return { type: 'replace', text: newStr.slice(i), index: i };
+    }
+}
+
+// Modify the input event listener
 document.querySelector('.chat-container').addEventListener('input', (e) => {
     if (e.target.classList.contains('chat-input') && e.target.closest('.chat-row').dataset.userId === currentUserId) {
-        const message = e.target.value;
-        socket.emit('chat message', message);
-        socket.emit('typing', { isTyping: message.length > 0 });
+        const currentMessage = e.target.value;
+        
+        // Enforce character limit
+        if (currentMessage.length > MAX_MESSAGE_LENGTH) {
+            e.target.value = currentMessage.slice(0, MAX_MESSAGE_LENGTH);
+            return;
+        }
+
+        const diff = getDiff(lastSentMessage, currentMessage);
+        
+        if (diff) {
+            socket.emit('chat update', { diff, index: diff.index });
+            lastSentMessage = currentMessage;
+        }
+
+        // Handle typing indicator
+        clearTimeout(typingTimeout);
+        socket.emit('typing', { isTyping: true });
+        typingTimeout = setTimeout(() => {
+            socket.emit('typing', { isTyping: false });
+        }, 1000);
     }
 });
 

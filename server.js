@@ -9,6 +9,11 @@ const sharedsession = require("express-socket.io-session");
 const app = express();
 const server = http.createServer(app);
 
+const MAX_USERNAME_LENGTH = 12;
+const MAX_LOCATION_LENGTH = 12;
+const MAX_ROOM_NAME_LENGTH = 20;
+const MAX_MESSAGE_LENGTH = 5000;
+
 // Set up session middleware
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || '723698977cc31aaf8e84d93feffadcf72d65bfe0e56d58ba2cbdb88d74809745',
@@ -38,6 +43,9 @@ const users = new Map();
 
 // Store room deletion timers
 const roomDeletionTimers = new Map();
+
+// Store typing timeouts
+const typingTimeouts = new Map();
 
 const clearUserSession = (socket) => {
   return new Promise((resolve, reject) => {
@@ -71,32 +79,31 @@ io.on('connection', (socket) => {
   // Join lobby
   socket.on('join lobby', (data) => {
     console.log(`User ${userId} joining lobby with username: ${data.username}, location: ${data.location}`);
-    socket.username = data.username;
-    socket.location = data.location || 'Earth';
+    socket.username = enforceUsernameLimit(data.username);
+    socket.location = enforceLocationLimit(data.location || 'Earth');
     users.set(userId, { id: userId, username: socket.username, location: socket.location });
     
     // Store user information in the session
     socket.handshake.session.username = socket.username;
     socket.handshake.session.location = socket.location;
     socket.handshake.session.save((err) => {
-        if (err) {
-            console.error('Error saving session:', err);
-        } else {
-            socket.join('lobby');
-            console.log(`User ${userId} joined lobby`);
-            updateLobby();
-        }
+      if (err) {
+        console.error('Error saving session:', err);
+      } else {
+        socket.join('lobby');
+        console.log(`User ${userId} joined lobby`);
+        updateLobby();
+      }
     });
   });
 
-  // Modify the 'check signin status' event handler
+  // Check signin status
   socket.on('check signin status', () => {
     const username = socket.handshake.session.username;
     const location = socket.handshake.session.location;
     const userId = socket.handshake.session.userId;
     if (username && location && userId) {
       socket.emit('signin status', { isSignedIn: true, username, location, userId });
-      // Rejoin the user to the lobby
       socket.join('lobby');
       users.set(userId, { id: userId, username, location });
       updateLobby();
@@ -111,7 +118,7 @@ io.on('connection', (socket) => {
     const roomId = generateRoomId();
     rooms.set(roomId, {
       id: roomId,
-      name: data.name,
+      name: enforceRoomNameLimit(data.name),
       type: data.type,
       layout: data.layout,
       users: [],
@@ -120,7 +127,7 @@ io.on('connection', (socket) => {
     socket.emit('room created', roomId);
     updateLobby();
   });
-
+  
   // Join room
   socket.on('join room', (roomId) => {
     console.log(`User ${userId} attempting to join room: ${roomId}`);
@@ -129,7 +136,7 @@ io.on('connection', (socket) => {
       joinRoom(socket, room, userId);
     } else {
       console.log(`Room ${roomId} not found`);
-      socket.emit('error', 'Room not found');
+      socket.emit('room not found');
     }
   });
 
@@ -154,14 +161,17 @@ io.on('connection', (socket) => {
     await leaveRoom(socket, userId);
   });
 
-  // Handle chat message
-  socket.on('chat message', (message) => {
+  // Handle chat update
+  socket.on('chat update', (data) => {
     if (socket.roomId) {
-      console.log(`Chat message in room ${socket.roomId} from user ${userId}: ${message}`);
-      io.to(socket.roomId).emit('chat message', {
+      console.log(`Chat update in room ${socket.roomId} from user ${userId}:`, data);
+      if (data.diff && data.diff.text) {
+        data.diff.text = enforceCharacterLimit(data.diff.text);
+      }
+      socket.to(socket.roomId).emit('chat update', {
         userId: userId,
         username: socket.username,
-        message,
+        diff: data.diff
       });
     }
   });
@@ -169,12 +179,33 @@ io.on('connection', (socket) => {
   // Handle typing
   socket.on('typing', (data) => {
     if (socket.roomId) {
-      console.log(`User ${userId} typing status in room ${socket.roomId}: ${data.isTyping}`);
-      socket.to(socket.roomId).emit('user typing', {
-        userId: userId,
-        username: socket.username,
-        isTyping: data.isTyping,
-      });
+      if (typingTimeouts.has(userId)) {
+        clearTimeout(typingTimeouts.get(userId));
+      }
+
+      if (data.isTyping) {
+        socket.to(socket.roomId).emit('user typing', {
+          userId: userId,
+          username: socket.username,
+          isTyping: true
+        });
+
+        typingTimeouts.set(userId, setTimeout(() => {
+          socket.to(socket.roomId).emit('user typing', {
+            userId: userId,
+            username: socket.username,
+            isTyping: false
+          });
+          typingTimeouts.delete(userId);
+        }, 2000)); // Stop "typing" after 2 seconds of inactivity
+      } else {
+        socket.to(socket.roomId).emit('user typing', {
+          userId: userId,
+          username: socket.username,
+          isTyping: false
+        });
+        typingTimeouts.delete(userId);
+      }
     }
   });
 
@@ -238,6 +269,27 @@ async function joinRoom(socket, room, userId) {
     roomDeletionTimers.delete(room.id);
     console.log(`Cleared deletion timer for room ${room.id}`);
   }
+}
+
+
+function enforceCharacterLimit(message) {
+  if (typeof message === 'string') {
+    return message.slice(0, MAX_MESSAGE_LENGTH);
+  }
+  return message;
+}
+
+// Add these functions
+function enforceUsernameLimit(username) {
+  return username.slice(0, MAX_USERNAME_LENGTH);
+}
+
+function enforceLocationLimit(location) {
+  return location.slice(0, MAX_LOCATION_LENGTH);
+}
+
+function enforceRoomNameLimit(roomName) {
+  return roomName.slice(0, MAX_ROOM_NAME_LENGTH);
 }
 
 async function leaveRoom(socket, userId) {
