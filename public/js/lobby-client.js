@@ -17,6 +17,11 @@ let currentUsername = '';
 let currentLocation = '';
 let isSignedIn = false;
 
+function checkSignInStatus() {
+    console.log('Checking sign-in status');
+    socket.emit('check signin status');
+}
+
 // Handle user sign in
 logForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -67,6 +72,26 @@ dynamicRoomList.addEventListener('click', (e) => {
     }
 });
 
+// Add this event listener
+socket.on('signin status', (data) => {
+    console.log('Received signin status:', data);
+    if (data.isSignedIn) {
+        currentUsername = data.username;
+        currentLocation = data.location;
+        currentUserId = data.userId;
+        isSignedIn = true;
+        usernameInput.value = currentUsername;
+        locationInput.value = currentLocation;
+        signInButton.innerHTML = 'Change <img src="images/icons/pencil.png" alt="Arrow" class="arrow-icon">';
+        createRoomForm.classList.remove('hidden');
+        showRoomList();
+    } else {
+        // If not signed in, show the sign-in form
+        signInMessage.style.display = 'block';
+        roomListContainer.style.display = 'none';
+    }
+});
+
 // Update lobby with new room list
 socket.on('lobby update', (rooms) => {
     console.log('Received lobby update:', rooms);
@@ -83,7 +108,8 @@ socket.on('room joined', (data) => {
         username: currentUsername,
         location: currentLocation,
         roomName: data.roomName,
-        roomType: data.roomType
+        roomType: data.roomType,
+        layout: data.layout  // Add this line
     }));
     window.location.href = '/room.html';
 });
@@ -166,17 +192,28 @@ function initLobby() {
     document.querySelector('input[name="roomType"][value="public"]').checked = true;
     document.querySelector('input[name="roomLayout"][value="horizontal"]').checked = true;
     
-    // Clear any existing room data from previous sessions
-    sessionStorage.removeItem('roomData');
-    
-    // Check if user is already signed in (you might want to implement a more robust check)
-    if (isSignedIn) {
-        showRoomList();
-    } else {
-        signInMessage.style.display = 'block';
-        roomListContainer.style.display = 'none';
-    }
+    // Check if user is already signed in
+    checkSignInStatus();
 }
+
+function autoSignIn(username, location) {
+    currentUsername = username;
+    currentLocation = location;
+    isSignedIn = true;
+    console.log(`Auto signing in as ${currentUsername} from ${currentLocation}`);
+    socket.emit('join lobby', { username: currentUsername, location: currentLocation });
+    showRoomList();
+}
+
+window.addEventListener('load', () => {
+    const roomData = sessionStorage.getItem('roomData');
+    if (roomData) {
+        const { username, location } = JSON.parse(roomData);
+        autoSignIn(username, location);
+    } else {
+        initLobby();
+    }
+});
 
 // Get initial room list
 socket.on('initial rooms', (rooms) => {

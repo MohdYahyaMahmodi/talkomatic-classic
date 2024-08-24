@@ -65,6 +65,9 @@
   .date-time {
     font-size: 14px;
     color: #ffff00;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
   }
   
   .brand {
@@ -106,43 +109,41 @@
   
   /* Chat Container Styles
      ========================================================================== */
-  .chat-container {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    padding: 0 5px;
-    background-color: #202020;
-    overflow: hidden;
-    box-sizing: border-box;
-  }
-  
-  .chat-row {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    border: 1px solid #ccc;
-    box-sizing: border-box;
-  }
-  
-  .user-info {
-    font-size: 14px;
-    padding: 8px;
-    color: #ffffff;
-    background-color: #616161;
-  }
-  
-  .chat-input {
-    width: 100%;
-    padding: 5px;
-    border: none;
-    font-family: talkoText, Arial, sans-serif;
-    font-size: 18px;
-    resize: none;
-    box-sizing: border-box;
-    background-color: black;
-    color: #FF9800;
-  }
+     .chat-container {
+      flex-grow: 1;
+      display: flex;
+      gap: 5px;
+      padding: 0 5px;
+      background-color: #202020;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    
+    .chat-row {
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+    }
+    
+    .user-info {
+      font-size: 14px;
+      padding: 8px;
+      color: #ffffff;
+      background-color: #616161;
+    }
+    
+    .chat-input {
+      flex-grow: 1;
+      padding: 5px;
+      border: none;
+      font-family: talkoText, Arial, sans-serif;
+      font-size: 18px;
+      resize: none;
+      box-sizing: border-box;
+      background-color: black;
+      color: #FF9800;
+    }
   
   /* Invite Section Styles
      ========================================================================== */

@@ -11,10 +11,13 @@ const server = http.createServer(app);
 
 // Set up session middleware
 const sessionMiddleware = session({
-  secret: 'your_session_secret',
+  secret: process.env.SESSION_SECRET || '723698977cc31aaf8e84d93feffadcf72d65bfe0e56d58ba2cbdb88d74809745',
   resave: false,
-  saveUninitialized: true,
-  cookie: { secure: false } // Set to true if using HTTPS
+  saveUninitialized: false,
+  cookie: { 
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+  }
 });
 
 app.use(sessionMiddleware);
@@ -33,6 +36,27 @@ app.use(express.static(path.join(__dirname, 'public')));
 const rooms = new Map();
 const users = new Map();
 
+// Store room deletion timers
+const roomDeletionTimers = new Map();
+
+const clearUserSession = (socket) => {
+  return new Promise((resolve, reject) => {
+    if (socket && socket.handshake && socket.handshake.session) {
+      socket.handshake.session.currentRoom = null;
+      socket.handshake.session.save((err) => {
+        if (err) {
+          console.error('Error saving session:', err);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    } else {
+      resolve(); // If there's no session, just resolve
+    }
+  });
+};
+
 io.on('connection', (socket) => {
   console.log(`New user connected: ${socket.id}`);
 
@@ -50,9 +74,35 @@ io.on('connection', (socket) => {
     socket.username = data.username;
     socket.location = data.location || 'Earth';
     users.set(userId, { id: userId, username: socket.username, location: socket.location });
-    socket.join('lobby');
-    console.log(`User ${userId} joined lobby`);
-    updateLobby();
+    
+    // Store user information in the session
+    socket.handshake.session.username = socket.username;
+    socket.handshake.session.location = socket.location;
+    socket.handshake.session.save((err) => {
+        if (err) {
+            console.error('Error saving session:', err);
+        } else {
+            socket.join('lobby');
+            console.log(`User ${userId} joined lobby`);
+            updateLobby();
+        }
+    });
+  });
+
+  // Modify the 'check signin status' event handler
+  socket.on('check signin status', () => {
+    const username = socket.handshake.session.username;
+    const location = socket.handshake.session.location;
+    const userId = socket.handshake.session.userId;
+    if (username && location && userId) {
+      socket.emit('signin status', { isSignedIn: true, username, location, userId });
+      // Rejoin the user to the lobby
+      socket.join('lobby');
+      users.set(userId, { id: userId, username, location });
+      updateLobby();
+    } else {
+      socket.emit('signin status', { isSignedIn: false });
+    }
   });
 
   // Create room
@@ -94,14 +144,14 @@ io.on('connection', (socket) => {
       joinRoom(socket, room, userId);
     } else {
       console.log(`Room ${data.roomId} not found for rejoin`);
-      socket.emit('error', 'Room not found');
+      socket.emit('room not found');
     }
   });
 
   // Leave room
-  socket.on('leave room', () => {
+  socket.on('leave room', async () => {
     console.log(`User ${userId} leaving room`);
-    leaveRoom(socket, userId);
+    await leaveRoom(socket, userId);
   });
 
   // Handle chat message
@@ -135,14 +185,14 @@ io.on('connection', (socket) => {
   });
 
   // Disconnect
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     console.log(`User disconnected: ${userId}`);
-    leaveRoom(socket, userId);
+    await leaveRoom(socket, userId);
     users.delete(userId);
   });
 });
 
-function joinRoom(socket, room, userId) {
+async function joinRoom(socket, room, userId) {
   socket.join(room.id);
   room.users = room.users.filter(user => user.id !== userId);
   room.users.push({
@@ -151,6 +201,17 @@ function joinRoom(socket, room, userId) {
     location: socket.location,
   });
   socket.roomId = room.id;
+  socket.handshake.session.currentRoom = room.id;
+  await new Promise((resolve, reject) => {
+    socket.handshake.session.save((err) => {
+      if (err) {
+        console.error('Error saving session:', err);
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
+  });
   io.to(room.id).emit('user joined', {
     id: userId,
     username: socket.username,
@@ -164,14 +225,22 @@ function joinRoom(socket, room, userId) {
     location: socket.location,
     roomName: room.name,
     roomType: room.type,
-    users: room.users
+    users: room.users,
+    layout: room.layout
   });
   socket.leave('lobby');
   console.log(`User ${userId} joined room: ${room.id}`);
   updateLobby();
+
+  // Clear the room deletion timer if it exists
+  if (roomDeletionTimers.has(room.id)) {
+    clearTimeout(roomDeletionTimers.get(room.id));
+    roomDeletionTimers.delete(room.id);
+    console.log(`Cleared deletion timer for room ${room.id}`);
+  }
 }
 
-function leaveRoom(socket, userId) {
+async function leaveRoom(socket, userId) {
   if (socket.roomId) {
     console.log(`User ${userId} leaving room ${socket.roomId}`);
     const room = rooms.get(socket.roomId);
@@ -180,11 +249,42 @@ function leaveRoom(socket, userId) {
       socket.leave(socket.roomId);
       io.to(socket.roomId).emit('user left', userId);
       updateRoom(socket.roomId);
+
+      // Start the room deletion timer if the room is empty
+      if (room.users.length === 0) {
+        startRoomDeletionTimer(socket.roomId);
+      }
     }
     socket.roomId = null;
+    // Instead of clearing the entire session, just remove the currentRoom
+    if (socket.handshake.session) {
+      socket.handshake.session.currentRoom = null;
+      await new Promise((resolve, reject) => {
+        socket.handshake.session.save((err) => {
+          if (err) {
+            console.error('Error saving session:', err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+    }
     socket.join('lobby');
   }
   updateLobby();
+}
+
+function startRoomDeletionTimer(roomId) {
+  console.log(`Starting deletion timer for room ${roomId}`);
+  const timer = setTimeout(() => {
+    console.log(`Deleting empty room ${roomId}`);
+    rooms.delete(roomId);
+    roomDeletionTimers.delete(roomId);
+    updateLobby();
+  }, 15000); // 15 seconds
+
+  roomDeletionTimers.set(roomId, timer);
 }
 
 function updateLobby() {
