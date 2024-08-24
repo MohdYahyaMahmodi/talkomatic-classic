@@ -5,14 +5,67 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const session = require('express-session');
 const sharedsession = require("express-socket.io-session");
+const helmet = require('helmet');
+const cors = require('cors');
+const rateLimit = require('express-rate-limit');
+const xss = require('xss-clean');
+const hpp = require('hpp');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
 
+// Constants
 const MAX_USERNAME_LENGTH = 12;
 const MAX_LOCATION_LENGTH = 12;
 const MAX_ROOM_NAME_LENGTH = 20;
 const MAX_MESSAGE_LENGTH = 5000;
+
+// Define allowed origins
+const allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
+// CORS options
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      var msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  methods: ['GET', 'POST'],
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+app.use((req, res, next) => {
+  res.locals.nonce = crypto.randomBytes(16).toString('base64');
+  next();
+});
+
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "script-src": ["'self'", (req, res) => `'nonce-${res.locals.nonce}'`],
+      "style-src": ["'self'", "'unsafe-inline'"],
+    },
+  },
+}));
+app.use(cors()); // Enable CORS
+app.use(xss()); // Sanitize input
+app.use(hpp()); // Protect against HTTP Parameter Pollution attacks
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP to 100 requests per windowMs
+});
+app.use(limiter);
 
 // Set up session middleware
 const sessionMiddleware = session({
@@ -21,13 +74,20 @@ const sessionMiddleware = session({
   saveUninitialized: false,
   cookie: { 
     secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
     maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
   }
 });
 
 app.use(sessionMiddleware);
 
-const io = socketIo(server);
+const io = socketIo(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: true
+  }
+});
 
 // Share session middleware with socket.io
 io.use(sharedsession(sessionMiddleware, {
@@ -35,7 +95,17 @@ io.use(sharedsession(sessionMiddleware, {
 }));
 
 // Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
+app.use((req, res, next) => {
+  res.locals.nonce = crypto.randomBytes(16).toString('base64');
+  next();
+}, express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript');
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+    }
+  }
+}));
 
 // Store rooms and users
 const rooms = new Map();
@@ -46,6 +116,23 @@ const roomDeletionTimers = new Map();
 
 // Store typing timeouts
 const typingTimeouts = new Map();
+
+// Helper functions
+function enforceCharacterLimit(message) {
+  return typeof message === 'string' ? message.slice(0, MAX_MESSAGE_LENGTH) : message;
+}
+
+function enforceUsernameLimit(username) {
+  return username.slice(0, MAX_USERNAME_LENGTH);
+}
+
+function enforceLocationLimit(location) {
+  return location.slice(0, MAX_LOCATION_LENGTH);
+}
+
+function enforceRoomNameLimit(roomName) {
+  return roomName.slice(0, MAX_ROOM_NAME_LENGTH);
+}
 
 const clearUserSession = (socket) => {
   return new Promise((resolve, reject) => {
@@ -65,6 +152,7 @@ const clearUserSession = (socket) => {
   });
 };
 
+// Socket.io event handlers
 io.on('connection', (socket) => {
   console.log(`New user connected: ${socket.id}`);
 
@@ -269,27 +357,6 @@ async function joinRoom(socket, room, userId) {
     roomDeletionTimers.delete(room.id);
     console.log(`Cleared deletion timer for room ${room.id}`);
   }
-}
-
-
-function enforceCharacterLimit(message) {
-  if (typeof message === 'string') {
-    return message.slice(0, MAX_MESSAGE_LENGTH);
-  }
-  return message;
-}
-
-// Add these functions
-function enforceUsernameLimit(username) {
-  return username.slice(0, MAX_USERNAME_LENGTH);
-}
-
-function enforceLocationLimit(location) {
-  return location.slice(0, MAX_LOCATION_LENGTH);
-}
-
-function enforceRoomNameLimit(roomName) {
-  return roomName.slice(0, MAX_ROOM_NAME_LENGTH);
 }
 
 async function leaveRoom(socket, userId) {

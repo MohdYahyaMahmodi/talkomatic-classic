@@ -1,7 +1,7 @@
 // DOM Element References
 const leftPanel = document.getElementById('leftPanel');
-const toggleButton = document.querySelector('.toggle-button');
-const hideMenuButton = document.querySelector('.hide-menu-button');
+const toggleButton = document.getElementById('toggleButton');
+const hideMenuButton = document.getElementById('hideMenuButton');
 
 /**
  * Toggles the left panel open/closed state
@@ -52,6 +52,7 @@ function handleOutsideClick(event) {
 document.addEventListener('click', handleOutsideClick);
 window.addEventListener('resize', handleResize);
 hideMenuButton.addEventListener('click', hideLeftPanel);
+toggleButton.addEventListener('click', toggleLeftPanel);
 
 // Initial Setup
 function init() {

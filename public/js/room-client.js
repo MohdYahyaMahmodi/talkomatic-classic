@@ -130,10 +130,9 @@ function updateRoomInfo(data) {
     document.querySelector('.room-name').textContent = `Room: ${data.roomName || currentRoomId}`;
     document.querySelector('.room-type').textContent = `${data.roomType || 'Public'} Room`;
     document.querySelector('.room-id').textContent = `Room ID: ${data.roomId || currentRoomId}`;
-    document.querySelector('.room-layout').textContent = `Layout: ${currentRoomLayout}`;
 }
 
-// Function to add a user to the room UI
+// Modify the addUserToRoom function
 function addUserToRoom(user) {
     const chatContainer = document.querySelector('.chat-container');
     const existingChatRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
@@ -144,6 +143,9 @@ function addUserToRoom(user) {
 
     const chatRow = document.createElement('div');
     chatRow.classList.add('chat-row');
+    if (user.id === currentUserId) {
+        chatRow.classList.add('current-user');
+    }
     chatRow.dataset.userId = user.id;
     chatRow.innerHTML = `
         <span class="user-info">${user.username} / ${user.location}</span>
@@ -181,7 +183,7 @@ function updateRoomUI(roomData) {
         roomData.users.forEach(user => {
             addUserToRoom(user);
             // Restore user input
-            const chatRow = chatContainer.querySelector(`.chat-row[data-user-id="${user.id}"]`);
+            const chatRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
             if (chatRow) {
                 const input = chatRow.querySelector('.chat-input');
                 input.value = userInputs[user.id] || '';

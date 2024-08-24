@@ -7,10 +7,10 @@
     <link rel="stylesheet" href="stylesheets/css/lobby.css">
 </head>
 <body>
-    <button class="toggle-button" onclick="toggleLeftPanel()">Menu</button>
+    <button class="toggle-button" id="toggleButton">Menu</button>
     <div class="container">
         <div class="left-panel" id="leftPanel">
-            <button class="hide-menu-button" onclick="hideLeftPanel()">...Hide Menu</button>
+            <button class="hide-menu-button" id="hideMenuButton">...Hide Menu</button>
             <div class="panel-header">
                 <span class="talkomatic">Talkomatic™</span><span class="lobby">Lobby</span>
             </div>
@@ -93,8 +93,8 @@
             </div>
         </div>
     </div>
-    <script src="js/lobby.js"></script>
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="js/lobby-client.js"></script>
+    <script nonce="<%= nonce %>" src="js/lobby.js"></script>
+    <script nonce="<%= nonce %>" src="/socket.io/socket.io.js"></script>
+    <script nonce="<%= nonce %>" src="js/lobby-client.js"></script>
 </body>
 </html>

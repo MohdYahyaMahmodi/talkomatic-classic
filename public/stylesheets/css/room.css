@@ -126,6 +126,10 @@
       box-sizing: border-box;
     }
     
+    .chat-row.current-user {
+      border-color: orange;
+    }
+    
     .user-info {
       font-size: 14px;
       padding: 8px;
