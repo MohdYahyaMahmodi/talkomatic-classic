@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talkomatic Lobby</title>
+    <link rel="stylesheet" href="stylesheets/css/lobby.css">
+</head>
+<body>
+    <button class="toggle-button" onclick="toggleLeftPanel()">Menu</button>
+    <div class="container">
+        <div class="left-panel" id="leftPanel">
+            <button class="hide-menu-button" onclick="hideLeftPanel()">...Hide Menu</button>
+            <div class="panel-header">
+                <span class="talkomatic">Talkomatic™</span><span class="lobby">Lobby</span>
+            </div>
+            <div class="external-links">
+                <a href="https://example1.com" target="_blank" rel="noopener noreferrer">About Talkomatic™️</a>
+                <a href="https://example2.com" target="_blank" rel="noopener noreferrer">Classic Mode</a>
+            </div>
+            <div class="known-as-section">
+                <p>Be Known As...</p>
+            </div>
+            <div id="logform">
+                <form>
+                    <input type="text" placeholder="Your Name" required>
+                    <input type="text" placeholder="Location (optional)">
+                    <button type="submit">Sign In <img src="images/icons/pencil.png" alt="Arrow" class="arrow-icon"></button>
+                </form>
+            </div>
+            <div class="createRoom">
+                <p>Create A Room...</p>
+                <a href="#" class="learn-more">Learn More</a>
+            </div>
+            <div id="lobbyForm">
+                <input type="text" placeholder="Room Name">
+                
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="roomType" value="public">
+                        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcREzt4ZWyEnmX04Vevy8B8TZdIOU8OyrsBvrQ&s" alt="Public Room Icon" class="radio-icon">
+                        <span>Public Room</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="roomType" value="private">
+                        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcREzt4ZWyEnmX04Vevy8B8TZdIOU8OyrsBvrQ&s" alt="Semi-Private Room Icon" class="radio-icon">
+                        <span>Semi-Private Room</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="roomType" value="invisible">
+                        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcREzt4ZWyEnmX04Vevy8B8TZdIOU8OyrsBvrQ&s" alt="Private Room Icon" class="radio-icon">
+                        <span>Private Room</span>
+                    </label>
+                </div>
+            
+                <p class="roomLay">Room Layout</p>
+            
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="roomLayout" value="horizontal">
+                        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcREzt4ZWyEnmX04Vevy8B8TZdIOU8OyrsBvrQ&s" alt="Horizontal Layout Icon" class="radio-icon">
+                        <span>Horizontal</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="roomLayout" value="vertical">
+                        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcREzt4ZWyEnmX04Vevy8B8TZdIOU8OyrsBvrQ&s" alt="Vertical Layout Icon" class="radio-icon">
+                        <span>Vertical</span>
+                    </label>
+                </div>
+            
+                <div class="button-container">
+                    <button type="button" class="go-chat-button">Go Chat...</button>
+                </div>
+            </div>
+        </div>
+        <div class="right-panel">
+            <h2>Join A Room ...</h2>
+            <div id="signInMessage" style="display: block;">
+                <p>Please sign in to see available chatrooms.</p>
+            </div>
+            <div class="roomList" style="display: none;">
+                <div class="rooms" id="dynamicRoomList">
+                    <!-- Rooms will be dynamically added here -->
+                </div>
+                <div id="noRoomsMessage" style="display: none;">
+                    <p>No rooms available at the moment. Why not create one?</p>
+                </div>
+                <div class="copyright-info">
+                    <span class="version">Talkomatic.co (Guest)</span>
+                    <span class="dot">•</span>
+                    <span class="copyright">Copyright © 2024 Talkomatic.co</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="js/lobby.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="js/lobby-client.js"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talkomatic Room</title>
+    <link rel="stylesheet" href="stylesheets/css/room.css">
+</head>
+<body>
+    <div class="page-container">
+        <nav class="top-navbar">
+            <div class="navbar-section navbar-left">
+                <div id="dateTime" class="date-time">
+                    <span class="date"></span>
+                    <span class="time"></span>
+                </div>
+            </div>
+            <div class="navbar-section navbar-center">
+                <div class="brand">Talkomatic™</div>
+            </div>
+            <div class="navbar-section navbar-right">
+                <div class="leave-room">Leave Room</div>
+            </div>
+        </nav>
+        <div class="second-navbar">
+            <div class="room-type">Public Room</div>
+            <div class="room-name">Cozy Chat Corner</div>
+            <div class="room-id">Room ID: 12345</div>
+        </div>
+        <div class="chat-container">
+            <!-- Chat rows will be dynamically added here -->
+        </div>
+        <div class="invite-section">
+            <div class="invite-text">Invite friends to your room with this link:</div>
+            <div class="invite-link">https://talkomatic.com/room/12345</div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="js/room-client.js"></script>
+</body>
+</html>
