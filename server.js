@@ -63,7 +63,7 @@ app.use(hpp()); // Protect against HTTP Parameter Pollution attacks
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: 1000 // limit each IP to 100 requests per windowMs
 });
 app.use(limiter);
 
@@ -218,15 +218,33 @@ io.on('connection', (socket) => {
   
   // Join room
   socket.on('join room', (roomId) => {
-    console.log(`User ${userId} attempting to join room: ${roomId}`);
+    console.log(`User ${socket.id} attempting to join room: ${roomId}`);
     const room = rooms.get(roomId);
     if (room) {
-      joinRoom(socket, room, userId);
+        // Check if the user has a username in the session
+        let username = socket.handshake.session.username;
+        let location = socket.handshake.session.location;
+
+        // If no username is found, use 'Anonymous'
+        if (!username) {
+            username = 'Anonymous';
+            location = 'On The Web';
+            socket.handshake.session.username = username;
+            socket.handshake.session.location = location;
+            socket.handshake.session.save();
+        }
+
+        socket.username = enforceUsernameLimit(username);
+        socket.location = enforceLocationLimit(location);
+        const userId = socket.handshake.session.userId;
+        users.set(userId, { id: userId, username: socket.username, location: socket.location });
+
+        joinRoom(socket, room, userId);
     } else {
-      console.log(`Room ${roomId} not found`);
-      socket.emit('room not found');
+        console.log(`Room ${roomId} not found`);
+        socket.emit('room not found');
     }
-  });
+});
 
   // Rejoin room (after page refresh)
   socket.on('rejoin room', (data) => {
@@ -315,37 +333,37 @@ async function joinRoom(socket, room, userId) {
   socket.join(room.id);
   room.users = room.users.filter(user => user.id !== userId);
   room.users.push({
-    id: userId,
-    username: socket.username,
-    location: socket.location,
+      id: userId,
+      username: socket.username,
+      location: socket.location,
   });
   socket.roomId = room.id;
   socket.handshake.session.currentRoom = room.id;
   await new Promise((resolve, reject) => {
-    socket.handshake.session.save((err) => {
-      if (err) {
-        console.error('Error saving session:', err);
-        reject(err);
-      } else {
-        resolve();
-      }
-    });
+      socket.handshake.session.save((err) => {
+          if (err) {
+              console.error('Error saving session:', err);
+              reject(err);
+          } else {
+              resolve();
+          }
+      });
   });
   io.to(room.id).emit('user joined', {
-    id: userId,
-    username: socket.username,
-    location: socket.location,
+      id: userId,
+      username: socket.username,
+      location: socket.location,
   });
   updateRoom(room.id);
   socket.emit('room joined', { 
-    roomId: room.id, 
-    userId: userId,
-    username: socket.username,
-    location: socket.location,
-    roomName: room.name,
-    roomType: room.type,
-    users: room.users,
-    layout: room.layout
+      roomId: room.id, 
+      userId: userId,
+      username: socket.username,
+      location: socket.location,
+      roomName: room.name,
+      roomType: room.type,
+      users: room.users,
+      layout: room.layout
   });
   socket.leave('lobby');
   console.log(`User ${userId} joined room: ${room.id}`);
@@ -353,9 +371,9 @@ async function joinRoom(socket, room, userId) {
 
   // Clear the room deletion timer if it exists
   if (roomDeletionTimers.has(room.id)) {
-    clearTimeout(roomDeletionTimers.get(room.id));
-    roomDeletionTimers.delete(room.id);
-    console.log(`Cleared deletion timer for room ${room.id}`);
+      clearTimeout(roomDeletionTimers.get(room.id));
+      roomDeletionTimers.delete(room.id);
+      console.log(`Cleared deletion timer for room ${room.id}`);
   }
 }
 

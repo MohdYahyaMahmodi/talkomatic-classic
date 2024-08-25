@@ -109,49 +109,52 @@
   
   /* Chat Container Styles
      ========================================================================== */
-     .chat-container {
-      flex-grow: 1;
-      display: flex;
-      gap: 5px;
-      padding: 0 5px;
-      background-color: #202020;
-      overflow: hidden;
-      box-sizing: border-box;
-    }
-    
-    .chat-row {
-      display: flex;
-      flex-direction: column;
-      border: 1px solid #ccc;
-      box-sizing: border-box;
-    }
-    
-    .chat-row.current-user {
-      border-color: orange;
-    }
-    
-    .user-info {
-      font-size: 14px;
-      padding: 8px;
-      color: #ffffff;
-      background-color: #616161;
-    }
-    
-    .chat-input {
-      flex-grow: 1;
-      padding: 5px;
-      border: none;
-      font-family: talkoText, Arial, sans-serif;
-      font-size: 18px;
-      resize: none;
-      box-sizing: border-box;
-      background-color: black;
-      color: #FF9800;
-    }
+  .chat-container {
+    flex-grow: 1;
+    display: flex;
+    gap: 5px;
+    padding: 0 5px;
+    background-color: #202020;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
   
-  /* Invite Section Styles
-     ========================================================================== */
-  .invite-section {
+  .chat-row {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #ccc;
+    box-sizing: border-box;
+  }
+  
+  .chat-row.current-user {
+    border-color: orange;
+  }
+  
+  .user-info {
+    font-size: 14px;
+    padding: 8px;
+    color: #ffffff;
+    background-color: #616161;
+  }
+  
+  .chat-input {
+    flex-grow: 1;
+    padding: 5px;
+    border: none;
+    font-family: talkoText, Arial, sans-serif;
+    font-size: 18px;
+    resize: none;
+    box-sizing: border-box;
+    background-color: black;
+    color: #FF9800;
+    outline: none; /* Remove the default focus outline */
+  }
+  
+/* Invite Section Styles
+   ========================================================================== */
+/* Invite Section Styles
+   ========================================================================== */
+   .invite-section {
     background-color: #1a1a1a;
     padding: 10px 20px;
     display: flex;
@@ -165,10 +168,46 @@
     margin-bottom: 5px;
   }
   
+  .invite-container {
+    display: inline-flex;
+    align-items: stretch;
+    background-color: #2a2a2a;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  
   .invite-link {
     color: cyan;
     font-size: 16px;
-    word-break: break-all;
+    padding: 5px 5px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  #copyInviteLink {
+    width: 30px;
+    min-width: 30px;
+    height: auto;
+    background-color: #000000;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: background-color 0.3s;
+    padding: 0;
+    margin: 0;
+  }
+  
+  #copyInviteLink img {
+    width: 20px;
+    height: 20px;
+  }
+  
+  #copyInviteLink:hover {
+    background-color: #000000a1;
   }
   
   /* Responsive Styles
@@ -191,9 +230,16 @@
     .user-info { font-size: 12px; }
     .chat-input { font-size: 12px; }
     
-    .invite-section { padding: 5px 10px; }
     .invite-text { font-size: 12px; }
     .invite-link { font-size: 14px; }
+    #copyInviteLink {
+      width: 28px;
+      height: 28px;
+    }
+    #copyInviteLink img {
+      width: 18px;
+      height: 18px;
+    }
   }
   
   /* Mobile devices */
@@ -211,4 +257,12 @@
     .invite-section { padding: 3px 5px; }
     .invite-text { font-size: 10px; }
     .invite-link { font-size: 12px; }
+    #copyInviteLink {
+      width: 24px;
+      height: 24px;
+    }
+    #copyInviteLink img {
+      width: 16px;
+      height: 16px;
+    }
   }

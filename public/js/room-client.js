@@ -6,11 +6,10 @@ let currentRoomId = '';
 let currentUserId = '';
 let currentRoomLayout = 'horizontal';
 let lastSentMessage = '';
-let typingTimeout;
 
 const joinSound = document.getElementById('joinSound');
 const leaveSound = document.getElementById('leaveSound');
-let soundEnabled = true; // You can add a UI toggle for this if you want
+let soundEnabled = true;
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -41,32 +40,88 @@ function getRoomInfo() {
     return null;
 }
 
+// New function to generate invite link
+function generateInviteLink() {
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('roomId', currentRoomId);
+    return currentUrl.href;
+}
+
+// New function to update invite link in UI
+function updateInviteLink() {
+    const inviteLinkElement = document.getElementById('inviteLink');
+    const inviteLink = generateInviteLink();
+    inviteLinkElement.textContent = inviteLink;
+    inviteLinkElement.href = inviteLink;
+    
+    // Ensure the copy button is visible
+    const copyButton = document.getElementById('copyInviteLink');
+    copyButton.style.display = 'inline-block';
+}
+
+function copyInviteLink() {
+    const inviteLink = generateInviteLink();
+    navigator.clipboard.writeText(inviteLink).then(() => {
+        alert('Invite link copied to clipboard!');
+    }).catch(err => {
+        console.error('Failed to copy invite link: ', err);
+    });
+}
+
 // Initialize room
 function initRoom() {
-    const roomData = getRoomInfo();
-    if (roomData) {
-        console.log(`Rejoining room: ${currentRoomId} as ${currentUsername} from ${currentLocation}`);
-        console.log(`Room layout: ${currentRoomLayout}`);
-        updateRoomInfo(roomData);
-        socket.emit('rejoin room', {
-            roomId: currentRoomId,
-            username: currentUsername,
-            location: currentLocation,
-            layout: currentRoomLayout
-        });
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomIdFromUrl = urlParams.get('roomId');
 
-        // Add a timeout to redirect if 'room joined' event is not received
-        setTimeout(() => {
-            if (!document.querySelector('.chat-row')) {
-                console.error('Failed to join room');
-                alert('Failed to join the room. Redirecting to lobby.');
-                window.location.href = '/index.html';
-            }
-        }, 5000); // 5 seconds timeout
+    if (roomIdFromUrl) {
+        // User is joining via invite link
+        currentRoomId = roomIdFromUrl;
+
+        // Check if the user is already signed in
+        const roomData = JSON.parse(sessionStorage.getItem('roomData'));
+        if (roomData) {
+            // If the user has room data stored, use that information
+            currentUsername = roomData.username || 'Anonymous';
+            currentLocation = roomData.location || 'On The Web';
+        } else {
+            // If no stored data, default to 'Anonymous' and 'On The Web'
+            currentUsername = 'Anonymous';
+            currentLocation = 'On The Web';
+        }
+
+        // Join the room
+        socket.emit('join room', roomIdFromUrl);
     } else {
-        console.error('No room data found');
-        window.location.href = '/index.html';
+        // Normal room initialization
+        const roomData = getRoomInfo();
+        if (roomData) {
+            console.log(`Rejoining room: ${currentRoomId} as ${currentUsername} from ${currentLocation}`);
+            console.log(`Room layout: ${currentRoomLayout}`);
+            updateRoomInfo(roomData);
+            socket.emit('rejoin room', {
+                roomId: currentRoomId,
+                username: currentUsername,
+                location: currentLocation,
+                layout: currentRoomLayout
+            });
+        } else {
+            console.error('No room data found');
+            window.location.href = '/index.html';
+            return;
+        }
     }
+
+    // Update invite link immediately
+    updateInviteLink();
+
+    // Add a timeout to redirect if 'room joined' event is not received
+    setTimeout(() => {
+        if (!document.querySelector('.chat-row')) {
+            console.error('Failed to join room');
+            alert('Failed to join the room. Redirecting to lobby.');
+            window.location.href = '/index.html';
+        }
+    }, 5000); // 5 seconds timeout
 }
 
 // Handle successful room join
@@ -82,6 +137,16 @@ socket.on('room joined', (data) => {
     if (data.users) {
         updateRoomUI(data);
     }
+    updateInviteLink(); // Update the invite link after joining the room
+
+    // Store room data in sessionStorage
+    sessionStorage.setItem('roomData', JSON.stringify({
+        roomId: currentRoomId,
+        username: currentUsername,
+        location: currentLocation,
+        userId: currentUserId,
+        layout: currentRoomLayout
+    }));
 });
 
 socket.on('room not found', () => {
@@ -117,12 +182,6 @@ socket.on('room update', (roomData) => {
 socket.on('chat update', (data) => {
     console.log(`Chat update from ${data.username}:`, data.diff);
     displayChatMessage(data);
-});
-
-// Handle user typing event
-socket.on('user typing', (data) => {
-    console.log(`${data.username} is typing: ${data.isTyping}`);
-    updateTypingIndicator(data);
 });
 
 // Function to update room information in the UI
@@ -199,6 +258,7 @@ function updateRoomUI(roomData) {
         console.warn('No users data available');
     }
     adjustLayout();
+    updateInviteLink(); // Ensure invite link is updated after UI changes
 }
 
 // Function to display a chat message
@@ -223,14 +283,6 @@ function displayChatMessage(data) {
         } else {
             chatInput.value = data.message.slice(0, MAX_MESSAGE_LENGTH);
         }
-    }
-}
-
-// Function to update typing indicator
-function updateTypingIndicator(data) {
-    const userInfo = document.querySelector(`.chat-row[data-user-id="${data.userId}"] .user-info`);
-    if (userInfo) {
-        userInfo.textContent = `${data.username} / ${data.location} ${data.isTyping ? '(typing...)' : ''}`;
     }
 }
 
@@ -316,13 +368,6 @@ document.querySelector('.chat-container').addEventListener('input', (e) => {
             socket.emit('chat update', { diff, index: diff.index });
             lastSentMessage = currentMessage;
         }
-
-        // Handle typing indicator
-        clearTimeout(typingTimeout);
-        socket.emit('typing', { isTyping: true });
-        typingTimeout = setTimeout(() => {
-            socket.emit('typing', { isTyping: false });
-        }, 1000);
     }
 });
 
@@ -371,8 +416,13 @@ setInterval(updateDateTime, 1000);
 window.addEventListener('load', () => {
     initRoom();
     updateDateTime();
-    adjustLayout(); // Call adjustLayout after initializing the room
+    adjustLayout();
+    updateInviteLink(); // Ensure invite link is updated when the page loads
+
+    // Add event listener for copy button
+    document.getElementById('copyInviteLink').addEventListener('click', copyInviteLink);
 });
+
 
 // Adjust layout on window resize
 window.addEventListener('resize', adjustLayout);
