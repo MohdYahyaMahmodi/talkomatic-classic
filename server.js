@@ -108,7 +108,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
 }));
 
 // Store rooms and users
-const rooms = new Map();
+let rooms = new Map();
 const users = new Map();
 const roomDeletionTimers = new Map();
 const typingTimeouts = new Map();
@@ -144,11 +144,12 @@ async function loadRooms() {
   try {
     const roomsData = await fs.readFile(path.join(__dirname, 'rooms.json'), 'utf8');
     const loadedRooms = JSON.parse(roomsData);
-    rooms.clear();
-    for (const [roomId, roomData] of loadedRooms) {
-      rooms.set(roomId, roomData);
-    }
+    rooms = new Map(loadedRooms);
     console.log('Rooms loaded from file');
+    
+    // Clear all rooms on server restart
+    rooms.clear();
+    console.log('All rooms cleared on server restart');
   } catch (error) {
     if (error.code !== 'ENOENT') {
       console.error('Error loading rooms:', error);
@@ -180,7 +181,7 @@ io.on('connection', (socket) => {
   socket.on('join lobby', (data) => {
     console.log(`User joining lobby: ${data.username}, ${data.location}`);
     const username = enforceUsernameLimit(data.username);
-    const location = enforceLocationLimit(data.location || 'Earth');
+    const location = enforceLocationLimit(data.location || 'On The Web');
     const userId = socket.handshake.sessionID;
 
     socket.handshake.session.username = username;
@@ -222,7 +223,7 @@ io.on('connection', (socket) => {
         if (!username || !location || !userId) {
             // Auto sign-in for users without a session
             userId = socket.handshake.sessionID;
-            username = "Anonymous";  // Simplified anonymous username
+            username = "Anonymous";
             location = 'On The Web';
             
             socket.handshake.session.username = username;
@@ -243,6 +244,7 @@ io.on('connection', (socket) => {
         socket.emit('room not found');
     }
   });
+
   socket.on('leave room', async () => {
     const userId = socket.handshake.session.userId;
     await leaveRoom(socket, userId);
@@ -253,7 +255,7 @@ io.on('connection', (socket) => {
     if (room) {
         const { username, location, userId } = socket.handshake.session;
         if (username && location && userId) {
-            joinRoom(socket, room, userId);
+            joinRoom(socket, roomId, userId);
         } else {
             socket.emit('signin required');
         }
@@ -261,7 +263,7 @@ io.on('connection', (socket) => {
         console.log(`Room ${roomId} not found`);
         socket.emit('room not found');
     }
-});
+  });
 
   socket.on('chat update', (data) => {
     if (socket.roomId) {
@@ -354,6 +356,7 @@ function joinRoom(socket, roomId, userId) {
       console.log(`User ${userId} joined room: ${roomId}`);
       updateLobby();
 
+      // Clear any existing deletion timer for this room
       if (roomDeletionTimers.has(roomId)) {
         clearTimeout(roomDeletionTimers.get(roomId));
         roomDeletionTimers.delete(roomId);
@@ -400,11 +403,18 @@ async function leaveRoom(socket, userId) {
 
 function startRoomDeletionTimer(roomId) {
   console.log(`Starting deletion timer for room ${roomId}`);
+  
+  // Clear any existing timer for this room
+  if (roomDeletionTimers.has(roomId)) {
+    clearTimeout(roomDeletionTimers.get(roomId));
+  }
+
   const timer = setTimeout(() => {
     console.log(`Deleting empty room ${roomId}`);
     rooms.delete(roomId);
     roomDeletionTimers.delete(roomId);
     updateLobby();
+    saveRooms();
   }, 15000); // 15 seconds
 
   roomDeletionTimers.set(roomId, timer);
