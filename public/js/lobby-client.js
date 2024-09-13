@@ -146,8 +146,8 @@ function createRoomElement(room) {
 function getRoomTypeDisplay(type) {
     switch (type) {
         case 'public': return 'Public';
-        case 'private': return 'Semi-Private';
-        case 'invisible': return 'Private';
+        case 'semi-private': return 'Semi-Private';
+        case 'private': return 'Private';
         default: return type;
     }
 }
@@ -157,15 +157,17 @@ function updateLobby(rooms) {
     console.log('Updating lobby with rooms:', rooms);
     dynamicRoomList.innerHTML = '';
 
-    if (rooms.length === 0) {
-        console.log('No rooms available');
+    const publicRooms = rooms.filter(room => room.type !== 'private');
+
+    if (publicRooms.length === 0) {
+        console.log('No public rooms available');
         noRoomsMessage.style.display = 'block';
         dynamicRoomList.style.display = 'none';
     } else {
-        console.log(`Displaying ${rooms.length} rooms`);
+        console.log(`Displaying ${publicRooms.length} public rooms`);
         noRoomsMessage.style.display = 'none';
         dynamicRoomList.style.display = 'block';
-        rooms.forEach((room) => {
+        publicRooms.forEach((room) => {
             const roomElement = createRoomElement(room);
             dynamicRoomList.appendChild(roomElement);
         });

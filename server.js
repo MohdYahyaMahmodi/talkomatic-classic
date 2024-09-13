@@ -208,6 +208,7 @@ io.on('connection', (socket) => {
       type: data.type,
       layout: data.layout,
       users: [], // Initialize users array
+      isPrivate: data.type === 'Private', // Add this line
     });
     console.log(`Room created: ${roomId}`);
     socket.emit('room created', roomId);
@@ -422,8 +423,8 @@ function startRoomDeletionTimer(roomId) {
 
 function updateLobby() {
   console.log('Updating lobby');
-  const roomList = Array.from(rooms.values());
-  io.to('lobby').emit('lobby update', roomList);
+  const publicRooms = Array.from(rooms.values()).filter(room => !room.isPrivate);
+  io.to('lobby').emit('lobby update', publicRooms);
 }
 
 function updateRoom(roomId) {
