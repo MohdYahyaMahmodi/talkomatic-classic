@@ -1,9 +1,11 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
+const fs = require('fs').promises;
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const session = require('express-session');
+const cookieParser = require('cookie-parser');
 const sharedsession = require("express-socket.io-session");
 const helmet = require('helmet');
 const cors = require('cors');
@@ -42,6 +44,8 @@ const corsOptions = {
 // Apply CORS middleware
 app.use(cors(corsOptions));
 
+app.use(cookieParser());
+
 app.use((req, res, next) => {
   res.locals.nonce = crypto.randomBytes(16).toString('base64');
   next();
@@ -56,14 +60,13 @@ app.use(helmet({
     },
   },
 }));
-app.use(cors()); // Enable CORS
-app.use(xss()); // Sanitize input
-app.use(hpp()); // Protect against HTTP Parameter Pollution attacks
+app.use(xss());
+app.use(hpp());
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000 // limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 1000
 });
 app.use(limiter);
 
@@ -71,11 +74,11 @@ app.use(limiter);
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || '723698977cc31aaf8e84d93feffadcf72d65bfe0e56d58ba2cbdb88d74809745',
   resave: false,
-  saveUninitialized: false,
+  saveUninitialized: true,
   cookie: { 
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    maxAge: 14 * 24 * 60 * 60 * 1000 // 14 days
   }
 });
 
@@ -95,10 +98,7 @@ io.use(sharedsession(sessionMiddleware, {
 }));
 
 // Serve static files
-app.use((req, res, next) => {
-  res.locals.nonce = crypto.randomBytes(16).toString('base64');
-  next();
-}, express.static(path.join(__dirname, 'public'), {
+app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, path) => {
     if (path.endsWith('.js')) {
       res.setHeader('Content-Type', 'application/javascript');
@@ -110,11 +110,7 @@ app.use((req, res, next) => {
 // Store rooms and users
 const rooms = new Map();
 const users = new Map();
-
-// Store room deletion timers
 const roomDeletionTimers = new Map();
-
-// Store typing timeouts
 const typingTimeouts = new Map();
 
 // Helper functions
@@ -134,247 +130,240 @@ function enforceRoomNameLimit(roomName) {
   return roomName.slice(0, MAX_ROOM_NAME_LENGTH);
 }
 
-const clearUserSession = (socket) => {
-  return new Promise((resolve, reject) => {
-    if (socket && socket.handshake && socket.handshake.session) {
-      socket.handshake.session.currentRoom = null;
-      socket.handshake.session.save((err) => {
-        if (err) {
-          console.error('Error saving session:', err);
-          reject(err);
-        } else {
-          resolve();
-        }
-      });
-    } else {
-      resolve(); // If there's no session, just resolve
+async function saveRooms() {
+  try {
+    const roomsData = JSON.stringify(Array.from(rooms.entries()));
+    await fs.writeFile(path.join(__dirname, 'rooms.json'), roomsData);
+    console.log('Rooms saved to file');
+  } catch (error) {
+    console.error('Error saving rooms:', error);
+  }
+}
+
+async function loadRooms() {
+  try {
+    const roomsData = await fs.readFile(path.join(__dirname, 'rooms.json'), 'utf8');
+    const loadedRooms = JSON.parse(roomsData);
+    rooms.clear();
+    for (const [roomId, roomData] of loadedRooms) {
+      rooms.set(roomId, roomData);
     }
-  });
-};
+    console.log('Rooms loaded from file');
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.error('Error loading rooms:', error);
+    }
+  }
+}
+
+// Call loadRooms() when the server starts
+loadRooms();
 
 // Socket.io event handlers
 io.on('connection', (socket) => {
-  console.log(`New user connected: ${socket.id}`);
+  console.log(`New connection, session ID: ${socket.handshake.sessionID}`);
 
-  // Generate a unique user ID if not already present in the session
-  if (!socket.handshake.session.userId) {
-    socket.handshake.session.userId = uuidv4();
-    socket.handshake.session.save();
-  }
-
-  const userId = socket.handshake.session.userId;
-
-  // Join lobby
-  socket.on('join lobby', (data) => {
-    console.log(`User ${userId} joining lobby with username: ${data.username}, location: ${data.location}`);
-    socket.username = enforceUsernameLimit(data.username);
-    socket.location = enforceLocationLimit(data.location || 'Earth');
-    users.set(userId, { id: userId, username: socket.username, location: socket.location });
-    
-    // Store user information in the session
-    socket.handshake.session.username = socket.username;
-    socket.handshake.session.location = socket.location;
-    socket.handshake.session.save((err) => {
-      if (err) {
-        console.error('Error saving session:', err);
-      } else {
-        socket.join('lobby');
-        console.log(`User ${userId} joined lobby`);
-        updateLobby();
-      }
-    });
-  });
-
-  // Check signin status
   socket.on('check signin status', () => {
-    const username = socket.handshake.session.username;
-    const location = socket.handshake.session.location;
-    const userId = socket.handshake.session.userId;
+    const { username, location, userId } = socket.handshake.session;
     if (username && location && userId) {
+      console.log(`User signed in: ${username}, ${location}, ${userId}`);
       socket.emit('signin status', { isSignedIn: true, username, location, userId });
       socket.join('lobby');
       users.set(userId, { id: userId, username, location });
       updateLobby();
     } else {
+      console.log('User not signed in');
       socket.emit('signin status', { isSignedIn: false });
     }
   });
 
-  // Create room
+  socket.on('join lobby', (data) => {
+    console.log(`User joining lobby: ${data.username}, ${data.location}`);
+    const username = enforceUsernameLimit(data.username);
+    const location = enforceLocationLimit(data.location || 'Earth');
+    const userId = socket.handshake.sessionID;
+
+    socket.handshake.session.username = username;
+    socket.handshake.session.location = location;
+    socket.handshake.session.userId = userId;
+    socket.handshake.session.save((err) => {
+      if (err) {
+        console.error('Error saving session:', err);
+      } else {
+        console.log('Session saved successfully:', socket.handshake.session);
+        users.set(userId, { id: userId, username, location });
+        socket.join('lobby');
+        updateLobby();
+        socket.emit('signin status', { isSignedIn: true, username, location, userId });
+      }
+    });
+  });
+
   socket.on('create room', (data) => {
-    console.log(`User ${userId} creating room: ${JSON.stringify(data)}`);
-    const roomId = generateRoomId();
+    const roomId = uuidv4();
     rooms.set(roomId, {
       id: roomId,
       name: enforceRoomNameLimit(data.name),
       type: data.type,
       layout: data.layout,
-      users: [],
+      users: [], // Initialize users array
     });
-    console.log(`Room created with ID: ${roomId}`);
+    console.log(`Room created: ${roomId}`);
     socket.emit('room created', roomId);
     updateLobby();
+    saveRooms();
   });
-  
-  // Join room
+
   socket.on('join room', (roomId) => {
-    console.log(`User ${socket.id} attempting to join room: ${roomId}`);
+    console.log('Received join room request for:', roomId);
     const room = rooms.get(roomId);
     if (room) {
-        // Check if the user has a username in the session
-        let username = socket.handshake.session.username;
-        let location = socket.handshake.session.location;
-
-        // If no username is found, use 'Anonymous'
-        if (!username) {
-            username = 'Anonymous';
+        let { username, location, userId } = socket.handshake.session;
+        if (!username || !location || !userId) {
+            // Auto sign-in for users without a session
+            userId = socket.handshake.sessionID;
+            username = "Anonymous";  // Simplified anonymous username
             location = 'On The Web';
+            
             socket.handshake.session.username = username;
             socket.handshake.session.location = location;
-            socket.handshake.session.save();
+            socket.handshake.session.userId = userId;
         }
+        
+        socket.handshake.session.save((err) => {
+            if (err) {
+                console.error('Error saving session:', err);
+                socket.emit('error', 'Failed to join room');
+            } else {
+                joinRoom(socket, roomId, userId);
+            }
+        });
+    } else {
+        console.log(`Room ${roomId} not found`);
+        socket.emit('room not found');
+    }
+  });
+  socket.on('leave room', async () => {
+    const userId = socket.handshake.session.userId;
+    await leaveRoom(socket, userId);
+  });
 
-        socket.username = enforceUsernameLimit(username);
-        socket.location = enforceLocationLimit(location);
-        const userId = socket.handshake.session.userId;
-        users.set(userId, { id: userId, username: socket.username, location: socket.location });
-
-        joinRoom(socket, room, userId);
+  socket.on('rejoin room', (roomId) => {
+    const room = rooms.get(roomId);
+    if (room) {
+        const { username, location, userId } = socket.handshake.session;
+        if (username && location && userId) {
+            joinRoom(socket, room, userId);
+        } else {
+            socket.emit('signin required');
+        }
     } else {
         console.log(`Room ${roomId} not found`);
         socket.emit('room not found');
     }
 });
 
-  // Rejoin room (after page refresh)
-  socket.on('rejoin room', (data) => {
-    console.log(`User ${userId} attempting to rejoin room: ${data.roomId}`);
-    const room = rooms.get(data.roomId);
-    if (room) {
-      socket.username = data.username;
-      socket.location = data.location;
-      users.set(userId, { id: userId, username: socket.username, location: socket.location });
-      joinRoom(socket, room, userId);
-    } else {
-      console.log(`Room ${data.roomId} not found for rejoin`);
-      socket.emit('room not found');
-    }
-  });
-
-  // Leave room
-  socket.on('leave room', async () => {
-    console.log(`User ${userId} leaving room`);
-    await leaveRoom(socket, userId);
-  });
-
-  // Handle chat update
   socket.on('chat update', (data) => {
     if (socket.roomId) {
-      console.log(`Chat update in room ${socket.roomId} from user ${userId}:`, data);
+      const userId = socket.handshake.session.userId;
+      const username = socket.handshake.session.username;
       if (data.diff && data.diff.text) {
         data.diff.text = enforceCharacterLimit(data.diff.text);
       }
       socket.to(socket.roomId).emit('chat update', {
-        userId: userId,
-        username: socket.username,
+        userId,
+        username,
         diff: data.diff
       });
     }
   });
 
-  // Handle typing
   socket.on('typing', (data) => {
     if (socket.roomId) {
-      if (typingTimeouts.has(userId)) {
-        clearTimeout(typingTimeouts.get(userId));
-      }
-
-      if (data.isTyping) {
-        socket.to(socket.roomId).emit('user typing', {
-          userId: userId,
-          username: socket.username,
-          isTyping: true
-        });
-
-        typingTimeouts.set(userId, setTimeout(() => {
-          socket.to(socket.roomId).emit('user typing', {
-            userId: userId,
-            username: socket.username,
-            isTyping: false
-          });
-          typingTimeouts.delete(userId);
-        }, 2000)); // Stop "typing" after 2 seconds of inactivity
-      } else {
-        socket.to(socket.roomId).emit('user typing', {
-          userId: userId,
-          username: socket.username,
-          isTyping: false
-        });
-        typingTimeouts.delete(userId);
-      }
+      const userId = socket.handshake.session.userId;
+      const username = socket.handshake.session.username;
+      handleTyping(socket, userId, username, data.isTyping);
     }
   });
 
-  // Get rooms
   socket.on('get rooms', () => {
-    console.log(`User ${userId} requesting room list`);
+    console.log('User requesting room list');
     socket.emit('initial rooms', Array.from(rooms.values()));
   });
 
-  // Disconnect
   socket.on('disconnect', async () => {
+    const userId = socket.handshake.session.userId;
     console.log(`User disconnected: ${userId}`);
     await leaveRoom(socket, userId);
     users.delete(userId);
   });
 });
 
-async function joinRoom(socket, room, userId) {
-  socket.join(room.id);
-  room.users = room.users.filter(user => user.id !== userId);
-  room.users.push({
-      id: userId,
-      username: socket.username,
-      location: socket.location,
-  });
-  socket.roomId = room.id;
-  socket.handshake.session.currentRoom = room.id;
-  await new Promise((resolve, reject) => {
-      socket.handshake.session.save((err) => {
-          if (err) {
-              console.error('Error saving session:', err);
-              reject(err);
-          } else {
-              resolve();
-          }
-      });
-  });
-  io.to(room.id).emit('user joined', {
-      id: userId,
-      username: socket.username,
-      location: socket.location,
-  });
-  updateRoom(room.id);
-  socket.emit('room joined', { 
-      roomId: room.id, 
-      userId: userId,
-      username: socket.username,
-      location: socket.location,
-      roomName: room.name,
-      roomType: room.type,
-      users: room.users,
-      layout: room.layout
-  });
-  socket.leave('lobby');
-  console.log(`User ${userId} joined room: ${room.id}`);
-  updateLobby();
-
-  // Clear the room deletion timer if it exists
-  if (roomDeletionTimers.has(room.id)) {
-      clearTimeout(roomDeletionTimers.get(room.id));
-      roomDeletionTimers.delete(room.id);
-      console.log(`Cleared deletion timer for room ${room.id}`);
+function joinRoom(socket, roomId, userId) {
+  console.log('Joining room:', roomId);
+  if (!roomId || typeof roomId !== 'string') {
+    console.error('Invalid room ID:', roomId);
+    socket.emit('room not found');
+    return;
   }
+
+  let room = rooms.get(roomId);
+  if (!room) {
+    console.log(`Room ${roomId} not found when trying to join`);
+    socket.emit('room not found');
+    return;
+  }
+
+  // Initialize users array if it doesn't exist
+  if (!room.users) {
+    room.users = [];
+  }
+
+  // Remove the user from the room if they're already in it
+  room.users = room.users.filter(user => user.id !== userId);
+
+  socket.join(roomId);
+  room.users.push({
+    id: userId,
+    username: socket.handshake.session.username,
+    location: socket.handshake.session.location,
+  });
+  socket.roomId = roomId;
+  socket.handshake.session.currentRoom = roomId;
+  socket.handshake.session.save((err) => {
+    if (err) {
+      console.error('Error saving session:', err);
+    } else {
+      io.to(roomId).emit('user joined', {
+        id: userId,
+        username: socket.handshake.session.username,
+        location: socket.handshake.session.location,
+      });
+      updateRoom(roomId);
+      socket.emit('room joined', { 
+        roomId: roomId, 
+        userId,
+        username: socket.handshake.session.username,
+        location: socket.handshake.session.location,
+        roomName: room.name,
+        roomType: room.type,
+        users: room.users,
+        layout: room.layout
+      });
+      socket.leave('lobby');
+      console.log(`User ${userId} joined room: ${roomId}`);
+      updateLobby();
+
+      if (roomDeletionTimers.has(roomId)) {
+        clearTimeout(roomDeletionTimers.get(roomId));
+        roomDeletionTimers.delete(roomId);
+        console.log(`Cleared deletion timer for room ${roomId}`);
+      }
+    }
+  });
+
+  // Save rooms after joining
+  saveRooms();
 }
 
 async function leaveRoom(socket, userId) {
@@ -387,29 +376,26 @@ async function leaveRoom(socket, userId) {
       io.to(socket.roomId).emit('user left', userId);
       updateRoom(socket.roomId);
 
-      // Start the room deletion timer if the room is empty
       if (room.users.length === 0) {
         startRoomDeletionTimer(socket.roomId);
       }
     }
     socket.roomId = null;
-    // Instead of clearing the entire session, just remove the currentRoom
-    if (socket.handshake.session) {
-      socket.handshake.session.currentRoom = null;
-      await new Promise((resolve, reject) => {
-        socket.handshake.session.save((err) => {
-          if (err) {
-            console.error('Error saving session:', err);
-            reject(err);
-          } else {
-            resolve();
-          }
-        });
+    socket.handshake.session.currentRoom = null;
+    await new Promise((resolve, reject) => {
+      socket.handshake.session.save((err) => {
+        if (err) {
+          console.error('Error saving session:', err);
+          reject(err);
+        } else {
+          resolve();
+        }
       });
-    }
+    });
     socket.join('lobby');
   }
   updateLobby();
+  await saveRooms();
 }
 
 function startRoomDeletionTimer(roomId) {
@@ -427,20 +413,45 @@ function startRoomDeletionTimer(roomId) {
 function updateLobby() {
   console.log('Updating lobby');
   const roomList = Array.from(rooms.values());
-  console.log(`Current rooms: ${JSON.stringify(roomList)}`);
   io.to('lobby').emit('lobby update', roomList);
 }
 
 function updateRoom(roomId) {
   const room = rooms.get(roomId);
   if (room) {
-    console.log(`Updating room ${roomId}: ${JSON.stringify(room)}`);
+    console.log(`Updating room ${roomId}`);
     io.to(roomId).emit('room update', room);
   }
 }
 
-function generateRoomId() {
-  return Math.random().toString(36).substr(2, 6).toUpperCase();
+function handleTyping(socket, userId, username, isTyping) {
+  if (typingTimeouts.has(userId)) {
+    clearTimeout(typingTimeouts.get(userId));
+  }
+
+  if (isTyping) {
+    socket.to(socket.roomId).emit('user typing', {
+      userId,
+      username,
+      isTyping: true
+    });
+
+    typingTimeouts.set(userId, setTimeout(() => {
+      socket.to(socket.roomId).emit('user typing', {
+        userId,
+        username,
+        isTyping: false
+      });
+      typingTimeouts.delete(userId);
+    }, 2000));
+  } else {
+    socket.to(socket.roomId).emit('user typing', {
+      userId,
+      username,
+      isTyping: false
+    });
+    typingTimeouts.delete(userId);
+  }
 }
 
 const PORT = process.env.PORT || 3000;

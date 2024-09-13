@@ -34,19 +34,18 @@ logForm.addEventListener('submit', (e) => {
     const newLocation = locationInput.value.trim().slice(0, MAX_LOCATION_LENGTH) || 'On The Web';
     if (newUsername) {
         if (currentUsername) {
-            // Changing existing username/location
             signInButton.textContent = 'Changed';
             setTimeout(() => {
                 signInButton.innerHTML = 'Change <img src="images/icons/pencil.png" alt="Arrow" class="arrow-icon">';
             }, 2000);
         } else {
-            // First time sign in
             signInButton.innerHTML = 'Change <img src="images/icons/pencil.png" alt="Arrow" class="arrow-icon">';
             createRoomForm.classList.remove('hidden');
         }
         currentUsername = newUsername;
         currentLocation = newLocation;
         isSignedIn = true;
+
         console.log(`Joining lobby as ${currentUsername} from ${currentLocation}`);
         socket.emit('join lobby', { username: currentUsername, location: currentLocation });
         showRoomList();
@@ -73,7 +72,7 @@ dynamicRoomList.addEventListener('click', (e) => {
     if (e.target.classList.contains('enter-button')) {
         const roomId = e.target.closest('.room').dataset.roomId;
         console.log(`Joining room: ${roomId}`);
-        socket.emit('join room', roomId);
+        window.location.href = `/room.html?roomId=${roomId}`;
     }
 });
 
@@ -91,7 +90,7 @@ socket.on('signin status', (data) => {
         createRoomForm.classList.remove('hidden');
         showRoomList();
     } else {
-        // If not signed in, show the sign-in form
+        console.log('User not signed in');
         signInMessage.style.display = 'block';
         roomListContainer.style.display = 'none';
     }
@@ -106,23 +105,13 @@ socket.on('lobby update', (rooms) => {
 // Handle successful room join
 socket.on('room joined', (data) => {
     console.log(`Successfully joined room:`, data);
-    // Store room data in sessionStorage
-    sessionStorage.setItem('roomData', JSON.stringify({
-        roomId: data.roomId,
-        userId: data.userId,
-        username: currentUsername,
-        location: currentLocation,
-        roomName: data.roomName,
-        roomType: data.roomType,
-        layout: data.layout  // Add this line
-    }));
     window.location.href = '/room.html';
 });
 
 // Handle successful room creation
 socket.on('room created', (roomId) => {
     console.log(`Room created with ID: ${roomId}`);
-    socket.emit('join room', roomId);
+    window.location.href = `/room.html?roomId=${roomId}`;
 });
 
 // Handle errors
@@ -193,31 +182,15 @@ function showRoomList() {
 // Initialize the lobby
 function initLobby() {
     console.log('Initializing lobby');
-    // Set default selections for room creation
     document.querySelector('input[name="roomType"][value="public"]').checked = true;
     document.querySelector('input[name="roomLayout"][value="horizontal"]').checked = true;
     
-    // Check if user is already signed in
-    checkSignInStatus();
-}
-
-function autoSignIn(username, location) {
-    currentUsername = username;
-    currentLocation = location;
-    isSignedIn = true;
-    console.log(`Auto signing in as ${currentUsername} from ${currentLocation}`);
-    socket.emit('join lobby', { username: currentUsername, location: currentLocation });
-    showRoomList();
+    console.log('Checking signin status with server');
+    socket.emit('check signin status');
 }
 
 window.addEventListener('load', () => {
-    const roomData = sessionStorage.getItem('roomData');
-    if (roomData) {
-        const { username, location } = JSON.parse(roomData);
-        autoSignIn(username, location);
-    } else {
         initLobby();
-    }
 });
 
 // Get initial room list

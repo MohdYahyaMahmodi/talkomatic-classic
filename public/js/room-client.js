@@ -28,16 +28,21 @@ function playLeaveSound() {
 
 // Get room information from sessionStorage
 function getRoomInfo() {
-    const roomData = JSON.parse(sessionStorage.getItem('roomData'));
-    if (roomData) {
-        currentRoomId = roomData.roomId;
-        currentUsername = roomData.username;
-        currentLocation = roomData.location;
-        currentUserId = roomData.userId;
-        currentRoomLayout = roomData.layout || 'horizontal';
-        return roomData;
-    }
-    return null;
+    return new Promise((resolve) => {
+        socket.emit('get room info');
+        socket.once('room info', (roomData) => {
+            if (roomData) {
+                currentRoomId = roomData.roomId;
+                currentUsername = roomData.username;
+                currentLocation = roomData.location;
+                currentUserId = roomData.userId;
+                currentRoomLayout = roomData.layout || 'horizontal';
+                resolve(roomData);
+            } else {
+                resolve(null);
+            }
+        });
+    });
 }
 
 // New function to generate invite link
@@ -69,64 +74,26 @@ function copyInviteLink() {
 }
 
 // Initialize room
-function initRoom() {
+async function initRoom() {
     const urlParams = new URLSearchParams(window.location.search);
     const roomIdFromUrl = urlParams.get('roomId');
 
     if (roomIdFromUrl) {
-        // User is joining via invite link
+        console.log('Joining room from URL:', roomIdFromUrl);
         currentRoomId = roomIdFromUrl;
-
-        // Check if the user is already signed in
-        const roomData = JSON.parse(sessionStorage.getItem('roomData'));
-        if (roomData) {
-            // If the user has room data stored, use that information
-            currentUsername = roomData.username || 'Anonymous';
-            currentLocation = roomData.location || 'On The Web';
-        } else {
-            // If no stored data, default to 'Anonymous' and 'On The Web'
-            currentUsername = 'Anonymous';
-            currentLocation = 'On The Web';
-        }
-
-        // Join the room
         socket.emit('join room', roomIdFromUrl);
     } else {
-        // Normal room initialization
-        const roomData = getRoomInfo();
-        if (roomData) {
-            console.log(`Rejoining room: ${currentRoomId} as ${currentUsername} from ${currentLocation}`);
-            console.log(`Room layout: ${currentRoomLayout}`);
-            updateRoomInfo(roomData);
-            socket.emit('rejoin room', {
-                roomId: currentRoomId,
-                username: currentUsername,
-                location: currentLocation,
-                layout: currentRoomLayout
-            });
-        } else {
-            console.error('No room data found');
-            window.location.href = '/index.html';
-            return;
-        }
+        console.error('No room ID provided in URL');
+        alert('No room ID provided. Redirecting to lobby.');
+        window.location.href = '/index.html';
+        return;
     }
 
-    // Update invite link immediately
     updateInviteLink();
-
-    // Add a timeout to redirect if 'room joined' event is not received
-    setTimeout(() => {
-        if (!document.querySelector('.chat-row')) {
-            console.error('Failed to join room');
-            alert('Failed to join the room. Redirecting to lobby.');
-            window.location.href = '/index.html';
-        }
-    }, 5000); // 5 seconds timeout
 }
 
-// Handle successful room join
-socket.on('room joined', (data) => {
-    console.log(`Successfully joined room:`, data);
+socket.on('rejoin room', (data) => {
+    console.log(`Successfully rejoined room:`, data);
     currentUserId = data.userId;
     currentRoomId = data.roomId;
     currentUsername = data.username;
@@ -137,23 +104,37 @@ socket.on('room joined', (data) => {
     if (data.users) {
         updateRoomUI(data);
     }
-    updateInviteLink(); // Update the invite link after joining the room
+    updateInviteLink();
 
-    // Store room data in sessionStorage
-    sessionStorage.setItem('roomData', JSON.stringify({
-        roomId: currentRoomId,
-        username: currentUsername,
-        location: currentLocation,
-        userId: currentUserId,
-        layout: currentRoomLayout
-    }));
+    // Add this line to create chat rows for all users
+    data.users.forEach(user => addUserToRoom(user));
+});
+
+
+// Handle successful room join
+socket.on('room joined', (data) => {
+    console.log('Successfully joined room:', data);
+    currentUserId = data.userId;
+    currentRoomId = data.roomId;
+    currentUsername = data.username;
+    currentLocation = data.location;
+    currentRoomLayout = data.layout || currentRoomLayout;
+    console.log(`Room layout: ${currentRoomLayout}`);
+    updateRoomInfo(data);
+    if (data.users) {
+        updateRoomUI(data);
+    }
+    updateInviteLink();
+
+    // Add this line to create chat rows for all users
+    data.users.forEach(user => addUserToRoom(user));
 });
 
 socket.on('room not found', () => {
     console.error('Room not found');
-    alert('The room you are trying to join does not exist.');
+    alert('The room you are trying to join does not exist or has been deleted due to inactivity. You will be redirected to the lobby.');
     window.location.href = '/index.html';
-});
+  });
 
 // Handle user joined event
 socket.on('user joined', (user) => {
@@ -373,15 +354,7 @@ document.querySelector('.chat-container').addEventListener('input', (e) => {
 
 // Event listener for leaving the room
 document.querySelector('.leave-room').addEventListener('click', () => {
-    const roomData = JSON.parse(sessionStorage.getItem('roomData'));
     socket.emit('leave room');
-    // Don't remove roomData from sessionStorage
-    // Instead, update it to remove room-specific information
-    sessionStorage.setItem('roomData', JSON.stringify({
-        username: roomData.username,
-        location: roomData.location,
-        userId: roomData.userId
-    }));
     window.location.href = '/index.html';
 });
 
@@ -426,3 +399,4 @@ window.addEventListener('load', () => {
 
 // Adjust layout on window resize
 window.addEventListener('resize', adjustLayout);
+window.addEventListener('load', initRoom);
