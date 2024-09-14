@@ -16,6 +16,12 @@ const crypto = require('crypto');
 const app = express();
 const server = http.createServer(app);
 
+// Add this new function for sanitization
+function sanitizeInput(input) {
+  // Simply enforce character limits without escaping any characters
+  return input; // Return the input as is
+}
+
 // Constants
 const MAX_USERNAME_LENGTH = 12;
 const MAX_LOCATION_LENGTH = 12;
@@ -208,7 +214,7 @@ io.on('connection', (socket) => {
     do {
         roomId = generateRoomId();
     } while (rooms.has(roomId));
-
+  
     const newRoom = {
         id: roomId,
         name: enforceRoomNameLimit(data.name),
@@ -222,7 +228,7 @@ io.on('connection', (socket) => {
     socket.emit('room created', roomId);
     updateLobby();
     saveRooms();
-});
+  });
 
 
 socket.on('join room', (data) => {

@@ -162,26 +162,58 @@ socket.on('error', (error) => {
     console.error('Received error:', error);
     alert(`An error occurred: ${error}`);
 });
-
-function createRoomElement(room) {
+  
+  // Update the createRoomElement function
+  function createRoomElement(room) {
     const roomElement = document.createElement('div');
     roomElement.classList.add('room');
     roomElement.dataset.roomId = room.id;
     roomElement.dataset.roomType = room.type;
-    roomElement.innerHTML = `
-        <button class="enter-button">Enter</button>
-        <div class="room-top">
-            <div class="room-info">
-                <div class="room-name">${room.name} (${room.users.length} People)</div>
-                <div class="room-details">${getRoomTypeDisplay(room.type)} Room</div>
-                <div class="users-detail">
-                    ${room.users.map((user, index) => `
-                        <div><span class="user-number">${index + 1}.</span><span class="user-name">${user.username}</span> / ${user.location}</div>
-                    `).join('')}
-                </div>
-            </div>
-        </div>
-    `;
+
+    const enterButton = document.createElement('button');
+    enterButton.classList.add('enter-button');
+    enterButton.textContent = 'Enter';
+
+    const roomTop = document.createElement('div');
+    roomTop.classList.add('room-top');
+
+    const roomInfo = document.createElement('div');
+    roomInfo.classList.add('room-info');
+
+    const roomNameDiv = document.createElement('div');
+    roomNameDiv.classList.add('room-name');
+    roomNameDiv.textContent = `${room.name} (${room.users.length} People)`;
+
+    const roomDetailsDiv = document.createElement('div');
+    roomDetailsDiv.classList.add('room-details');
+    roomDetailsDiv.textContent = `${getRoomTypeDisplay(room.type)} Room`;
+
+    const usersDetailDiv = document.createElement('div');
+    usersDetailDiv.classList.add('users-detail');
+
+    room.users.forEach((user, index) => {
+        const userDiv = document.createElement('div');
+        const userNumberSpan = document.createElement('span');
+        userNumberSpan.classList.add('user-number');
+        userNumberSpan.textContent = `${index + 1}.`;
+
+        const userNameSpan = document.createElement('span');
+        userNameSpan.classList.add('user-name');
+        userNameSpan.textContent = user.username;
+
+        userDiv.appendChild(userNumberSpan);
+        userDiv.appendChild(userNameSpan);
+        userDiv.append(` / ${user.location}`);
+        usersDetailDiv.appendChild(userDiv);
+    });
+
+    roomInfo.appendChild(roomNameDiv);
+    roomInfo.appendChild(roomDetailsDiv);
+    roomInfo.appendChild(usersDetailDiv);
+    roomTop.appendChild(roomInfo);
+    roomElement.appendChild(enterButton);
+    roomElement.appendChild(roomTop);
+
     return roomElement;
 }
 

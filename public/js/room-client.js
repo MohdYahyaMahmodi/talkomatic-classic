@@ -181,14 +181,23 @@ socket.on('chat update', (data) => {
     displayChatMessage(data);
 });
 
-// Function to update room information in the UI
-function updateRoomInfo(data) {
-    document.querySelector('.room-name').textContent = `Room: ${currentRoomName || data.roomName || data.roomId}`; // Use stored room name
-    document.querySelector('.room-type').textContent = `${data.roomType || 'Public'} Room`;
-    document.querySelector('.room-id').textContent = `Room ID: ${data.roomId || currentRoomId}`;
+  // Update the updateRoomInfo function
+  function updateRoomInfo(data) {
+    const roomNameElement = document.querySelector('.room-name');
+    const roomTypeElement = document.querySelector('.room-type');
+    const roomIdElement = document.querySelector('.room-id');
+
+    if (roomNameElement) {
+        roomNameElement.textContent = `Room: ${currentRoomName || data.roomName || data.roomId}`;
+    }
+    if (roomTypeElement) {
+        roomTypeElement.textContent = `${data.roomType || 'Public'} Room`;
+    }
+    if (roomIdElement) {
+        roomIdElement.textContent = `Room ID: ${data.roomId || currentRoomId}`;
+    }
 }
 
-// Modify the addUserToRoom function
 function addUserToRoom(user) {
     const chatContainer = document.querySelector('.chat-container');
     if (!chatContainer) {
@@ -202,10 +211,19 @@ function addUserToRoom(user) {
         chatRow.classList.add('current-user');
     }
     chatRow.dataset.userId = user.id;
-    chatRow.innerHTML = `
-        <span class="user-info">${user.username} / ${user.location}</span>
-        <textarea class="chat-input" ${user.id !== currentUserId ? 'readonly' : ''}></textarea>
-    `;
+
+    const userInfoSpan = document.createElement('span');
+    userInfoSpan.classList.add('user-info');
+    userInfoSpan.textContent = `${user.username} / ${user.location}`; // Safe insertion
+
+    const chatInput = document.createElement('textarea');
+    chatInput.classList.add('chat-input');
+    if (user.id !== currentUserId) {
+        chatInput.readOnly = true;
+    }
+
+    chatRow.appendChild(userInfoSpan);
+    chatRow.appendChild(chatInput);
     chatContainer.appendChild(chatRow);
 }
 
