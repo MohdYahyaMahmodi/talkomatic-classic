@@ -276,7 +276,7 @@ function showRoomList() {
 }
 
 function initLobby() {
-    console.log('Initializing lobby');s
+    console.log('Initializing lobby');
     document.querySelector('input[name="roomType"][value="public"]').checked = true;
     document.querySelector('input[name="roomLayout"][value="horizontal"]').checked = true;
     

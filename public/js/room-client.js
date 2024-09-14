@@ -6,7 +6,7 @@ let currentRoomId = '';
 let currentUserId = '';
 let currentRoomLayout = 'horizontal';
 let lastSentMessage = '';
-let currentRoomName = ''; // Add this line to store the room name
+let currentRoomName = '';
 
 const joinSound = document.getElementById('joinSound');
 const leaveSound = document.getElementById('leaveSound');
@@ -20,59 +20,10 @@ function playJoinSound() {
     }
 }
 
-// Function to play leave sound
 function playLeaveSound() {
     if (soundEnabled) {
         leaveSound.play().catch(error => console.error('Error playing leave sound:', error));
     }
-}
-
-// Get room information from sessionStorage
-function getRoomInfo() {
-    return new Promise((resolve) => {
-        socket.emit('get room info');
-        socket.once('room info', (roomData) => {
-            if (roomData) {
-                currentRoomId = roomData.roomId;
-                currentUsername = roomData.username;
-                currentLocation = roomData.location;
-                currentUserId = roomData.userId;
-                currentRoomLayout = roomData.layout || 'horizontal';
-                currentRoomName = roomData.roomName; // Store the room name
-                resolve(roomData);
-            } else {
-                resolve(null);
-            }
-        });
-    });
-}
-
-// New function to generate invite link
-function generateInviteLink() {
-    const currentUrl = new URL(window.location.href);
-    currentUrl.searchParams.set('roomId', currentRoomId);
-    return currentUrl.href;
-}
-
-// New function to update invite link in UI
-function updateInviteLink() {
-    const inviteLinkElement = document.getElementById('inviteLink');
-    const inviteLink = generateInviteLink();
-    inviteLinkElement.textContent = inviteLink;
-    inviteLinkElement.href = inviteLink;
-    
-    // Ensure the copy button is visible
-    const copyButton = document.getElementById('copyInviteLink');
-    copyButton.style.display = 'inline-block';
-}
-
-function copyInviteLink() {
-    const inviteLink = generateInviteLink();
-    navigator.clipboard.writeText(inviteLink).then(() => {
-        alert('Invite link copied to clipboard!');
-    }).catch(err => {
-        console.error('Failed to copy invite link: ', err);
-    });
 }
 
 // Initialize room
@@ -111,26 +62,6 @@ socket.on('access code required', () => {
     }
 });
 
-socket.on('rejoin room', (data) => {
-    console.log(`Successfully rejoined room:`, data);
-    currentUserId = data.userId;
-    currentRoomId = data.roomId;
-    currentUsername = data.username;
-    currentLocation = data.location;
-    currentRoomLayout = data.layout || currentRoomLayout;
-    console.log(`Room layout: ${currentRoomLayout}`);
-    updateRoomInfo(data);
-    if (data.users) {
-        updateRoomUI(data);
-    }
-    updateInviteLink();
-
-    // Add this line to create chat rows for all users
-    data.users.forEach(user => addUserToRoom(user));
-});
-
-
-// Handle successful room join
 socket.on('room joined', (data) => {
     console.log(`Successfully joined room:`, data);
     currentUserId = data.userId;
@@ -138,7 +69,7 @@ socket.on('room joined', (data) => {
     currentUsername = data.username;
     currentLocation = data.location;
     currentRoomLayout = data.layout || currentRoomLayout;
-    currentRoomName = data.roomName; // Store the room name when joining
+    currentRoomName = data.roomName;
     console.log(`Room layout: ${currentRoomLayout}`);
     updateRoomInfo(data);
     updateRoomUI(data);
@@ -149,9 +80,8 @@ socket.on('room not found', () => {
     console.error('Room not found');
     alert('The room you are trying to join does not exist or has been deleted due to inactivity. You will be redirected to the lobby.');
     window.location.href = '/index.html';
-  });
+});
 
-// Handle user joined event
 socket.on('user joined', (data) => {
     console.log(`User joined:`, data);
     addUserToRoom(data);
@@ -159,14 +89,12 @@ socket.on('user joined', (data) => {
     playJoinSound();
 });
 
-// Handle user left event
 socket.on('user left', (userId) => {
     console.log(`User left: ${userId}`);
     removeUserFromRoom(userId);
     playLeaveSound();
 });
 
-// Handle room update event
 socket.on('room update', (roomData) => {
     console.log('Room update received:', roomData);
     currentRoomLayout = roomData.layout || currentRoomLayout;
@@ -175,14 +103,12 @@ socket.on('room update', (roomData) => {
     updateRoomUI(roomData);
 });
 
-// Handle chat update event
 socket.on('chat update', (data) => {
     console.log(`Chat update from ${data.username}:`, data.diff);
     displayChatMessage(data);
 });
 
-  // Update the updateRoomInfo function
-  function updateRoomInfo(data) {
+function updateRoomInfo(data) {
     const roomNameElement = document.querySelector('.room-name');
     const roomTypeElement = document.querySelector('.room-type');
     const roomIdElement = document.querySelector('.room-id');
@@ -214,7 +140,7 @@ function addUserToRoom(user) {
 
     const userInfoSpan = document.createElement('span');
     userInfoSpan.classList.add('user-info');
-    userInfoSpan.textContent = `${user.username} / ${user.location}`; // Safe insertion
+    userInfoSpan.textContent = `${user.username} / ${user.location}`;
 
     const chatInput = document.createElement('textarea');
     chatInput.classList.add('chat-input');
@@ -227,7 +153,6 @@ function addUserToRoom(user) {
     chatContainer.appendChild(chatRow);
 }
 
-// Function to remove a user from the room UI
 function removeUserFromRoom(userId) {
     const chatRow = document.querySelector(`.chat-row[data-user-id="${userId}"]`);
     if (chatRow) {
@@ -236,7 +161,6 @@ function removeUserFromRoom(userId) {
     }
 }
 
-// Function to update the entire room UI
 function updateRoomUI(roomData) {
     const chatContainer = document.querySelector('.chat-container');
     if (!chatContainer) {
@@ -244,20 +168,39 @@ function updateRoomUI(roomData) {
         return;
     }
 
-    chatContainer.innerHTML = ''; // Clear existing content
+    // Store current input values
+    const currentInputs = new Map();
+    document.querySelectorAll('.chat-row').forEach(row => {
+        const userId = row.dataset.userId;
+        const input = row.querySelector('.chat-input');
+        if (input) {
+            currentInputs.set(userId, input.value);
+        }
+    });
+
+    // Clear existing content safely
+    while (chatContainer.firstChild) {
+        chatContainer.removeChild(chatContainer.firstChild);
+    }
 
     if (roomData.users && Array.isArray(roomData.users)) {
         roomData.users.forEach(user => {
             addUserToRoom(user);
+            // Restore input value if it existed
+            if (currentInputs.has(user.id)) {
+                const newInput = document.querySelector(`.chat-row[data-user-id="${user.id}"] .chat-input`);
+                if (newInput) {
+                    newInput.value = currentInputs.get(user.id);
+                }
+            }
         });
     } else {
         console.warn('No users data available');
     }
     adjustLayout();
-    updateInviteLink(); // Ensure invite link is updated after UI changes
+    updateInviteLink();
 }
 
-// Function to display a chat message
 function displayChatMessage(data) {
     const chatInput = document.querySelector(`.chat-row[data-user-id="${data.userId}"] .chat-input`);
     if (chatInput) {
@@ -282,17 +225,14 @@ function displayChatMessage(data) {
     }
 }
 
-// Function to check if the device is mobile
 function isMobile() {
-    return window.innerWidth <= 768; // You can adjust this threshold as needed
+    return window.innerWidth <= 768; // Adjust threshold as needed
 }
 
-// Function to adjust layout
 function adjustLayout() {
     const chatContainer = document.querySelector('.chat-container');
     const chatRows = document.querySelectorAll('.chat-row');
-    
-    // Always use horizontal layout for mobile devices
+
     const effectiveLayout = isMobile() ? 'horizontal' : currentRoomLayout;
     console.log(`Adjusting layout: ${effectiveLayout}`);
 
@@ -311,7 +251,7 @@ function adjustLayout() {
             const inputHeight = chatRowHeight - userInfo.offsetHeight - 2;
             chatInput.style.height = `${inputHeight}px`;
         });
-    } else { // vertical layout
+    } else {
         chatContainer.style.flexDirection = 'row';
         const availableWidth = chatContainer.offsetWidth;
         const columnGap = 10;
@@ -328,7 +268,6 @@ function adjustLayout() {
     }
 }
 
-// Function to calculate the difference between two strings
 function getDiff(oldStr, newStr) {
     let i = 0;
     while (i < oldStr.length && i < newStr.length && oldStr[i] === newStr[i]) i++;
@@ -347,7 +286,6 @@ function getDiff(oldStr, newStr) {
     }
 }
 
-// Modify the input event listener
 document.querySelector('.chat-container').addEventListener('input', (e) => {
     if (e.target.classList.contains('chat-input') && e.target.closest('.chat-row').dataset.userId === currentUserId) {
         const currentMessage = e.target.value;
@@ -367,7 +305,6 @@ document.querySelector('.chat-container').addEventListener('input', (e) => {
     }
 });
 
-// Event listener for leaving the room
 document.querySelector('.leave-room').addEventListener('click', () => {
     socket.emit('leave room');
     window.location.href = '/index.html';
@@ -377,30 +314,28 @@ document.querySelector('.leave-room').addEventListener('click', () => {
 const dateTimeElement = document.querySelector('#dateTime');
 
 function updateDateTime() {
-  const now = new Date();
-  const dateOptions = { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'short', 
-    day: 'numeric'
-  };
-  const timeOptions = {
-    hour: '2-digit', 
-    minute: '2-digit', 
-    hour12: true 
-  };
-  
-  const formattedDate = now.toLocaleDateString('en-US', dateOptions);
-  const formattedTime = now.toLocaleTimeString('en-US', timeOptions);
-  
-  dateTimeElement.querySelector('.date').textContent = formattedDate;
-  dateTimeElement.querySelector('.time').textContent = formattedTime;
+    const now = new Date();
+    const dateOptions = { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric'
+    };
+    const timeOptions = {
+        hour: '2-digit', 
+        minute: '2-digit', 
+        hour12: true 
+    };
+    
+    const formattedDate = now.toLocaleDateString('en-US', dateOptions);
+    const formattedTime = now.toLocaleTimeString('en-US', timeOptions);
+    
+    dateTimeElement.querySelector('.date').textContent = formattedDate;
+    dateTimeElement.querySelector('.time').textContent = formattedTime;
 }
 
-// Update date and time every second
 setInterval(updateDateTime, 1000);
 
-// Initialize the room and date/time when the page loads
 window.addEventListener('load', () => {
     initRoom();
     updateDateTime();
@@ -411,7 +346,30 @@ window.addEventListener('load', () => {
     document.getElementById('copyInviteLink').addEventListener('click', copyInviteLink);
 });
 
-
-// Adjust layout on window resize
 window.addEventListener('resize', adjustLayout);
-window.addEventListener('load', initRoom);
+
+function generateInviteLink() {
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('roomId', currentRoomId);
+    return currentUrl.href;
+}
+
+function updateInviteLink() {
+    const inviteLinkElement = document.getElementById('inviteLink');
+    const inviteLink = generateInviteLink();
+    inviteLinkElement.textContent = inviteLink;
+    inviteLinkElement.href = inviteLink;
+    
+    // Ensure the copy button is visible
+    const copyButton = document.getElementById('copyInviteLink');
+    copyButton.style.display = 'inline-block';
+}
+
+function copyInviteLink() {
+    const inviteLink = generateInviteLink();
+    navigator.clipboard.writeText(inviteLink).then(() => {
+        alert('Invite link copied to clipboard!');
+    }).catch(err => {
+        console.error('Failed to copy invite link: ', err);
+    });
+}
