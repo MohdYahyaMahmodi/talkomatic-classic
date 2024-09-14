@@ -48,10 +48,24 @@ logForm.addEventListener('submit', (e) => {
         if (currentUsername) {
             signInButton.textContent = 'Changed';
             setTimeout(() => {
-                signInButton.innerHTML = 'Change <img src="images/icons/pencil.png" alt="Arrow" class="arrow-icon">';
+                // Update sign-in button without innerHTML
+                signInButton.textContent = '';
+                signInButton.textContent = 'Change ';
+                const img = document.createElement('img');
+                img.src = 'images/icons/pencil.png';
+                img.alt = 'Arrow';
+                img.classList.add('arrow-icon');
+                signInButton.appendChild(img);
             }, 2000);
         } else {
-            signInButton.innerHTML = 'Change <img src="images/icons/pencil.png" alt="Arrow" class="arrow-icon">';
+            // Update sign-in button without innerHTML
+            signInButton.textContent = '';
+            signInButton.textContent = 'Change ';
+            const img = document.createElement('img');
+            img.src = 'images/icons/pencil.png';
+            img.alt = 'Arrow';
+            img.classList.add('arrow-icon');
+            signInButton.appendChild(img);
             createRoomForm.classList.remove('hidden');
         }
         currentUsername = newUsername;
@@ -90,8 +104,9 @@ goChatButton.addEventListener('click', () => {
 // Handle room entry
 dynamicRoomList.addEventListener('click', (e) => {
     if (e.target.classList.contains('enter-button')) {
-        const roomId = e.target.closest('.room').dataset.roomId;
-        const roomType = e.target.closest('.room').dataset.roomType;
+        const roomElement = e.target.closest('.room');
+        const roomId = roomElement.dataset.roomId;
+        const roomType = roomElement.dataset.roomType;
         console.log(`Attempting to join room: ${roomId}, Type: ${roomType}`);
 
         if (roomType === 'semi-private') {
@@ -133,7 +148,14 @@ socket.on('signin status', (data) => {
         isSignedIn = true;
         usernameInput.value = currentUsername;
         locationInput.value = currentLocation;
-        signInButton.innerHTML = 'Change <img src="images/icons/pencil.png" alt="Arrow" class="arrow-icon">';
+        // Update sign-in button without innerHTML
+        signInButton.textContent = '';
+        signInButton.textContent = 'Change ';
+        const img = document.createElement('img');
+        img.src = 'images/icons/pencil.png';
+        img.alt = 'Arrow';
+        img.classList.add('arrow-icon');
+        signInButton.appendChild(img);
         createRoomForm.classList.remove('hidden');
         showRoomList();
     } else {
@@ -162,9 +184,9 @@ socket.on('error', (error) => {
     console.error('Received error:', error);
     alert(`An error occurred: ${error}`);
 });
-  
-  // Update the createRoomElement function
-  function createRoomElement(room) {
+
+// Update the createRoomElement function
+function createRoomElement(room) {
     const roomElement = document.createElement('div');
     roomElement.classList.add('room');
     roomElement.dataset.roomId = room.id;
@@ -254,7 +276,7 @@ function showRoomList() {
 }
 
 function initLobby() {
-    console.log('Initializing lobby');
+    console.log('Initializing lobby');s
     document.querySelector('input[name="roomType"][value="public"]').checked = true;
     document.querySelector('input[name="roomLayout"][value="horizontal"]').checked = true;
     
