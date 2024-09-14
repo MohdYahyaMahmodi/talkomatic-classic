@@ -16,7 +16,7 @@
             </div>
             <div class="external-links">
                 <a href="https://example1.com" target="_blank" rel="noopener noreferrer">About Talkomatic™️</a>
-                <a href="https://example2.com" target="_blank" rel="noopener noreferrer">Classic Mode</a>
+                <a href="https://talkomatic.co" target="_blank" rel="noopener noreferrer">Modern Version</a>
             </div>
             <div class="known-as-section">
                 <p>Be Known As...</p>
@@ -42,15 +42,19 @@
                         <span>Public Room</span>
                     </label>
                     <label>
-                        <input type="radio" name="roomType" value="private">
+                        <input type="radio" name="roomType" value="semi-private">
                         <img src="images/icons/semi-private.svg" alt="Semi-Private Room Icon" class="radio-icon">
                         <span>Semi-Private Room</span>
                     </label>
                     <label>
-                        <input type="radio" name="roomType" value="invisible">
+                        <input type="radio" name="roomType" value="private">
                         <img src="images/icons/secret.svg" alt="Private Room Icon" class="radio-icon">
                         <span>Private Room</span>
                     </label>
+                </div>
+            
+                <div id="accessCodeInput" style="display: none;">
+                    <input type="text" placeholder="6-digit Access Code" maxlength="6" pattern="\d{6}">
                 </div>
             
                 <p class="roomLay">Room Layout</p>

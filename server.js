@@ -13,7 +13,6 @@ const rateLimit = require('express-rate-limit');
 const xss = require('xss-clean');
 const hpp = require('hpp');
 const crypto = require('crypto');
-
 const app = express();
 const server = http.createServer(app);
 
@@ -200,52 +199,79 @@ io.on('connection', (socket) => {
     });
   });
 
+  function generateRoomId() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
   socket.on('create room', (data) => {
-    const roomId = uuidv4();
-    rooms.set(roomId, {
-      id: roomId,
-      name: enforceRoomNameLimit(data.name),
-      type: data.type,
-      layout: data.layout,
-      users: [], // Initialize users array
-      isPrivate: data.type === 'Private', // Add this line
-    });
-    console.log(`Room created: ${roomId}`);
+    let roomId;
+    do {
+        roomId = generateRoomId();
+    } while (rooms.has(roomId));
+
+    const newRoom = {
+        id: roomId,
+        name: enforceRoomNameLimit(data.name),
+        type: data.type,
+        layout: data.layout,
+        users: [],
+        accessCode: data.type === 'semi-private' ? data.accessCode : null,
+    };
+    rooms.set(roomId, newRoom);
+    console.log(`Room created: ${roomId}, Type: ${data.type}`);
     socket.emit('room created', roomId);
     updateLobby();
     saveRooms();
-  });
+});
 
-  socket.on('join room', (roomId) => {
-    console.log('Received join room request for:', roomId);
-    const room = rooms.get(roomId);
-    if (room) {
-        let { username, location, userId } = socket.handshake.session;
-        if (!username || !location || !userId) {
-            // Auto sign-in for users without a session
-            userId = socket.handshake.sessionID;
-            username = "Anonymous";
-            location = 'On The Web';
-            
-            socket.handshake.session.username = username;
-            socket.handshake.session.location = location;
-            socket.handshake.session.userId = userId;
-        }
-        
-        socket.handshake.session.save((err) => {
-            if (err) {
-                console.error('Error saving session:', err);
-                socket.emit('error', 'Failed to join room');
-            } else {
-                joinRoom(socket, roomId, userId);
-            }
-        });
-    } else {
-        console.log(`Room ${roomId} not found`);
-        socket.emit('room not found');
-    }
-  });
 
+socket.on('join room', (data) => {
+  console.log('Received join room request for:', data);
+  if (!data || !data.roomId) {
+      console.log('Invalid room join request: missing roomId');
+      socket.emit('error', 'Invalid room join request');
+      return;
+  }
+
+  const room = rooms.get(data.roomId);
+  if (room) {
+      if (room.type === 'semi-private') {
+          if (!data.accessCode) {
+              socket.emit('access code required');
+              return;
+          }
+          if (room.accessCode !== data.accessCode) {
+              socket.emit('error', 'Incorrect access code');
+              return;
+          }
+      }
+
+      let { username, location, userId } = socket.handshake.session;
+      if (!username || !location || !userId) {
+          // Auto sign-in for users without a session
+          userId = socket.handshake.sessionID;
+          username = "Anonymous";
+          location = 'On The Web';
+          
+          socket.handshake.session.username = username;
+          socket.handshake.session.location = location;
+          socket.handshake.session.userId = userId;
+      }
+      
+      socket.handshake.session.save((err) => {
+          if (err) {
+              console.error('Error saving session:', err);
+              socket.emit('error', 'Failed to join room');
+          } else {
+              joinRoom(socket, data.roomId, userId);
+          }
+      });
+  } else {
+      console.log(`Room ${data.roomId} not found`);
+      socket.emit('room not found');
+  }
+});
+ 
   socket.on('leave room', async () => {
     const userId = socket.handshake.session.userId;
     await leaveRoom(socket, userId);
@@ -304,22 +330,22 @@ io.on('connection', (socket) => {
 
 function joinRoom(socket, roomId, userId) {
   console.log('Joining room:', roomId);
-  if (!roomId || typeof roomId !== 'string') {
-    console.error('Invalid room ID:', roomId);
-    socket.emit('room not found');
-    return;
+  if (!roomId || typeof roomId !== 'string' || roomId.length !== 6) {
+      console.error('Invalid room ID:', roomId);
+      socket.emit('room not found');
+      return;
   }
 
   let room = rooms.get(roomId);
   if (!room) {
-    console.log(`Room ${roomId} not found when trying to join`);
-    socket.emit('room not found');
-    return;
+      console.log(`Room ${roomId} not found when trying to join`);
+      socket.emit('room not found');
+      return;
   }
 
   // Initialize users array if it doesn't exist
   if (!room.users) {
-    room.users = [];
+      room.users = [];
   }
 
   // Remove the user from the room if they're already in it
@@ -327,43 +353,45 @@ function joinRoom(socket, roomId, userId) {
 
   socket.join(roomId);
   room.users.push({
-    id: userId,
-    username: socket.handshake.session.username,
-    location: socket.handshake.session.location,
+      id: userId,
+      username: socket.handshake.session.username,
+      location: socket.handshake.session.location,
   });
   socket.roomId = roomId;
   socket.handshake.session.currentRoom = roomId;
   socket.handshake.session.save((err) => {
     if (err) {
-      console.error('Error saving session:', err);
+        console.error('Error saving session:', err);
     } else {
       io.to(roomId).emit('user joined', {
         id: userId,
         username: socket.handshake.session.username,
         location: socket.handshake.session.location,
-      });
-      updateRoom(roomId);
-      socket.emit('room joined', { 
-        roomId: roomId, 
-        userId,
-        username: socket.handshake.session.username,
-        location: socket.handshake.session.location,
         roomName: room.name,
-        roomType: room.type,
-        users: room.users,
-        layout: room.layout
+        roomType: room.type
+    });
+        updateRoom(roomId);
+        socket.emit('room joined', { 
+          roomId: roomId, 
+          userId,
+          username: socket.handshake.session.username,
+          location: socket.handshake.session.location,
+          roomName: room.name, // Make sure to include the room name here
+          roomType: room.type,
+          users: room.users,
+          layout: room.layout
       });
-      socket.leave('lobby');
-      console.log(`User ${userId} joined room: ${roomId}`);
-      updateLobby();
+        socket.leave('lobby');
+        console.log(`User ${userId} joined room: ${roomId}`);
+        updateLobby();
 
-      // Clear any existing deletion timer for this room
-      if (roomDeletionTimers.has(roomId)) {
-        clearTimeout(roomDeletionTimers.get(roomId));
-        roomDeletionTimers.delete(roomId);
-        console.log(`Cleared deletion timer for room ${roomId}`);
+          // Clear any existing deletion timer for this room
+          if (roomDeletionTimers.has(roomId)) {
+              clearTimeout(roomDeletionTimers.get(roomId));
+              roomDeletionTimers.delete(roomId);
+              console.log(`Cleared deletion timer for room ${roomId}`);
+          }
       }
-    }
   });
 
   // Save rooms after joining
@@ -421,17 +449,28 @@ function startRoomDeletionTimer(roomId) {
   roomDeletionTimers.set(roomId, timer);
 }
 
+
 function updateLobby() {
   console.log('Updating lobby');
-  const publicRooms = Array.from(rooms.values()).filter(room => !room.isPrivate);
+  const publicRooms = Array.from(rooms.values()).filter(room => room.type !== 'private').map(room => ({
+      ...room,
+      accessCode: undefined // Remove access code from client-side data
+  }));
   io.to('lobby').emit('lobby update', publicRooms);
 }
 
 function updateRoom(roomId) {
   const room = rooms.get(roomId);
   if (room) {
-    console.log(`Updating room ${roomId}`);
-    io.to(roomId).emit('room update', room);
+      console.log(`Updating room ${roomId}`);
+      io.to(roomId).emit('room update', {
+          id: room.id,
+          name: room.name,
+          type: room.type,
+          layout: room.layout,
+          users: room.users,
+          accessCode: undefined // Remove access code from client-side data
+      });
   }
 }
 

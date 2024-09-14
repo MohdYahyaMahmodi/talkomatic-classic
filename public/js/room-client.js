@@ -6,6 +6,7 @@ let currentRoomId = '';
 let currentUserId = '';
 let currentRoomLayout = 'horizontal';
 let lastSentMessage = '';
+let currentRoomName = ''; // Add this line to store the room name
 
 const joinSound = document.getElementById('joinSound');
 const leaveSound = document.getElementById('leaveSound');
@@ -37,6 +38,7 @@ function getRoomInfo() {
                 currentLocation = roomData.location;
                 currentUserId = roomData.userId;
                 currentRoomLayout = roomData.layout || 'horizontal';
+                currentRoomName = roomData.roomName; // Store the room name
                 resolve(roomData);
             } else {
                 resolve(null);
@@ -81,16 +83,33 @@ async function initRoom() {
     if (roomIdFromUrl) {
         console.log('Joining room from URL:', roomIdFromUrl);
         currentRoomId = roomIdFromUrl;
-        socket.emit('join room', roomIdFromUrl);
+        joinRoom(roomIdFromUrl);
     } else {
         console.error('No room ID provided in URL');
         alert('No room ID provided. Redirecting to lobby.');
         window.location.href = '/index.html';
         return;
     }
-
-    updateInviteLink();
 }
+
+function joinRoom(roomId, accessCode = null) {
+    const data = { roomId, accessCode };
+    socket.emit('join room', data);
+}
+
+socket.on('access code required', () => {
+    const accessCode = prompt('Please enter the 6-digit access code for this room:');
+    if (accessCode) {
+        if (accessCode.length !== 6 || !/^\d+$/.test(accessCode)) {
+            alert('Invalid access code. Please enter a 6-digit number.');
+            return;
+        }
+        joinRoom(currentRoomId, accessCode);
+    } else {
+        alert('Access code is required. Redirecting to lobby.');
+        window.location.href = '/index.html';
+    }
+});
 
 socket.on('rejoin room', (data) => {
     console.log(`Successfully rejoined room:`, data);
@@ -113,21 +132,17 @@ socket.on('rejoin room', (data) => {
 
 // Handle successful room join
 socket.on('room joined', (data) => {
-    console.log('Successfully joined room:', data);
+    console.log(`Successfully joined room:`, data);
     currentUserId = data.userId;
     currentRoomId = data.roomId;
     currentUsername = data.username;
     currentLocation = data.location;
     currentRoomLayout = data.layout || currentRoomLayout;
+    currentRoomName = data.roomName; // Store the room name when joining
     console.log(`Room layout: ${currentRoomLayout}`);
     updateRoomInfo(data);
-    if (data.users) {
-        updateRoomUI(data);
-    }
+    updateRoomUI(data);
     updateInviteLink();
-
-    // Add this line to create chat rows for all users
-    data.users.forEach(user => addUserToRoom(user));
 });
 
 socket.on('room not found', () => {
@@ -137,9 +152,10 @@ socket.on('room not found', () => {
   });
 
 // Handle user joined event
-socket.on('user joined', (user) => {
-    console.log(`User joined:`, user);
-    addUserToRoom(user);
+socket.on('user joined', (data) => {
+    console.log(`User joined:`, data);
+    addUserToRoom(data);
+    updateRoomInfo(data);
     playJoinSound();
 });
 
@@ -167,7 +183,7 @@ socket.on('chat update', (data) => {
 
 // Function to update room information in the UI
 function updateRoomInfo(data) {
-    document.querySelector('.room-name').textContent = `Room: ${data.roomName || currentRoomId}`;
+    document.querySelector('.room-name').textContent = `Room: ${currentRoomName || data.roomName || data.roomId}`; // Use stored room name
     document.querySelector('.room-type').textContent = `${data.roomType || 'Public'} Room`;
     document.querySelector('.room-id').textContent = `Room ID: ${data.roomId || currentRoomId}`;
 }
@@ -175,10 +191,9 @@ function updateRoomInfo(data) {
 // Modify the addUserToRoom function
 function addUserToRoom(user) {
     const chatContainer = document.querySelector('.chat-container');
-    const existingChatRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
-    
-    if (existingChatRow) {
-        return; // User already has a chat row
+    if (!chatContainer) {
+        console.error('Chat container not found');
+        return;
     }
 
     const chatRow = document.createElement('div');
@@ -192,7 +207,6 @@ function addUserToRoom(user) {
         <textarea class="chat-input" ${user.id !== currentUserId ? 'readonly' : ''}></textarea>
     `;
     chatContainer.appendChild(chatRow);
-    adjustLayout();
 }
 
 // Function to remove a user from the room UI
@@ -207,33 +221,16 @@ function removeUserFromRoom(userId) {
 // Function to update the entire room UI
 function updateRoomUI(roomData) {
     const chatContainer = document.querySelector('.chat-container');
-    const focusedElement = document.activeElement;
-    const focusedUserId = focusedElement.closest('.chat-row')?.dataset.userId;
-    const userInputs = {};
+    if (!chatContainer) {
+        console.error('Chat container not found');
+        return;
+    }
 
-    // Save current user inputs
-    chatContainer.querySelectorAll('.chat-row').forEach(row => {
-        const userId = row.dataset.userId;
-        const input = row.querySelector('.chat-input');
-        userInputs[userId] = input.value;
-    });
+    chatContainer.innerHTML = ''; // Clear existing content
 
-    chatContainer.innerHTML = '';
     if (roomData.users && Array.isArray(roomData.users)) {
         roomData.users.forEach(user => {
             addUserToRoom(user);
-            // Restore user input
-            const chatRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
-            if (chatRow) {
-                const input = chatRow.querySelector('.chat-input');
-                input.value = userInputs[user.id] || '';
-                // Restore focus if this was the focused element
-                if (user.id === focusedUserId) {
-                    input.focus();
-                    // Move cursor to the end of the input
-                    input.setSelectionRange(input.value.length, input.value.length);
-                }
-            }
         });
     } else {
         console.warn('No users data available');
