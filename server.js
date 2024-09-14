@@ -29,7 +29,7 @@ const MAX_ROOM_NAME_LENGTH = 20;
 const MAX_MESSAGE_LENGTH = 5000;
 
 // Define allowed origins
-const allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://open.talkomatic.co/'];
 
 // CORS options
 const corsOptions = {
