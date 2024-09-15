@@ -150,11 +150,9 @@
     outline: none; /* Remove the default focus outline */
   }
   
-/* Invite Section Styles
-   ========================================================================== */
-/* Invite Section Styles
-   ========================================================================== */
-   .invite-section {
+  /* Invite Section Styles
+     ========================================================================== */
+  .invite-section {
     background-color: #1a1a1a;
     padding: 10px 20px;
     display: flex;
@@ -244,7 +242,17 @@
   
   /* Mobile devices */
   @media screen and (max-width: 576px) {
-    body { font-size: 12px; }
+    body, html {
+      height: 100%;
+      overflow: auto;
+      font-size: 12px;
+    }
+  
+    .page-container {
+      height: 100%;
+      min-height: 100%;
+    }
+  
     .brand { font-size: 18px; }
     .leave-room { padding: 6px; }
     .room-name { font-size: 14px; }
@@ -252,7 +260,20 @@
     .date-time { font-size: 10px; }
     .date-time .time { font-size: 9px; }
     
-    .chat-container { padding: 5px; }
+    .chat-container {
+      padding: 5px;
+      flex-grow: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    .chat-row {
+      min-height: 100px;  /* Ensure a minimum height for visibility */
+    }
+    
+    .chat-input {
+      font-size: 16px;  /* Prevent zoom on iOS */
+    }
     
     .invite-section { padding: 3px 5px; }
     .invite-text { font-size: 10px; }

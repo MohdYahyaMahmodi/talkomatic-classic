@@ -245,13 +245,14 @@ function adjustLayout() {
 
     if (effectiveLayout === 'horizontal') {
         chatContainer.style.flexDirection = 'column';
-        const availableHeight = chatContainer.offsetHeight;
+        const availableHeight = window.innerHeight - chatContainer.offsetTop;
         const rowGap = 10;
         const totalGap = (chatRows.length - 1) * rowGap;
         const chatRowHeight = Math.floor((availableHeight - totalGap) / chatRows.length);
 
         chatRows.forEach(row => {
             row.style.height = `${chatRowHeight}px`;
+            row.style.minHeight = '100px';  // Ensure a minimum height
             row.style.width = '100%';
             const userInfo = row.querySelector('.user-info');
             const chatInput = row.querySelector('.chat-input');
@@ -273,6 +274,22 @@ function adjustLayout() {
             chatInput.style.height = `calc(100% - ${userInfo.offsetHeight}px - 2px)`;
         });
     }
+}
+
+function handleViewportChange() {
+    const viewport = document.querySelector('meta[name=viewport]');
+    if (window.visualViewport) {
+        if (window.visualViewport.height < window.innerHeight) {
+            // Keyboard is likely open
+            viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1');
+            document.body.style.height = `${window.visualViewport.height}px`;
+        } else {
+            // Keyboard is likely closed
+            viewport.setAttribute('content', 'width=device-width, initial-scale=1');
+            document.body.style.height = '100%';
+        }
+    }
+    adjustLayout();
 }
 
 function getDiff(oldStr, newStr) {
@@ -347,13 +364,16 @@ window.addEventListener('load', () => {
     initRoom();
     updateDateTime();
     adjustLayout();
-    updateInviteLink(); // Ensure invite link is updated when the page loads
-
-    // Add event listener for copy button
+    updateInviteLink();
     document.getElementById('copyInviteLink').addEventListener('click', copyInviteLink);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', handleViewportChange);
+    }
 });
 
 window.addEventListener('resize', adjustLayout);
+window.addEventListener('resize', handleViewportChange);
+
 
 function generateInviteLink() {
     const currentUrl = new URL(window.location.href);
