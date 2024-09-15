@@ -83,7 +83,7 @@ socket.on('room not found', () => {
 });
 
 socket.on('user joined', (data) => {
-    console.log(`User joined:`, data);
+    console.log('User joined:', data);
     addUserToRoom(data);
     updateRoomInfo(data);
     playJoinSound();
@@ -131,6 +131,13 @@ function addUserToRoom(user) {
         return;
     }
 
+    // Check if the user is already in the room
+    const existingRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
+    if (existingRow) {
+        console.log(`User ${user.id} is already in the room`);
+        return;
+    }
+
     const chatRow = document.createElement('div');
     chatRow.classList.add('chat-row');
     if (user.id === currentUserId) {
@@ -151,6 +158,8 @@ function addUserToRoom(user) {
     chatRow.appendChild(userInfoSpan);
     chatRow.appendChild(chatInput);
     chatContainer.appendChild(chatRow);
+
+    adjustLayout();
 }
 
 function removeUserFromRoom(userId) {
@@ -168,35 +177,33 @@ function updateRoomUI(roomData) {
         return;
     }
 
-    // Store current input values
-    const currentInputs = new Map();
-    document.querySelectorAll('.chat-row').forEach(row => {
-        const userId = row.dataset.userId;
-        const input = row.querySelector('.chat-input');
-        if (input) {
-            currentInputs.set(userId, input.value);
-        }
-    });
-
-    // Clear existing content safely
-    while (chatContainer.firstChild) {
-        chatContainer.removeChild(chatContainer.firstChild);
-    }
-
     if (roomData.users && Array.isArray(roomData.users)) {
+        // Remove users who are no longer in the room
+        const currentUserIds = roomData.users.map(user => user.id);
+        document.querySelectorAll('.chat-row').forEach(row => {
+            if (!currentUserIds.includes(row.dataset.userId)) {
+                row.remove();
+            }
+        });
+
+        // Add new users or update existing ones
         roomData.users.forEach(user => {
-            addUserToRoom(user);
-            // Restore input value if it existed
-            if (currentInputs.has(user.id)) {
-                const newInput = document.querySelector(`.chat-row[data-user-id="${user.id}"] .chat-input`);
-                if (newInput) {
-                    newInput.value = currentInputs.get(user.id);
+            const existingRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
+            if (existingRow) {
+                // Update existing user info if needed
+                const userInfoSpan = existingRow.querySelector('.user-info');
+                if (userInfoSpan) {
+                    userInfoSpan.textContent = `${user.username} / ${user.location}`;
                 }
+            } else {
+                // Add new user
+                addUserToRoom(user);
             }
         });
     } else {
         console.warn('No users data available');
     }
+
     adjustLayout();
     updateInviteLink();
 }
