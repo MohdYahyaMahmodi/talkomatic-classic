@@ -41,16 +41,49 @@ body, html {
 /* Left Panel Styles */
 .left-panel {
   width: 320px;
-  margin-top: 23.5px;
   background-color: #616161;
   color: white;
   transition: transform 0.3s ease-in-out;
+  display: flex;
+  flex-direction: column;
+  margin-top: 23px;
+  height: calc(100vh - 23px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+.left-panel::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  background: transparent; /* Chrome/Safari/Webkit */
+}
+
+.left-panel > * {
+  width: 100%;
+  box-sizing: border-box;
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
+.panel-header,
+.known-as-section,
+.createRoom {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+#logform input,
+#lobbyForm input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .panel-header {
   text-align: center;
-  margin-bottom: 10px;
-  padding: 10px 0;
+  padding-top: 20px;
+  padding-bottom: 8px;
 }
 
 .panel-header .talkomatic {
@@ -72,7 +105,7 @@ body, html {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }
 
 .external-links a {
@@ -90,7 +123,6 @@ body, html {
 .known-as-section {
   background-color: #FDF5E6;
   padding: 18px;
-  margin-top: 20px;
 }
 
 .known-as-section p {
@@ -189,7 +221,7 @@ body, html {
   margin-top: 20px;
   padding: 0 18px;
   position: relative;
-  padding-bottom: 30px;
+  padding-bottom: 50px; /* Increase padding at the bottom */
 }
 
 #lobbyForm input[type="text"] {
@@ -214,6 +246,8 @@ body, html {
   font-size: 14px;
   display: flex;
   align-items: center;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 #lobbyForm .radio-group input[type="radio"] {
@@ -234,8 +268,9 @@ body, html {
 
 .button-container {
   position: absolute;
-  bottom: 0;
+  bottom: 20px;
   right: 18px;
+  margin-top: 20px;
 }
 
 .go-chat-button {
@@ -450,6 +485,25 @@ body, html {
   .copyright-info .copyright {
     margin-top: 5px;
   }
+
+  .left-panel {
+    width: 100%;
+  }
+  .hide-menu-button {
+    width: 100%;
+  }
+}
+
+@media (max-height: 600px) {
+  .left-panel {
+    overflow-y: auto;
+  }
+  #lobbyForm {
+    padding-bottom: 100px; /* Increase padding for very small screens */
+  }
+  .button-container {
+    bottom: 40px; /* Adjust for very small screens */
+  }
 }
 
 @media (max-width: 992px) {
@@ -460,12 +514,16 @@ body, html {
     position: fixed;
     top: 0;
     left: 0;
-    height: 100vh;
+    height: 100%; /* Use full height on mobile */
     width: 320px;
     max-width: 100%;
     z-index: 1000;
     transform: translateX(-100%);
+    padding-top: 60px; /* Add space for the hide menu button */
+    margin-top: 0; /* Remove margin-top on mobile */
+    overflow-y: auto;
   }
+
   .left-panel.open {
     transform: translateX(0);
   }
@@ -479,6 +537,10 @@ body, html {
   }
   .toggle-button {
     opacity: 1;
+    position: fixed;
+    top: 23.5px;
+    left: 0;
+    z-index: 1002; /* Ensure it's above the left panel */
   }
   .left-panel.open + .toggle-button {
     opacity: 0;
@@ -486,5 +548,15 @@ body, html {
   }
   .right-panel h2 {
     padding-left: 12px;
+  }
+  .hide-menu-button {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 320px;
+    z-index: 1001;
+    margin-bottom: 0;
+    padding-top: 15px;
+    padding-bottom: 15px;
   }
 }
