@@ -26,7 +26,6 @@ function playLeaveSound() {
     }
 }
 
-// Initialize room
 async function initRoom() {
     const urlParams = new URLSearchParams(window.location.search);
     const roomIdFromUrl = urlParams.get('roomId');
@@ -131,14 +130,7 @@ function addUserToRoom(user) {
         return;
     }
 
-    // Check if the user is already in the room
-    let chatRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
-    if (chatRow) {
-        console.log(`User ${user.id} is already in the room`);
-        return chatRow; // Return the existing row
-    }
-
-    chatRow = document.createElement('div');
+    const chatRow = document.createElement('div');
     chatRow.classList.add('chat-row');
     if (user.id === currentUserId) {
         chatRow.classList.add('current-user');
@@ -153,17 +145,11 @@ function addUserToRoom(user) {
     chatInput.classList.add('chat-input');
     if (user.id !== currentUserId) {
         chatInput.readOnly = true;
-    } else {
-        // Add event listener for the current user's textarea
-        chatInput.addEventListener('input', handleChatInput);
     }
 
     chatRow.appendChild(userInfoSpan);
     chatRow.appendChild(chatInput);
     chatContainer.appendChild(chatRow);
-
-    adjustLayout();
-    return chatRow;
 }
 
 function removeUserFromRoom(userId) {
@@ -181,30 +167,36 @@ function updateRoomUI(roomData) {
         return;
     }
 
-    if (roomData.users && Array.isArray(roomData.users)) {
-        // Remove users who are no longer in the room
-        const currentUserIds = roomData.users.map(user => user.id);
-        document.querySelectorAll('.chat-row').forEach(row => {
-            if (!currentUserIds.includes(row.dataset.userId)) {
-                row.remove();
+    // Store current input values and focus state
+    const currentInputs = new Map();
+    let focusedUserId = null;
+    document.querySelectorAll('.chat-row').forEach(row => {
+        const userId = row.dataset.userId;
+        const input = row.querySelector('.chat-input');
+        if (input) {
+            currentInputs.set(userId, input.value);
+            if (document.activeElement === input) {
+                focusedUserId = userId;
             }
-        });
+        }
+    });
 
-        // Add new users or update existing ones
+    // Clear existing content safely
+    while (chatContainer.firstChild) {
+        chatContainer.removeChild(chatContainer.firstChild);
+    }
+
+    if (roomData.users && Array.isArray(roomData.users)) {
         roomData.users.forEach(user => {
-            const chatRow = addUserToRoom(user); // This will either add a new user or return an existing row
-            if (chatRow) {
-                // Update user info
-                const userInfoSpan = chatRow.querySelector('.user-info');
-                if (userInfoSpan) {
-                    userInfoSpan.textContent = `${user.username} / ${user.location}`;
-                }
-                
-                // Ensure the current user's textarea is not readonly
-                if (user.id === currentUserId) {
-                    const chatInput = chatRow.querySelector('.chat-input');
-                    if (chatInput) {
-                        chatInput.readOnly = false;
+            addUserToRoom(user);
+            // Restore input value if it existed
+            if (currentInputs.has(user.id)) {
+                const newInput = document.querySelector(`.chat-row[data-user-id="${user.id}"] .chat-input`);
+                if (newInput) {
+                    newInput.value = currentInputs.get(user.id);
+                    // Restore focus if this was the focused input
+                    if (user.id === focusedUserId) {
+                        newInput.focus();
                     }
                 }
             }
@@ -212,26 +204,8 @@ function updateRoomUI(roomData) {
     } else {
         console.warn('No users data available');
     }
-
     adjustLayout();
     updateInviteLink();
-}
-
-function handleChatInput(e) {
-    const currentMessage = e.target.value;
-    
-    // Enforce character limit
-    if (currentMessage.length > MAX_MESSAGE_LENGTH) {
-        e.target.value = currentMessage.slice(0, MAX_MESSAGE_LENGTH);
-        return;
-    }
-
-    const diff = getDiff(lastSentMessage, currentMessage);
-    
-    if (diff) {
-        socket.emit('chat update', { diff, index: diff.index });
-        lastSentMessage = currentMessage;
-    }
 }
 
 function displayChatMessage(data) {
