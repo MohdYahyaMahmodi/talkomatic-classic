@@ -43,8 +43,10 @@ const corsOptions = {
   },
   methods: ['GET', 'POST'],
   credentials: true,
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
+  allowedHeaders: ['Content-Type', 'Authorization'],
 };
+app.use(cors(corsOptions));
 
 // Apply CORS middleware
 app.use(cors(corsOptions));
@@ -108,6 +110,9 @@ app.use(express.static(path.join(__dirname, 'public'), {
     if (path.endsWith('.js')) {
       res.setHeader('Content-Type', 'application/javascript');
       res.setHeader('Cache-Control', 'public, max-age=31536000');
+    }
+    if (path.endsWith('.ttf')) {
+      res.setHeader('Content-Type', 'font/ttf');
     }
   }
 }));
