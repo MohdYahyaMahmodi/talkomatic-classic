@@ -1,13 +1,18 @@
 /* Font Declarations */
 @font-face {
-  font-family: talkoSS;
-  src: url(../fonts/Sansation_Light.ttf);
+  font-family: 'talkoSS';
+  src: url('fonts/Sansation_Light.ttf');
 }
 
 @font-face {
-  font-family: talkoSS;
-  src: url(../fonts/Sansation_Bold.ttf);
+  font-family: 'talkoSS';
+  src: url('fonts/Sansation_Bold.ttf');
   font-weight: bold;
+}
+
+@font-face {
+  font-family: 'talkoText';
+  src: url('fonts/dited.otf');
 }
 
 /* Global Styles */
