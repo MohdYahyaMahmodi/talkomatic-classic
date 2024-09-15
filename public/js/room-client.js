@@ -132,13 +132,13 @@ function addUserToRoom(user) {
     }
 
     // Check if the user is already in the room
-    const existingRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
-    if (existingRow) {
+    let chatRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
+    if (chatRow) {
         console.log(`User ${user.id} is already in the room`);
-        return;
+        return chatRow; // Return the existing row
     }
 
-    const chatRow = document.createElement('div');
+    chatRow = document.createElement('div');
     chatRow.classList.add('chat-row');
     if (user.id === currentUserId) {
         chatRow.classList.add('current-user');
@@ -153,6 +153,9 @@ function addUserToRoom(user) {
     chatInput.classList.add('chat-input');
     if (user.id !== currentUserId) {
         chatInput.readOnly = true;
+    } else {
+        // Add event listener for the current user's textarea
+        chatInput.addEventListener('input', handleChatInput);
     }
 
     chatRow.appendChild(userInfoSpan);
@@ -160,6 +163,7 @@ function addUserToRoom(user) {
     chatContainer.appendChild(chatRow);
 
     adjustLayout();
+    return chatRow;
 }
 
 function removeUserFromRoom(userId) {
@@ -188,16 +192,21 @@ function updateRoomUI(roomData) {
 
         // Add new users or update existing ones
         roomData.users.forEach(user => {
-            const existingRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
-            if (existingRow) {
-                // Update existing user info if needed
-                const userInfoSpan = existingRow.querySelector('.user-info');
+            const chatRow = addUserToRoom(user); // This will either add a new user or return an existing row
+            if (chatRow) {
+                // Update user info
+                const userInfoSpan = chatRow.querySelector('.user-info');
                 if (userInfoSpan) {
                     userInfoSpan.textContent = `${user.username} / ${user.location}`;
                 }
-            } else {
-                // Add new user
-                addUserToRoom(user);
+                
+                // Ensure the current user's textarea is not readonly
+                if (user.id === currentUserId) {
+                    const chatInput = chatRow.querySelector('.chat-input');
+                    if (chatInput) {
+                        chatInput.readOnly = false;
+                    }
+                }
             }
         });
     } else {
@@ -206,6 +215,23 @@ function updateRoomUI(roomData) {
 
     adjustLayout();
     updateInviteLink();
+}
+
+function handleChatInput(e) {
+    const currentMessage = e.target.value;
+    
+    // Enforce character limit
+    if (currentMessage.length > MAX_MESSAGE_LENGTH) {
+        e.target.value = currentMessage.slice(0, MAX_MESSAGE_LENGTH);
+        return;
+    }
+
+    const diff = getDiff(lastSentMessage, currentMessage);
+    
+    if (diff) {
+        socket.emit('chat update', { diff, index: diff.index });
+        lastSentMessage = currentMessage;
+    }
 }
 
 function displayChatMessage(data) {
