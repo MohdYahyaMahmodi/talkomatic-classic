@@ -396,6 +396,10 @@ body, html {
   color: #000000;
 }
 
+.enter-button:disabled {
+  cursor: not-allowed;
+}
+
 .room-bottom {
   font-size: 14px;
   color: #CCCCCC;

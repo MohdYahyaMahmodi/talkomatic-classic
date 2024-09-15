@@ -61,6 +61,11 @@ socket.on('access code required', () => {
     }
 });
 
+socket.on('room full', () => {
+    alert('This room is full. You will be redirected to the lobby.');
+    window.location.href = '/index.html';
+});
+
 socket.on('room joined', (data) => {
     console.log(`Successfully joined room:`, data);
     currentUserId = data.userId;

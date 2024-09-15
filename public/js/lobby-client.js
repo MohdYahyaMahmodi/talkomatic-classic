@@ -103,7 +103,7 @@ goChatButton.addEventListener('click', () => {
 
 // Handle room entry
 dynamicRoomList.addEventListener('click', (e) => {
-    if (e.target.classList.contains('enter-button')) {
+    if (e.target.classList.contains('enter-button') && !e.target.disabled) {
         const roomElement = e.target.closest('.room');
         const roomId = roomElement.dataset.roomId;
         const roomType = roomElement.dataset.roomType;
@@ -194,7 +194,14 @@ function createRoomElement(room) {
 
     const enterButton = document.createElement('button');
     enterButton.classList.add('enter-button');
-    enterButton.textContent = 'Enter';
+    
+    if (room.users.length >= 5) {  // Check if the room is full
+        enterButton.textContent = 'Full';
+        enterButton.disabled = true;
+        roomElement.classList.add('full');
+    } else {
+        enterButton.textContent = 'Enter';
+    }
 
     const roomTop = document.createElement('div');
     roomTop.classList.add('room-top');
@@ -204,7 +211,7 @@ function createRoomElement(room) {
 
     const roomNameDiv = document.createElement('div');
     roomNameDiv.classList.add('room-name');
-    roomNameDiv.textContent = `${room.name} (${room.users.length} People)`;
+    roomNameDiv.textContent = `${room.name} (${room.users.length}/5 People)`;
 
     const roomDetailsDiv = document.createElement('div');
     roomDetailsDiv.classList.add('room-details');

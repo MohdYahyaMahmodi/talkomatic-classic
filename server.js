@@ -27,6 +27,7 @@ const MAX_USERNAME_LENGTH = 12;
 const MAX_LOCATION_LENGTH = 12;
 const MAX_ROOM_NAME_LENGTH = 20;
 const MAX_MESSAGE_LENGTH = 5000;
+const MAX_ROOM_CAPACITY = 5;
 
 // Define allowed origins
 const allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://open.talkomatic.co/'];
@@ -354,6 +355,13 @@ function joinRoom(socket, roomId, userId) {
       return;
   }
 
+  // Check if the room is full
+  if (room.users && room.users.length >= MAX_ROOM_CAPACITY) {
+      console.log(`Room ${roomId} is full`);
+      socket.emit('room full');
+      return;
+  }
+
   // Initialize users array if it doesn't exist
   if (!room.users) {
       room.users = [];
@@ -371,30 +379,30 @@ function joinRoom(socket, roomId, userId) {
   socket.roomId = roomId;
   socket.handshake.session.currentRoom = roomId;
   socket.handshake.session.save((err) => {
-    if (err) {
-        console.error('Error saving session:', err);
-    } else {
-      io.to(roomId).emit('user joined', {
-        id: userId,
-        username: socket.handshake.session.username,
-        location: socket.handshake.session.location,
-        roomName: room.name,
-        roomType: room.type
-    });
-        updateRoom(roomId);
-        socket.emit('room joined', { 
-          roomId: roomId, 
-          userId,
-          username: socket.handshake.session.username,
-          location: socket.handshake.session.location,
-          roomName: room.name, // Make sure to include the room name here
-          roomType: room.type,
-          users: room.users,
-          layout: room.layout
-      });
-        socket.leave('lobby');
-        console.log(`User ${userId} joined room: ${roomId}`);
-        updateLobby();
+      if (err) {
+          console.error('Error saving session:', err);
+      } else {
+          io.to(roomId).emit('user joined', {
+              id: userId,
+              username: socket.handshake.session.username,
+              location: socket.handshake.session.location,
+              roomName: room.name,
+              roomType: room.type
+          });
+          updateRoom(roomId);
+          socket.emit('room joined', { 
+              roomId: roomId, 
+              userId,
+              username: socket.handshake.session.username,
+              location: socket.handshake.session.location,
+              roomName: room.name,
+              roomType: room.type,
+              users: room.users,
+              layout: room.layout
+          });
+          socket.leave('lobby');
+          console.log(`User ${userId} joined room: ${roomId}`);
+          updateLobby();
 
           // Clear any existing deletion timer for this room
           if (roomDeletionTimers.has(roomId)) {
@@ -463,10 +471,13 @@ function startRoomDeletionTimer(roomId) {
 
 function updateLobby() {
   console.log('Updating lobby');
-  const publicRooms = Array.from(rooms.values()).filter(room => room.type !== 'private').map(room => ({
-      ...room,
-      accessCode: undefined // Remove access code from client-side data
-  }));
+  const publicRooms = Array.from(rooms.values())
+      .filter(room => room.type !== 'private')
+      .map(room => ({
+          ...room,
+          accessCode: undefined, // Remove access code from client-side data
+          isFull: room.users.length >= MAX_ROOM_CAPACITY
+      }));
   io.to('lobby').emit('lobby update', publicRooms);
 }
 
