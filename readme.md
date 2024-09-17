@@ -51,29 +51,28 @@ Before you begin, ensure you have met the following requirements:
 
 ## Configuration
 
-1. Create a `.env` file in the root directory of the project.
-2. Add the following environment variables:
+The application works without configuration, but you can customize it using an optional `.env` file:
+
+1. Create a `.env` file in the root directory of the project (if desired).
+2. Add any of the following environment variables:
+
    ```
-   PORT=3000
+   NODE_ENV=development
    SESSION_SECRET=your_session_secret_here
+   ALLOWED_ORIGINS=http://localhost:3000
+   PORT=3000
    ```
+
    Replace `your_session_secret_here` with a strong, unique secret for session management.
 
 ## Running the Application
 
-To run Talkomatic in development mode:
+To run Talkomatic:
 
+```bash
+node server.js
 ```
-npm run dev
-```
-
-For production:
-
-```
-npm start
-```
-
-The application will be available at `http://localhost:3000` (or the port you specified in the `.env` file).
+The application will be available at `http://localhost:3000` (or the port specified in your `.env` file if you created one).
 
 ## Usage
 
