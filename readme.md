@@ -4,7 +4,7 @@
 
 Talkomatic is an online platform for real-time text communication, essentially a modern reimagining of the classic chat room experience. Users can type messages, and everyone in the room can see the messages as they are being typed, creating a unique and engaging chat experience.
 
-**Live Demo:** [open.talkomatic.co](https://open.talkomatic.co)
+**Check out the website here:** [open.talkomatic.co](https://open.talkomatic.co)
 
 ## Features
 
