@@ -1,65 +1,84 @@
+/* 
+   Talkomatic Lobby Stylesheet
+   ===========================
+
+   This CSS file is responsible for styling the lobby page of the Talkomatic application. It includes
+   font declarations, global styles, layout containers, form elements, and responsive design rules to
+   ensure the page adapts well to different screen sizes. The focus is on creating a clean and user-friendly 
+   interface with appropriate font usage, color schemes, and interaction feedback.
+
+   Last updated: 2024
+*/
+
 /* Font Declarations */
+/* Define custom fonts used throughout the lobby */
 @font-face {
-  font-family: 'talkoSS';
-  src: url('../fonts/Sansation_Light.ttf');
+  font-family: 'talkoSS'; /* Main font family for general text */
+  src: url('../fonts/Sansation_Light.ttf'); /* Light version of the font */
 }
 
 @font-face {
   font-family: 'talkoSS';
-  src: url('../fonts/Sansation_Bold.ttf');
+  src: url('../fonts/Sansation_Bold.ttf'); /* Bold version for emphasis */
   font-weight: bold;
 }
 
 @font-face {
-  font-family: 'talkoText';
+  font-family: 'talkoText'; /* Special font for specific text elements */
   src: url('../fonts/dited.otf');
 }
 
 /* Global Styles */
+/* Set default styles for the HTML and body elements */
 body, html {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  overflow: hidden;
-  font-family: talkoSS, Arial, sans-serif;
-  background-color: #202020;
+  margin: 0; /* Remove default margins */
+  padding: 0; /* Remove default padding */
+  height: 100%; /* Ensure body takes up full viewport height */
+  overflow: hidden; /* Hide overflow to prevent unwanted scroll bars */
+  font-family: talkoSS, Arial, sans-serif; /* Use custom font, fallback to Arial */
+  background-color: #202020; /* Dark background color */
 }
 
 /* Layout Containers */
+/* Flexbox container that holds the left and right panels */
 .container {
-  display: flex;
-  height: 100vh;
-  overflow: hidden;
+  display: flex; /* Flex layout to align panels horizontally */
+  height: 100vh; /* Full viewport height */
+  overflow: hidden; /* Prevent overflow */
 }
 
+/* Ensure both panels fill the height of the container and allow scrolling */
 .left-panel, .right-panel {
   height: 100%;
-  overflow-y: auto;
-  box-sizing: border-box;
+  overflow-y: auto; /* Enable vertical scrolling */
+  box-sizing: border-box; /* Include padding/border in the element's width/height */
 }
 
 /* Left Panel Styles */
+/* Styles for the left panel that contains menu and form elements */
 .left-panel {
-  width: 320px;
-  background-color: #616161;
-  color: white;
-  transition: transform 0.3s ease-in-out;
+  width: 320px; /* Fixed width for left panel */
+  background-color: #616161; /* Dark gray background */
+  color: white; /* White text color */
+  transition: transform 0.3s ease-in-out; /* Smooth transition for showing/hiding */
   display: flex;
-  flex-direction: column;
-  margin-top: 23px;
-  height: calc(100vh - 23px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* Internet Explorer 10+ */
+  flex-direction: column; /* Stack child elements vertically */
+  margin-top: 23px; /* Space from the top */
+  height: calc(100vh - 23px); /* Adjust height considering the top margin */
+  overflow-y: auto; /* Enable vertical scrolling */
+  overflow-x: hidden; /* Disable horizontal scrolling */
+  scrollbar-width: none; /* Hide scrollbar in Firefox */
+  -ms-overflow-style: none; /* Hide scrollbar in Internet Explorer */
 }
 
+/* Hide scrollbar in WebKit browsers (Chrome, Safari) */
 .left-panel::-webkit-scrollbar {
   width: 0;
   height: 0;
-  background: transparent; /* Chrome/Safari/Webkit */
+  background: transparent;
 }
 
+/* Ensure all children of the left panel fit within the padding */
 .left-panel > * {
   width: 100%;
   box-sizing: border-box;
@@ -67,6 +86,7 @@ body, html {
   padding-right: 18px;
 }
 
+/* Header, known-as section, and create room section will have no horizontal padding */
 .panel-header,
 .known-as-section,
 .createRoom {
@@ -74,26 +94,30 @@ body, html {
   padding-right: 0;
 }
 
+/* Ensure text inputs fill the full width of the container */
 #logform input,
 #lobbyForm input[type="text"] {
   width: 100%;
-  box-sizing: border-box;
+  box-sizing: border-box; /* Include padding in width */
 }
 
+/* Header section with Talkomatic branding */
 .panel-header {
-  text-align: center;
+  text-align: center; /* Center the text */
   padding-top: 20px;
   padding-bottom: 8px;
 }
 
+/* Talkomatic title with bold orange text */
 .panel-header .talkomatic {
   font-family: talkoSS, Arial, sans-serif;
   font-weight: bold;
   font-size: 24px;
-  color: #FF9800;
+  color: #FF9800; /* Bright orange for emphasis */
   margin-right: 5px;
 }
 
+/* Lobby label in white next to the Talkomatic logo */
 .panel-header .lobby {
   font-family: talkoSS, Arial, sans-serif;
   font-weight: normal;
@@ -101,71 +125,80 @@ body, html {
   color: white;
 }
 
+/* External links section in the left panel */
 .external-links {
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  flex-direction: column; /* Stack links vertically */
+  align-items: center; /* Center align the links */
   margin-bottom: 10px;
 }
 
+/* Style for external links */
 .external-links a {
-  color: white;
-  text-decoration: underline;
+  color: white; /* White text */
+  text-decoration: underline; /* Underline for visibility */
   margin-bottom: 5px;
   font-size: 15px;
-  transition: color 0.3s ease;
+  transition: color 0.3s ease; /* Smooth transition on hover */
 }
 
+/* Ensure visited links remain white */
 .external-links a:visited {
   color: white;
 }
 
+/* Known-as section with a light background */
 .known-as-section {
-  background-color: #FDF5E6;
+  background-color: #FDF5E6; /* Light beige background for contrast */
   padding: 18px;
 }
 
+/* Style for the paragraph in the known-as section */
 .known-as-section p {
-  color: black;
+  color: black; /* Black text */
   margin: 0;
   font-weight: bold;
 }
 
 /* Log Form Styles */
+/* Style for the sign-in form */
 #logform {
   margin-top: 20px;
   padding: 0 18px;
   position: relative;
-  padding-bottom: 55px;
+  padding-bottom: 55px; /* Extra padding to account for the button */
 }
 
+/* Form layout: vertical stack of inputs */
 #logform form {
   display: flex;
   flex-direction: column;
 }
 
+/* Input fields in the form */
 #logform input {
   margin-bottom: 15px;
   padding: 12px;
-  border: 1px solid #fff;
-  background-color: white;
+  border: 1px solid #fff; /* White border */
+  background-color: white; /* White background */
   font-size: 16px;
   font-family: talkoSS, Arial, sans-serif;
 }
 
+/* Submit button at the bottom of the form */
 #logform button {
-  position: absolute;
+  position: absolute; /* Positioned at the bottom of the form */
   bottom: 0;
   right: 18px;
   width: 100px;
   padding: 12px 16px;
-  background-color: #000000;
-  color: white;
-  border: 1px solid #FF9800;
-  cursor: pointer;
+  background-color: #000000; /* Black background */
+  color: white; /* White text */
+  border: 1px solid #FF9800; /* Orange border */
+  cursor: pointer; /* Pointer cursor on hover */
   font-family: talkoSS, Arial, sans-serif;
   font-weight: light;
-  transition: background-color 0.3s ease, border-color 0.3s ease;
+  transition: background-color 0.3s ease, border-color 0.3s ease; /* Smooth hover transition */
   font-size: 12px;
   border-radius: 4px;
   display: flex;
@@ -174,20 +207,23 @@ body, html {
   margin-top: 15px;
 }
 
+/* Icon next to the button text */
 #logform button .arrow-icon {
   margin-left: 5px;
   height: 14px;
   width: 14px;
 }
 
+/* Hover effect for the button */
 #logform button:hover {
-  background-color: #CCCCCC;
-  border-color: #FF9800;
+  background-color: #CCCCCC; /* Light gray background on hover */
+  border-color: #FF9800; /* Keep orange border */
 }
 
 /* Create Room Section */
+/* Section where users can create new rooms */
 .createRoom {
-  background-color: #FDF5E6;
+  background-color: #FDF5E6; /* Light background */
   padding: 18px;
   margin-top: 20px;
   display: flex;
@@ -195,6 +231,7 @@ body, html {
   align-items: center;
 }
 
+/* Heading in the create room section */
 .createRoom p {
   color: black;
   margin: 0;
@@ -202,70 +239,80 @@ body, html {
   flex: 1;
 }
 
+/* Button to learn more about creating rooms */
 .createRoom .learn-more {
-  color: #ffffff;
-  background-color: #616161;
+  color: #ffffff; /* White text */
+  background-color: #616161; /* Dark gray background */
   padding: 12px 16px;
-  text-decoration: none;
+  text-decoration: none; /* No underline */
   font-size: 16px;
-  transition: color 0.3s ease;
+  transition: color 0.3s ease; /* Smooth transition on hover */
 }
 
+/* Hover effect for learn more button */
 .createRoom .learn-more:hover {
-  color: #F57C00;
-  text-decoration: underline;
+  color: #F57C00; /* Orange text on hover */
+  text-decoration: underline; /* Add underline on hover */
 }
 
 /* Lobby Form Styles */
+/* Styles for the room creation form */
 #lobbyForm {
   margin-top: 20px;
   padding: 0 18px;
   position: relative;
-  padding-bottom: 50px; /* Increase padding at the bottom */
+  padding-bottom: 50px; /* Extra padding to accommodate the button */
 }
 
+/* Text input for room name */
 #lobbyForm input[type="text"] {
-  width: 90%;
+  width: 90%; /* Adjust input width */
   padding: 12px;
   margin-bottom: 15px;
-  border: 1px solid #fff;
-  background-color: white;
+  border: 1px solid #fff; /* White border */
+  background-color: white; /* White background */
   font-size: 16px;
   font-family: talkoSS, Arial, sans-serif;
 }
 
+/* Layout for radio button groups */
 #lobbyForm .radio-group {
   display: flex;
-  flex-direction: column;
+  flex-direction: column; /* Stack radio buttons vertically */
   margin-bottom: 15px;
 }
 
+/* Individual radio button labels */
 #lobbyForm .radio-group label {
   margin-bottom: 10px;
-  color: white;
+  color: white; /* White text */
   font-size: 14px;
   display: flex;
-  align-items: center;
+  align-items: center; /* Align text and radio button vertically */
   width: 100%;
   box-sizing: border-box;
 }
 
+/* Space between radio button and label text */
 #lobbyForm .radio-group input[type="radio"] {
   margin-right: 10px;
 }
 
+/* Icon next to radio label */
 #lobbyForm .radio-group .radio-icon {
   width: 20px;
   height: 20px;
   margin-right: 10px;
 }
 
+/* Description text in lobby form */
 #lobbyForm p {
   color: white;
   font-weight: light;
   margin-bottom: 10px;
 }
 
+/* Container for the go chat button */
 .button-container {
   position: absolute;
   bottom: 20px;
@@ -273,141 +320,163 @@ body, html {
   margin-top: 20px;
 }
 
+/* Button to join a chat */
 .go-chat-button {
   padding: 12px 16px;
-  background-color: #000000;
-  color: white;
-  border: 1px solid #FF9800;
-  border-radius: 4px;
+  background-color: #000000; /* Black background */
+  color: white; /* White text */
+  border: 1px solid #FF9800; /* Orange border */
+  border-radius: 4px; /* Rounded corners */
   cursor: pointer;
   font-family: talkoSS, Arial, sans-serif;
   font-size: 14px;
-  transition: background-color 0.3s ease;
+  transition: background-color 0.3s ease; /* Smooth hover transition */
 }
 
+/* Hover effect for the chat button */
 .go-chat-button:hover {
-  background-color: #F57C00;
+  background-color: #F57C00; /* Orange background on hover */
 }
 
 /* Right Panel Styles */
+/* Main content area on the right side */
 .right-panel {
-  flex-grow: 1;
-  background-color: #202020;
-  color: white;
+  flex-grow: 1; /* Take up remaining space */
+  background-color: #202020; /* Match the body background color */
+  color: white; /* White text */
   padding-top: 30px;
   display: flex;
   flex-direction: column;
 }
 
+/* Heading in the right panel */
 .right-panel h2 {
   font-family: talkoSS, Arial, sans-serif;
   font-weight: normal;
   font-size: 25px;
-  color: #FF9800;
+  color: #FF9800; /* Orange text for emphasis */
   margin-bottom: 40px;
   padding-left: 8px;
 }
 
+/* Message to prompt sign-in */
 #signInMessage {
   padding-left: 20px;
 }
 
+/* Message shown when there are no rooms */
 #noRoomsMessage {
   padding-left: 20px;
 }
 
 /* Room List Styles */
+/* Container for the list of available rooms */
 .roomList {
-  overflow-y: auto;
+  overflow-y: auto; /* Enable vertical scrolling */
   display: flex;
-  flex-direction: column;
+  flex-direction: column; /* Stack rooms vertically */
 }
 
+/* Container for each room */
 .rooms {
   flex-grow: 1;
 }
 
+/* Individual room in the room list */
 .room {
-  background-color: #000000;
+  background-color: #000000; /* Black background */
   padding: 8px 8px 0 8px;
   position: relative;
-  border-top: 1px solid white;
+  border-top: 1px solid white; /* White border at the top */
 }
 
+/* Top section of a room */
 .room-top {
   display: flex;
-  flex-direction: column;
+  flex-direction: column; /* Stack elements vertically */
 }
 
+/* Information about the room */
 .room-info {
   width: 100%;
 }
 
+/* Room name */
 .room-name {
   font-size: 16px;
-  color: #ffffff;
+  color: #ffffff; /* White text */
   margin-bottom: 5px;
 }
 
+/* Room details (e.g., number of users) */
 .room-details {
   font-size: 14px;
-  color: #01ffff;
+  color: #01ffff; /* Cyan text */
   margin-bottom: 5px;
 }
 
+/* User details section */
 .users-detail {
   display: flex;
-  flex-direction: column;
+  flex-direction: column; /* Stack user details vertically */
   margin-bottom: 8px;
 }
 
+/* Styling for individual user details */
 .users-detail div {
   font-size: 15px;
-  color: #ffffff;
+  color: #ffffff; /* White text */
   margin-bottom: 4px;
 }
 
+/* Number of users */
 .users-detail .user-number {
   color: #ffffff;
   margin-right: 5px;
 }
 
+/* Highlight user names in orange */
 .users-detail .user-name {
-  color: #FF9800;
+  color: #FF9800; /* Orange color */
 }
 
+/* Enter room button */
 .enter-button {
   position: absolute;
   top: 20px;
   right: 20px;
-  background-color: #000000;
-  color: white;
-  border: 1px solid #FF9800;
+  background-color: #000000; /* Black background */
+  color: white; /* White text */
+  border: 1px solid #FF9800; /* Orange border */
   padding: 8px 16px;
   border-radius: 5px;
   cursor: pointer;
   font-family: talkoSS, Arial, sans-serif;
   font-size: 14px;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background-color 0.3s ease, color 0.3s ease; /* Smooth transition */
 }
 
+/* Hover effect for enter button */
 .enter-button:hover {
-  background-color: #FF9800;
-  color: #000000;
+  background-color: #FF9800; /* Orange background */
+  color: #000000; /* Black text */
 }
 
+/* Disabled state for the enter button */
 .enter-button:disabled {
-  cursor: not-allowed;
+  cursor: not-allowed; /* Show not-allowed cursor */
 }
 
+/* Bottom section of the room */
 .room-bottom {
   font-size: 14px;
-  color: #CCCCCC;
-  font-style: italic;
+  color: #CCCCCC; /* Light gray text */
+  font-style: italic; /* Italicized text */
   margin-top: 10px;
 }
 
 /* Copyright Info */
+/* Footer section with copyright and version information */
 .copyright-info {
   padding: 20px;
   text-align: center;
@@ -420,46 +489,52 @@ body, html {
   flex-wrap: wrap;
 }
 
+/* Styling for the version text */
 .copyright-info .version {
-  color: #FF9800;
+  color: #FF9800; /* Orange text */
   margin-right: 5px;
 }
 
+/* Dot separator between items */
 .copyright-info .dot {
   margin: 0 5px;
 }
 
 /* Toggle and Hide Menu Buttons */
+/* Buttons to toggle and hide the left menu */
 .toggle-button, .hide-menu-button {
-  display: none;
-  color: white;
+  display: none; /* Initially hidden */
+  color: white; /* White text */
   border: none;
   padding: 10px;
   cursor: pointer;
   font-family: talkoSS, Arial, sans-serif;
-  transition: opacity 0.3s ease-in-out;
+  transition: opacity 0.3s ease-in-out; /* Smooth transition */
 }
 
+/* Toggle button styles */
 .toggle-button {
   position: fixed;
   top: 23.5px;
   left: 0;
-  z-index: 1001;
+  z-index: 1001; /* Above other elements */
   border-top-right-radius: 5px;
   border-bottom-right-radius: 5px;
-  background-color: #9E9E9E;
+  background-color: #9E9E9E; /* Gray background */
   font-size: 18px;
   padding: 10px 15px 10px 10px;
   opacity: 1;
   transition: left 0.3s ease-in-out, opacity 0.3s ease-in-out;
 }
 
+/* Symbol for the toggle button (hamburger menu) */
 .toggle-button::after {
   content: '≡';
   margin-left: 10px;
   font-size: 24px;
 }
 
+/* Hide menu button styles */
 .hide-menu-button {
   margin-bottom: 10px;
   background-color: #616161;
@@ -471,19 +546,21 @@ body, html {
   font-size: 18px;
 }
 
+/* Hover effect for hide menu button */
 .hide-menu-button:hover {
-  background-color: #CCCCCC;
-  color: black;
+  background-color: #CCCCCC; /* Light gray background */
+  color: black; /* Black text */
 }
 
 /* Responsive Styles */
+/* Media query for screens narrower than 600px (small devices) */
 @media (max-width: 600px) {
   .copyright-info {
     flex-direction: column;
   }
 
   .copyright-info .dot {
-    display: none;
+    display: none; /* Hide dot separator */
   }
 
   .copyright-info .copyright {
@@ -491,53 +568,56 @@ body, html {
   }
 
   .left-panel {
-    width: 100%;
+    width: 100%; /* Take full width on small screens */
   }
   .hide-menu-button {
-    width: 100%;
+    width: 100%; /* Ensure the button spans the full width */
   }
 }
 
+/* Media query for shorter screens (max height: 600px) */
 @media (max-height: 600px) {
   .left-panel {
-    overflow-y: auto;
+    overflow-y: auto; /* Ensure scrolling if the panel overflows */
   }
   #lobbyForm {
-    padding-bottom: 100px; /* Increase padding for very small screens */
+    padding-bottom: 100px; /* Extra padding for small screens */
   }
   .button-container {
-    bottom: 40px; /* Adjust for very small screens */
+    bottom: 40px; /* Adjust button placement */
   }
 }
 
+/* Media query for medium-sized screens (max width: 992px) */
 @media (max-width: 992px) {
   .container {
-    flex-direction: column;
+    flex-direction: column; /* Stack panels vertically on smaller screens */
   }
   .left-panel {
     position: fixed;
     top: 0;
     left: 0;
-    height: 100%; /* Use full height on mobile */
+    height: 100%; /* Full height on mobile */
     width: 320px;
-    max-width: 100%;
-    z-index: 1000;
-    transform: translateX(-100%);
-    padding-top: 60px; /* Add space for the hide menu button */
-    margin-top: 0; /* Remove margin-top on mobile */
-    overflow-y: auto;
+    max-width: 100%; /* Ensure the panel fits the screen */
+    z-index: 1000; /* Above other elements */
+    transform: translateX(-100%); /* Initially hidden off-screen */
+    padding-top: 60px; /* Space for the hide menu button */
+    margin-top: 0; /* Remove top margin */
+    overflow-y: auto; /* Enable scrolling */
   }
 
+  /* Left panel when open */
   .left-panel.open {
-    transform: translateX(0);
+    transform: translateX(0); /* Slide into view */
   }
   .right-panel {
-    width: 100%;
-    height: 100vh;
+    width: 100%; /* Full width on mobile */
+    height: 100vh; /* Full height */
     padding-top: 80px;
   }
   .toggle-button, .hide-menu-button {
-    display: block;
+    display: block; /* Show the buttons */
   }
   .toggle-button {
     opacity: 1;
@@ -548,16 +628,16 @@ body, html {
   }
   .left-panel.open + .toggle-button {
     opacity: 0;
-    left: -100px;
+    left: -100px; /* Hide toggle button when the panel is open */
   }
   .right-panel h2 {
-    padding-left: 12px;
+    padding-left: 12px; /* Adjust heading padding */
   }
   .hide-menu-button {
     position: fixed;
     top: 0;
     left: 0;
-    width: 320px;
+    width: 320px; /* Full width on mobile */
     z-index: 1001;
     margin-bottom: 0;
     padding-top: 15px;

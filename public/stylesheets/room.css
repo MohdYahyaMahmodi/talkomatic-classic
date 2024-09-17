@@ -1,9 +1,31 @@
-/* ==========================================================================
+/* =============================================================================
    Talkomatic Room Styles
-   ========================================================================== */
+   -----------------------------------------------------------------------------
+   This CSS file defines the styles for the Talkomatic room interface. It includes 
+   styles for fonts, layout, and responsive behavior, aiming to create a clean and 
+   responsive chat interface for users on different screen sizes.
 
-/* Font Declarations
-   ========================================================================== */
+   Sections:
+   1. Font Declarations: Define custom fonts for the interface.
+   2. Base Styles: Apply global styles such as font family, background color, and 
+      layout for the page.
+   3. Navigation Styles: Define the styles for the navigation bars at the top of 
+      the chat interface.
+   4. Chat Container Styles: Style the chat rows, message input, and user information.
+   5. Invite Section Styles: Customize the invitation link section for sharing room 
+      links with other users.
+   6. Responsive Styles: Adjust layout and typography for various screen sizes 
+      (tablet and mobile devices).
+   =============================================================================*/
+
+/* =============================================================================
+   Font Declarations
+   -----------------------------------------------------------------------------
+   Custom fonts are defined for the Talkomatic chat interface. The 'talkoSS' font 
+   is used for the primary interface text, with a bold version for emphasis. The 
+   'talkoText' font is used specifically for chat input to give a handwritten style.
+   =============================================================================*/
+
    @font-face {
     font-family: 'talkoSS';
     src: url('../fonts/Sansation_Light.ttf');
@@ -20,8 +42,15 @@
     src: url('../fonts/dited.otf');
   }
   
-  /* Base Styles
-     ========================================================================== */
+  /* =============================================================================
+     Base Styles
+     -----------------------------------------------------------------------------
+     Basic styles applied to the entire page (body and html tags). These include 
+     removing margins, setting height to full viewport, and defining the default font 
+     family and background color. The interface is also set to hide overflow to 
+     prevent scrolling.
+     =============================================================================*/
+  
   body, html {
     margin: 0;
     padding: 0;
@@ -38,8 +67,13 @@
     height: 100vh;
   }
   
-  /* Navigation Styles
-     ========================================================================== */
+  /* =============================================================================
+     Navigation Styles
+     -----------------------------------------------------------------------------
+     These styles define the appearance and layout of the top and secondary navigation 
+     bars, including the branding, room info, and buttons for user interactions. 
+     =============================================================================*/
+  
   /* Common navbar styles */
   .top-navbar,
   .second-navbar {
@@ -57,11 +91,12 @@
     align-items: center;
   }
   
+  /* Navbar layout: positioning sections */
   .navbar-left { justify-content: flex-start; }
   .navbar-center { justify-content: center; }
   .navbar-right { justify-content: flex-end; }
   
-  /* Top navbar specific styles */
+  /* Top navbar specific styles: date-time display, branding, leave button */
   .date-time {
     font-size: 14px;
     color: #ffff00;
@@ -88,13 +123,13 @@
     white-space: nowrap;
   }
   
-  /* Second navbar specific styles */
-  .second-navbar { 
-    background-color: #1a1a1a; 
+  /* Second navbar specific styles: room info */
+  .second-navbar {
+    background-color: #1a1a1a;
   }
   
-  .room-type { 
-    color: cyan; 
+  .room-type {
+    color: cyan;
   }
   
   .room-name {
@@ -103,12 +138,18 @@
     text-align: center;
   }
   
-  .room-id { 
-    color: #FF9800; 
+  .room-id {
+    color: #FF9800;
   }
   
-  /* Chat Container Styles
-     ========================================================================== */
+  /* =============================================================================
+     Chat Container Styles
+     -----------------------------------------------------------------------------
+     Styles for the main chat area, which includes the message rows, user info 
+     section, and message input field. This section is flexible and grows to fill 
+     available space in the viewport.
+     =============================================================================*/
+  
   .chat-container {
     flex-grow: 1;
     display: flex;
@@ -126,10 +167,12 @@
     box-sizing: border-box;
   }
   
+  /* Highlight for the current user’s messages */
   .chat-row.current-user {
     border-color: orange;
   }
   
+  /* Styling for the user information above chat messages */
   .user-info {
     font-size: 14px;
     padding: 8px;
@@ -137,6 +180,7 @@
     background-color: #616161;
   }
   
+  /* Chat input box for typing messages */
   .chat-input {
     flex-grow: 1;
     padding: 5px;
@@ -147,11 +191,16 @@
     box-sizing: border-box;
     background-color: black;
     color: #FF9800;
-    outline: none; /* Remove the default focus outline */
+    outline: none; /* Remove default focus outline */
   }
   
-  /* Invite Section Styles
-     ========================================================================== */
+  /* =============================================================================
+     Invite Section Styles
+     -----------------------------------------------------------------------------
+     Styles for the invite link section, allowing users to share the room link.
+     It contains text and a clickable link to copy the invite URL.
+     =============================================================================*/
+  
   .invite-section {
     background-color: #1a1a1a;
     padding: 10px 20px;
@@ -174,6 +223,7 @@
     overflow: hidden;
   }
   
+  /* Invite link and copy button */
   .invite-link {
     color: cyan;
     font-size: 16px;
@@ -199,6 +249,7 @@
     margin: 0;
   }
   
+  /* Icon inside the copy button */
   #copyInviteLink img {
     width: 20px;
     height: 20px;
@@ -208,14 +259,20 @@
     background-color: #000000a1;
   }
   
-  /* Responsive Styles
-     ========================================================================== */
+  /* =============================================================================
+     Responsive Styles
+     -----------------------------------------------------------------------------
+     Adjustments to layout and font sizes for tablet and mobile devices. Breakpoints 
+     target screen widths of 768px and 576px to provide optimal user experience on 
+     smaller screens.
+     =============================================================================*/
+  
   /* Tablet and smaller desktop screens */
   @media screen and (max-width: 768px) {
     .brand { font-size: 20px; }
     .leave-room { padding: 8px; }
     .room-name { font-size: 16px; }
-    
+  
     .date-time {
       font-size: 12px;
       display: flex;
@@ -224,10 +281,10 @@
     }
     .date-time .date { margin-bottom: 2px; }
     .date-time .time { font-size: 10px; }
-    
+  
     .user-info { font-size: 12px; }
     .chat-input { font-size: 12px; }
-    
+  
     .invite-text { font-size: 12px; }
     .invite-link { font-size: 14px; }
     #copyInviteLink {
@@ -256,25 +313,25 @@
     .brand { font-size: 18px; }
     .leave-room { padding: 6px; }
     .room-name { font-size: 14px; }
-    
+  
     .date-time { font-size: 10px; }
     .date-time .time { font-size: 9px; }
-    
+  
     .chat-container {
       padding: 5px;
       flex-grow: 1;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
     }
-    
+  
     .chat-row {
-      min-height: 100px;  /* Ensure a minimum height for visibility */
+      min-height: 100px; /* Ensure minimum visibility */
     }
-    
+  
     .chat-input {
-      font-size: 16px;  /* Prevent zoom on iOS */
+      font-size: 16px; /* Prevent zoom on iOS */
     }
-    
+  
     .invite-section { padding: 3px 5px; }
     .invite-text { font-size: 10px; }
     .invite-link { font-size: 12px; }
@@ -287,3 +344,4 @@
       height: 16px;
     }
   }
+  
