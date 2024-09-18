@@ -113,13 +113,13 @@ app.use(limiter);
 
 // Session setup for Express and socket.io
 const sessionMiddleware = session({
-    secret: process.env.SESSION_SECRET || '723698977cc31aaf8e84d93feffadcf72d65bfe0e56d58ba2cbdb88d74809745', // Fallback to default if no environment variable
+    secret: process.env.SESSION_SECRET || '27698195ee0059711eb40c89a8175d2e', // Fallback to default if no environment variable
     resave: false,
     saveUninitialized: true,
     cookie: { 
         secure: process.env.NODE_ENV === 'production',  // Use secure cookies in production
         httpOnly: true,  // Prevent access to cookie via JavaScript
-        maxAge: 14 * 24 * 60 * 60 * 1000 // 14 days expiry
+        maxAge: 360 * 24 * 60 * 60 * 1000 // 360 days expiry
     }
 });
 
