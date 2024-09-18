@@ -54,7 +54,7 @@ const MAX_MESSAGE_LENGTH = 5000;
 const MAX_ROOM_CAPACITY = 5;
 
 // Define allowed origins for CORS policy
-const allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://open.talkomatic.co/'];
+const allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://talkomatic.onrender.com/'];
 
 // CORS options
 const corsOptions = {
