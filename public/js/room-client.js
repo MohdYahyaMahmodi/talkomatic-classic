@@ -306,11 +306,16 @@ function updateRoomUI(roomData) {
  */
 function displayChatMessage(data) {
     const chatInput = document.querySelector(`.chat-row[data-user-id="${data.userId}"] .chat-input`);
-    if (chatInput) {
-        if (data.diff) {
+    if (!chatInput) return;
+
+    if (data.diff) {
+        if (data.diff.type === 'full-replace') {
+            // Handle complete text replacement
+            chatInput.value = data.diff.text.slice(0, MAX_MESSAGE_LENGTH);
+        } else {
+            // Handle incremental changes
             const currentText = chatInput.value;
             let newText;
-            // Apply the diff (add, delete, or replace text)
             switch (data.diff.type) {
                 case 'add':
                     newText = currentText.slice(0, data.diff.index) + data.diff.text + currentText.slice(data.diff.index);
@@ -322,10 +327,10 @@ function displayChatMessage(data) {
                     newText = currentText.slice(0, data.diff.index) + data.diff.text + currentText.slice(data.diff.index + data.diff.text.length);
                     break;
             }
-            chatInput.value = newText.slice(0, MAX_MESSAGE_LENGTH); // Enforce message length limit
-        } else {
-            chatInput.value = data.message.slice(0, MAX_MESSAGE_LENGTH); // Set full message if no diff
+            chatInput.value = newText.slice(0, MAX_MESSAGE_LENGTH);
         }
+    } else {
+        chatInput.value = data.message.slice(0, MAX_MESSAGE_LENGTH);
     }
 }
 
@@ -405,6 +410,13 @@ function handleViewportChange() {
  * @returns {Object|null} The diff object (add, delete, or replace) or null if no change.
  */
 function getDiff(oldStr, newStr) {
+    // If the strings are completely different or there's a large change,
+    // treat it as a full replacement
+    if (oldStr.length === 0 || newStr.length === 0 || 
+        Math.abs(oldStr.length - newStr.length) > Math.min(oldStr.length, newStr.length) / 2) {
+        return { type: 'full-replace', text: newStr };
+    }
+    
     let i = 0;
     while (i < oldStr.length && i < newStr.length && oldStr[i] === newStr[i]) i++;
     
@@ -417,7 +429,7 @@ function getDiff(oldStr, newStr) {
         // Deletion
         return { type: 'delete', count: oldStr.length - i, index: i };
     } else {
-        // Replacement
+        // Incremental replacement
         return { type: 'replace', text: newStr.slice(i), index: i };
     }
 }

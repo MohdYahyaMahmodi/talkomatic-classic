@@ -350,14 +350,27 @@ io.on('connection', (socket) => {
         if (socket.roomId) {
             const userId = socket.handshake.session.userId;
             const username = socket.handshake.session.username;
-            if (data.diff && data.diff.text) {
-                data.diff.text = enforceCharacterLimit(data.diff.text);  // Limit message length
+            
+            if (data.diff) {
+                // Enforce character limits for any text content
+                if (data.diff.text) {
+                    data.diff.text = enforceCharacterLimit(data.diff.text);
+                }
+                
+                // Broadcast the update to other users in the room
+                socket.to(socket.roomId).emit('chat update', {
+                    userId,
+                    username,
+                    diff: data.diff
+                });
+                
+                // If this is a full replacement, update any tracking of the last message
+                if (data.diff.type === 'full-replace') {
+                    // You might want to store this in the room state or user session
+                    socket.handshake.session.lastMessage = data.diff.text;
+                    socket.handshake.session.save();
+                }
             }
-            socket.to(socket.roomId).emit('chat update', {
-                userId,
-                username,
-                diff: data.diff
-            });
         }
     });
 
