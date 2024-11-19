@@ -183,6 +183,54 @@
         </div>
     </div>
 
+    <!-- Modal Container -->
+    <div id="roomInfoModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>Creating a Room in Talkomatic</h2>
+            
+            <div class="modal-section">
+                <h3>Room Types</h3>
+                <div class="room-type-info">
+                    <div class="type-item">
+                        <img src="images/icons/public.svg" alt="Public Room Icon" class="info-icon">
+                        <h4>Public Room</h4>
+                        <p>Open to everyone. Visible in the room list and anyone can join instantly.</p>
+                    </div>
+                    
+                    <div class="type-item">
+                        <img src="images/icons/semi-private.svg" alt="Semi-Private Room Icon" class="info-icon">
+                        <h4>Semi-Private Room</h4>
+                        <p>Visible in the room list but requires creator approval to join.</p>
+                    </div>
+                    
+                    <div class="type-item">
+                        <img src="images/icons/secret.svg" alt="Private Room Icon" class="info-icon">
+                        <h4>Private Room</h4>
+                        <p>Hidden from the room list. Accessible only through direct invite link.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-section">
+                <h3>Room Layouts</h3>
+                <div class="layout-info">
+                    <div class="layout-item">
+                        <img src="images/icons/horizontal.svg" alt="Horizontal Layout Icon" class="info-icon">
+                        <h4>Horizontal Layout</h4>
+                        <p>Chat windows are arranged in columns side by side. Automatically switches to vertical on smaller screens.</p>
+                    </div>
+                    
+                    <div class="layout-item">
+                        <img src="images/icons/vertical.svg" alt="Vertical Layout Icon" class="info-icon">
+                        <h4>Vertical Layout</h4>
+                        <p>Chat windows are stacked on top of each other. Best for mobile devices and narrow windows.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- External JavaScript files -->
     <!-- Dynamic nonces (from server-side templating) ensure secure script execution -->
     <script nonce="<%= nonce %>" src="js/lobby.js"></script>

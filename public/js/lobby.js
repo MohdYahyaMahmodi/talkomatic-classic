@@ -18,6 +18,11 @@ const leftPanel = document.getElementById('leftPanel'); // Reference to the left
 const toggleButton = document.getElementById('toggleButton'); // Button to toggle the panel
 const hideMenuButton = document.getElementById('hideMenuButton'); // Button to hide the panel
 
+// Modal functionality
+const modal = document.getElementById('roomInfoModal');
+const learnMoreBtn = document.querySelector('.learn-more');
+const closeModal = document.querySelector('.close-modal');
+
 /**
  * Toggles the left panel open/closed state
  * ----------------------------------------------------------------------------
@@ -97,6 +102,48 @@ function init() {
         toggleButton.style.opacity = '1'; // Show toggle button if screen is small
     }
 }
+
+/**
+ * Opens the modal with a fade-in animation
+ */
+function openModal() {
+    modal.style.display = 'flex';
+    // Trigger reflow
+    modal.offsetHeight;
+    modal.classList.add('show');
+}
+
+/**
+ * Closes the modal with a fade-out animation
+ */
+function closeModalHandler() {
+    modal.classList.remove('show');
+    setTimeout(() => {
+        modal.style.display = 'none';
+    }, 300); // Match the CSS transition duration
+}
+
+// Event listeners for modal
+learnMoreBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    openModal();
+});
+
+closeModal.addEventListener('click', closeModalHandler);
+
+// Close modal when clicking outside
+modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+        closeModalHandler();
+    }
+});
+
+// Close modal with Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('show')) {
+        closeModalHandler();
+    }
+});
 
 // Run initial setup
 init(); // Initialize when the page loads
