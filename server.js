@@ -31,6 +31,9 @@ const rateLimit = require('express-rate-limit');
 const xss = require('xss-clean');
 const hpp = require('hpp');
 const crypto = require('crypto');
+const WordFilter = require('./public/js/word-filter.js');
+
+const wordFilter = new WordFilter(path.join(__dirname, 'public', 'js', 'offensive_words.json'));
 
 // Initialize Express and HTTP server
 const app = express();
@@ -52,6 +55,8 @@ const MAX_LOCATION_LENGTH = 12;
 const MAX_ROOM_NAME_LENGTH = 20;
 const MAX_MESSAGE_LENGTH = 5000;
 const MAX_ROOM_CAPACITY = 5;
+
+const ENABLE_WORD_FILTER = true; // Set to false to disable word filtering
 
 // Define allowed origins for CORS policy
 const allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://open.talkomatic.co/'];
@@ -164,6 +169,8 @@ let rooms = new Map();
 const users = new Map();
 const roomDeletionTimers = new Map();
 const typingTimeouts = new Map();
+
+const userMessageBuffers = new Map();
 
 // Helper functions to enforce character limits for different fields
 function enforceCharacterLimit(message) {
@@ -324,6 +331,44 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('vote', (data) => {
+        const { targetUserId } = data;
+        const userId = socket.handshake.session.userId;
+        const roomId = socket.roomId;
+    
+        if (!roomId) return;
+    
+        const room = rooms.get(roomId);
+        if (!room) return;
+    
+        // Ensure the user is in the room
+        if (!room.users.find(u => u.id === userId)) return;
+    
+        // Users cannot vote for themselves
+        if (userId === targetUserId) return;
+    
+        // Remove any previous vote from this user
+        room.votes[userId] = targetUserId;
+    
+        // Broadcast the updated votes to all clients in the room
+        io.to(roomId).emit('update votes', room.votes);
+    
+        // Check if the target user has majority votes
+        const votesAgainstTarget = Object.values(room.votes).filter(v => v === targetUserId).length;
+        const totalUsers = room.users.length;
+    
+        // Majority calculation: More than half of the other users
+        if (votesAgainstTarget > Math.floor(totalUsers / 2)) {
+            // Disconnect the target user
+            const targetSocket = [...io.sockets.sockets.values()].find(s => s.handshake.session.userId === targetUserId);
+    
+            if (targetSocket) {
+                targetSocket.emit('kicked');
+                leaveRoom(targetSocket, targetUserId);
+            }
+        }
+    });
+
     // Handle a user leaving the room
     socket.on('leave room', async () => {
         const userId = socket.handshake.session.userId;
@@ -350,25 +395,70 @@ io.on('connection', (socket) => {
         if (socket.roomId) {
             const userId = socket.handshake.session.userId;
             const username = socket.handshake.session.username;
-            
-            if (data.diff) {
-                // Enforce character limits for any text content
-                if (data.diff.text) {
-                    data.diff.text = enforceCharacterLimit(data.diff.text);
+    
+            // Initialize user's message buffer if not present
+            if (!userMessageBuffers.has(userId)) {
+                userMessageBuffers.set(userId, '');
+            }
+    
+            let userMessage = userMessageBuffers.get(userId);
+            let diff = data.diff;
+    
+            if (diff) {
+                // Enforce character limits
+                if (diff.text) {
+                    diff.text = enforceCharacterLimit(diff.text);
                 }
-                
-                // Broadcast the update to other users in the room
-                socket.to(socket.roomId).emit('chat update', {
-                    userId,
-                    username,
-                    diff: data.diff
-                });
-                
-                // If this is a full replacement, update any tracking of the last message
-                if (data.diff.type === 'full-replace') {
-                    // You might want to store this in the room state or user session
-                    socket.handshake.session.lastMessage = data.diff.text;
-                    socket.handshake.session.save();
+    
+                // Apply the diff to the user's message buffer
+                switch (diff.type) {
+                    case 'full-replace':
+                        userMessage = diff.text;
+                        break;
+                    case 'add':
+                        userMessage = userMessage.slice(0, diff.index) + diff.text + userMessage.slice(diff.index);
+                        break;
+                    case 'delete':
+                        userMessage = userMessage.slice(0, diff.index) + userMessage.slice(diff.index + diff.count);
+                        break;
+                    case 'replace':
+                        userMessage = userMessage.slice(0, diff.index) + diff.text + userMessage.slice(diff.index + diff.text.length);
+                        break;
+                }
+    
+                // Update the message buffer
+                userMessageBuffers.set(userId, userMessage);
+    
+                if (ENABLE_WORD_FILTER) {
+                    // Check for offensive words
+                    const filterResult = wordFilter.checkText(userMessage);
+    
+                    if (filterResult.hasOffensiveWord) {
+                        // Offensive word detected
+                        // Remove offensive word from the user's message buffer
+                        userMessage = wordFilter.filterText(userMessage);
+                        userMessageBuffers.set(userId, userMessage);
+    
+                        // Notify all clients to update the user's message
+                        io.to(socket.roomId).emit('offensive word detected', {
+                            userId,
+                            filteredMessage: userMessage,
+                        });
+                    } else {
+                        // No offensive words, broadcast the diff as usual
+                        socket.to(socket.roomId).emit('chat update', {
+                            userId,
+                            username,
+                            diff: diff,
+                        });
+                    }
+                } else {
+                    // Word filter is disabled, broadcast the diff as usual
+                    socket.to(socket.roomId).emit('chat update', {
+                        userId,
+                        username,
+                        diff: diff,
+                    });
                 }
             }
         }
@@ -392,7 +482,11 @@ io.on('connection', (socket) => {
     socket.on('disconnect', async () => {
         const userId = socket.handshake.session.userId;
         await leaveRoom(socket, userId);
-        users.delete(userId);  // Remove user from the active users map
+
+        // **Clean up user's message buffer**
+        userMessageBuffers.delete(userId);
+
+        users.delete(userId);
     });
 });
 
@@ -423,6 +517,10 @@ function joinRoom(socket, roomId, userId) {
     // Initialize users array if it doesn't exist
     if (!room.users) {
         room.users = [];
+    }
+
+    if (!room.votes) {
+        room.votes = {};
     }
 
     // Remove the user from the room if they're already in it
@@ -478,7 +576,21 @@ async function leaveRoom(socket, userId) {
     if (socket.roomId) {
         const room = rooms.get(socket.roomId);
         if (room) {
-            room.users = room.users.filter(user => user.id !== userId);  // Remove the user from the room
+            // Remove the user from the room
+            room.users = room.users.filter(user => user.id !== userId);
+
+            // Remove votes cast by the user
+            delete room.votes[userId];
+
+            // Remove votes against the user
+            for (let voterId in room.votes) {
+                if (room.votes[voterId] === userId) {
+                    delete room.votes[voterId];
+                }
+            }
+
+            // Notify others of updated votes
+            io.to(socket.roomId).emit('update votes', room.votes);
             socket.leave(socket.roomId);
             io.to(socket.roomId).emit('user left', userId);  // Notify others that the user has left
             updateRoom(socket.roomId);  // Update the room
@@ -548,6 +660,7 @@ function updateRoom(roomId) {
             type: room.type,
             layout: room.layout,
             users: room.users,
+            votes: room.votes, // Include votes
             accessCode: undefined  // Remove access code from client-side data
         });
     }

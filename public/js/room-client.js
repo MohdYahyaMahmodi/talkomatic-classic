@@ -26,6 +26,8 @@ let currentUserId = '';
 let currentRoomLayout = 'horizontal'; // Default room layout
 let lastSentMessage = ''; // Last message sent by the current user
 let currentRoomName = '';
+let chatInput = null;
+const mutedUsers = new Set();
 
 // DOM elements for sound effects
 const joinSound = document.getElementById('joinSound'); // Sound for user joining
@@ -107,6 +109,29 @@ socket.on('access code required', () => {
     }
 });
 
+socket.on('update votes', (votes) => {
+    document.querySelectorAll('.chat-row').forEach(row => {
+        const userId = row.dataset.userId;
+        const voteButton = row.querySelector('.vote-button');
+
+        if (voteButton) {
+            const votesAgainstUser = Object.values(votes).filter(v => v === userId).length;
+            voteButton.innerHTML = `👎 ${votesAgainstUser}`;
+
+            if (votes[currentUserId] === userId) {
+                voteButton.classList.add('voted');
+            } else {
+                voteButton.classList.remove('voted');
+            }
+        }
+    });
+});
+
+socket.on('kicked', () => {
+    alert('You have been removed from the room by a majority vote.');
+    window.location.href = '/index.html';
+});
+
 /**
  * Notifies the user that the room is full and redirects to the lobby.
  */
@@ -176,6 +201,25 @@ socket.on('chat update', (data) => {
     displayChatMessage(data); // Display the received chat message
 });
 
+/**
+ * Handles offensive words detected by the server.
+ * @param {Object} data - Contains userId and the filteredMessage.
+ */
+socket.on('offensive word detected', (data) => {
+    const { userId, filteredMessage } = data;
+
+    const chatInput = document.querySelector(`.chat-row[data-user-id="${userId}"] .chat-input`);
+    if (!chatInput) return;
+
+    // Replace the chat input value with the filtered message
+    chatInput.value = filteredMessage.slice(0, MAX_MESSAGE_LENGTH);
+
+    // If it's the current user, update the last sent message
+    if (userId === currentUserId) {
+        lastSentMessage = filteredMessage;
+    }
+});
+
 // ============================================================================
 // Room and Chat UI Updates
 // ----------------------------------------------------------------------------
@@ -203,21 +247,36 @@ function updateRoomInfo(data) {
     }
 }
 
+function adjustVoteButtonVisibility() {
+    const userCount = document.querySelectorAll('.chat-row').length;
+
+    document.querySelectorAll('.chat-row').forEach(row => {
+        const userId = row.dataset.userId;
+        const voteButton = row.querySelector('.vote-button');
+
+        if (voteButton) {
+            if (userCount >= 3 && userId !== currentUserId) {
+                voteButton.style.display = 'inline-block';
+            } else {
+                voteButton.style.display = 'none';
+            }
+        }
+    });
+}
+
+
 /**
  * Adds a user to the room UI.
  * @param {Object} user - The user data to add to the room.
  */
 function addUserToRoom(user) {
     const chatContainer = document.querySelector('.chat-container');
-    if (!chatContainer) {
-        console.error('Chat container not found');
-        return;
-    }
+    if (!chatContainer) return;
 
     const chatRow = document.createElement('div');
     chatRow.classList.add('chat-row');
     if (user.id === currentUserId) {
-        chatRow.classList.add('current-user'); // Highlight the current user's row
+        chatRow.classList.add('current-user');
     }
     chatRow.dataset.userId = user.id;
 
@@ -225,15 +284,82 @@ function addUserToRoom(user) {
     userInfoSpan.classList.add('user-info');
     userInfoSpan.textContent = `${user.username} / ${user.location}`;
 
-    const chatInput = document.createElement('textarea');
-    chatInput.classList.add('chat-input');
-    if (user.id !== currentUserId) {
-        chatInput.readOnly = true; // Make input read-only for other users
+    // Create mute button
+    const muteButton = document.createElement('button');
+    muteButton.classList.add('mute-button');
+    muteButton.innerHTML = '🔊';
+    muteButton.style.display = 'none';
+
+    // Add click handler for mute button
+    muteButton.addEventListener('click', () => {
+        if (mutedUsers.has(user.id)) {
+            mutedUsers.delete(user.id);
+            muteButton.innerHTML = '🔊';
+            muteButton.classList.remove('muted');
+            // Show current chat content
+            const chatInput = chatRow.querySelector('.chat-input');
+            chatInput.style.opacity = '1';
+        } else {
+            mutedUsers.add(user.id);
+            muteButton.innerHTML = '🔇';
+            muteButton.classList.add('muted');
+            // Hide chat content
+            const chatInput = chatRow.querySelector('.chat-input');
+            chatInput.style.opacity = '0.3';
+        }
+    });
+
+    // Create vote button
+    const voteButton = document.createElement('button');
+    voteButton.classList.add('vote-button');
+    voteButton.innerHTML = '👎 0';
+    voteButton.style.display = 'none';
+
+    voteButton.addEventListener('click', () => {
+        socket.emit('vote', { targetUserId: user.id });
+    });
+
+    // Add buttons to user info
+    userInfoSpan.appendChild(muteButton);
+    userInfoSpan.appendChild(voteButton);
+
+    const newChatInput = document.createElement('textarea');
+    newChatInput.classList.add('chat-input');
+    
+    if (user.id === currentUserId) {
+        chatInput = newChatInput;
+    } else {
+        newChatInput.readOnly = true;
+        // Apply muted state if user is muted
+        if (mutedUsers.has(user.id)) {
+            newChatInput.style.opacity = '0.3';
+        }
     }
 
     chatRow.appendChild(userInfoSpan);
-    chatRow.appendChild(chatInput);
+    chatRow.appendChild(newChatInput);
     chatContainer.appendChild(chatRow);
+    
+    adjustVoteButtonVisibility();
+    adjustMuteButtonVisibility();
+}
+
+function adjustMuteButtonVisibility() {
+    document.querySelectorAll('.chat-row').forEach(row => {
+        const userId = row.dataset.userId;
+        const muteButton = row.querySelector('.mute-button');
+
+        if (muteButton && userId !== currentUserId) {
+            muteButton.style.display = 'inline-block';
+            // Restore muted state if user was previously muted
+            if (mutedUsers.has(userId)) {
+                muteButton.innerHTML = '🔇';
+                muteButton.classList.add('muted');
+                const chatInput = row.querySelector('.chat-input');
+                chatInput.style.opacity = '0.3';
+            }
+        }
+    });
 }
 
 /**
@@ -254,50 +380,48 @@ function removeUserFromRoom(userId) {
  */
 function updateRoomUI(roomData) {
     const chatContainer = document.querySelector('.chat-container');
-    if (!chatContainer) {
-        console.error('Chat container not found');
-        return;
-    }
+    if (!chatContainer) return;
 
-    // Store current input values and focus state
     const currentInputs = new Map();
     let focusedUserId = null;
+    
     document.querySelectorAll('.chat-row').forEach(row => {
         const userId = row.dataset.userId;
         const input = row.querySelector('.chat-input');
         if (input) {
-            currentInputs.set(userId, input.value); // Save current input values
+            currentInputs.set(userId, input.value);
             if (document.activeElement === input) {
-                focusedUserId = userId; // Track focused input
+                focusedUserId = userId;
             }
         }
     });
 
-    // Clear existing chat rows
     while (chatContainer.firstChild) {
         chatContainer.removeChild(chatContainer.firstChild);
     }
 
-    // Recreate chat rows for each user in the room
+    chatInput = null;
+
     if (roomData.users && Array.isArray(roomData.users)) {
         roomData.users.forEach(user => {
-            addUserToRoom(user); // Add the user to the UI
-            // Restore input value and focus
+            addUserToRoom(user);
+            
             if (currentInputs.has(user.id)) {
                 const newInput = document.querySelector(`.chat-row[data-user-id="${user.id}"] .chat-input`);
                 if (newInput) {
-                    newInput.value = currentInputs.get(user.id); // Restore input
+                    newInput.value = currentInputs.get(user.id);
                     if (user.id === focusedUserId) {
-                        newInput.focus(); // Restore focus
+                        newInput.focus();
                     }
                 }
             }
         });
-    } else {
-        console.warn('No users data available');
     }
-    adjustLayout(); // Adjust the layout after updating the room
-    updateInviteLink(); // Update the invite link
+
+    adjustLayout();
+    adjustVoteButtonVisibility();
+    adjustMuteButtonVisibility();
+    updateInviteLink();
 }
 
 /**
@@ -305,15 +429,16 @@ function updateRoomUI(roomData) {
  * @param {Object} data - The chat message data from the server.
  */
 function displayChatMessage(data) {
+    // Don't update chat for muted users
+    if (mutedUsers.has(data.userId)) return;
+
     const chatInput = document.querySelector(`.chat-row[data-user-id="${data.userId}"] .chat-input`);
     if (!chatInput) return;
 
     if (data.diff) {
         if (data.diff.type === 'full-replace') {
-            // Handle complete text replacement
             chatInput.value = data.diff.text.slice(0, MAX_MESSAGE_LENGTH);
         } else {
-            // Handle incremental changes
             const currentText = chatInput.value;
             let newText;
             switch (data.diff.type) {
@@ -447,18 +572,17 @@ function getDiff(oldStr, newStr) {
 document.querySelector('.chat-container').addEventListener('input', (e) => {
     if (e.target.classList.contains('chat-input') && e.target.closest('.chat-row').dataset.userId === currentUserId) {
         const currentMessage = e.target.value;
-        
-        // Enforce character limit
+
         if (currentMessage.length > MAX_MESSAGE_LENGTH) {
             e.target.value = currentMessage.slice(0, MAX_MESSAGE_LENGTH);
             return;
         }
 
         const diff = getDiff(lastSentMessage, currentMessage);
-        
+
         if (diff) {
-            socket.emit('chat update', { diff, index: diff.index }); // Send chat update to server
-            lastSentMessage = currentMessage; // Update last sent message
+            socket.emit('chat update', { diff, index: diff.index });
+            lastSentMessage = currentMessage;
         }
     }
 });

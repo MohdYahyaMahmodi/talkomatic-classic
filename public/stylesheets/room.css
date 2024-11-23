@@ -178,7 +178,52 @@
     padding: 8px;
     color: #ffffff;
     background-color: #616161;
+    display: flex;
+    align-items: center;
   }
+
+  .vote-button {
+    background: none;
+    border: none;
+    color: red;
+    font-size: 16px;
+    cursor: pointer;
+    margin-left: auto; /* Push it to the right */
+}
+
+/* Style when the user has voted for this user */
+.vote-button.voted {
+    color: darkred;
+    font-weight: bold;
+}
+
+/* Adjust vote button visibility */
+.vote-button {
+    display: none; /* Initially hidden */
+}
+
+.mute-button {
+  margin-left: 8px;
+  margin-right: 4px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #414141;
+  transition: background-color 0.2s ease;
+}
+
+.mute-button.muted {
+  background: #ff0000;
+}
+
+.mute-button:hover {
+  background: #222222;
+}
+
+.mute-button:active {
+  background: #ff9999;
+}
   
   /* Chat input box for typing messages */
   .chat-input {
