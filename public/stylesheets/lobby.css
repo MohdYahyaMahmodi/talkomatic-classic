@@ -671,6 +671,33 @@ body, html {
   line-height: 1.5;
 }
 
+.creator {
+  color: #ffffff;  /* Dark gray text */
+  font-size: 14px;
+}
+
+.creator-link {
+  color: #ffffff;  /* Match the text color */
+  text-decoration: none;  /* Remove default underline */
+  transition: all 0.2s ease;  /* Smooth transition for hover effect */
+}
+
+.creator-link:visited {
+  color: #ffffff;  /* Ensure visited links stay the same color */
+}
+
+.creator-link:hover {
+  text-decoration: underline;  /* Add underline on hover */
+  color: #c7c7c7;  /* Slightly lighter on hover */
+}
+
+/* Optional: Add focus state for accessibility */
+.creator-link:focus {
+  outline: 2px solid #0066cc;
+  outline-offset: 2px;
+  text-decoration: underline;
+}
+
 /* Responsive Grid Layouts */
 @media (min-width: 768px) {
   .room-type-info {
