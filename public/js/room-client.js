@@ -55,6 +55,38 @@ function playLeaveSound() {
     }
 }
 
+function updateVotesUI(votes) {
+    document.querySelectorAll('.chat-row').forEach(row => {
+        const userId = row.dataset.userId;
+        const voteButton = row.querySelector('.vote-button');
+
+        if (voteButton) {
+            const votesAgainstUser = Object.values(votes).filter(v => v === userId).length;
+            voteButton.innerHTML = `👎 ${votesAgainstUser}`;
+
+            if (votes[currentUserId] === userId) {
+                voteButton.classList.add('voted');
+            } else {
+                voteButton.classList.remove('voted');
+            }
+        }
+    });
+}
+
+function updateCurrentMessages(messages) {
+    Object.keys(messages).forEach(userId => {
+        const chatInput = document.querySelector(`.chat-row[data-user-id="${userId}"] .chat-input`);
+        if (chatInput) {
+            chatInput.value = messages[userId].slice(0, MAX_MESSAGE_LENGTH);
+
+            // If the message is from the current user, update lastSentMessage
+            if (userId === currentUserId) {
+                lastSentMessage = messages[userId];
+            }
+        }
+    });
+}
+
 /**
  * Initializes the room by extracting the room ID from the URL and joining the room.
  * If no room ID is found, redirects to the lobby.
@@ -110,21 +142,7 @@ socket.on('access code required', () => {
 });
 
 socket.on('update votes', (votes) => {
-    document.querySelectorAll('.chat-row').forEach(row => {
-        const userId = row.dataset.userId;
-        const voteButton = row.querySelector('.vote-button');
-
-        if (voteButton) {
-            const votesAgainstUser = Object.values(votes).filter(v => v === userId).length;
-            voteButton.innerHTML = `👎 ${votesAgainstUser}`;
-
-            if (votes[currentUserId] === userId) {
-                voteButton.classList.add('voted');
-            } else {
-                voteButton.classList.remove('voted');
-            }
-        }
-    });
+    updateVotesUI(votes);
 });
 
 socket.on('kicked', () => {
@@ -153,6 +171,17 @@ socket.on('room joined', (data) => {
     currentRoomName = data.roomName;
     updateRoomInfo(data); // Update room info on UI
     updateRoomUI(data); // Update room layout on UI
+
+    // Update votes
+    if (data.votes) {
+        updateVotesUI(data.votes);
+    }
+
+    // Update current messages
+    if (data.currentMessages) {
+        updateCurrentMessages(data.currentMessages);
+    }
+
     updateInviteLink(); // Update the invite link
 });
 
@@ -191,6 +220,11 @@ socket.on('room update', (roomData) => {
     currentRoomLayout = roomData.layout || currentRoomLayout; // Update room layout if provided
     updateRoomInfo(roomData); // Update room info on UI
     updateRoomUI(roomData); // Update room layout on UI
+
+    // Update votes
+    if (roomData.votes) {
+        updateVotesUI(roomData.votes);
+    }
 });
 
 /**
@@ -535,28 +569,20 @@ function handleViewportChange() {
  * @returns {Object|null} The diff object (add, delete, or replace) or null if no change.
  */
 function getDiff(oldStr, newStr) {
-    // If the strings are completely different or there's a large change,
-    // treat it as a full replacement
-    if (oldStr.length === 0 || newStr.length === 0 || 
-        Math.abs(oldStr.length - newStr.length) > Math.min(oldStr.length, newStr.length) / 2) {
-        return { type: 'full-replace', text: newStr };
+    if (oldStr === newStr) return null; // No change
+
+    // If the change is an addition at the end
+    if (newStr.startsWith(oldStr)) {
+        return { type: 'add', text: newStr.slice(oldStr.length), index: oldStr.length };
     }
-    
-    let i = 0;
-    while (i < oldStr.length && i < newStr.length && oldStr[i] === newStr[i]) i++;
-    
-    if (i === oldStr.length && i === newStr.length) return null; // No change
-    
-    if (i === oldStr.length) {
-        // Addition
-        return { type: 'add', text: newStr.slice(i), index: i };
-    } else if (i === newStr.length) {
-        // Deletion
-        return { type: 'delete', count: oldStr.length - i, index: i };
-    } else {
-        // Incremental replacement
-        return { type: 'replace', text: newStr.slice(i), index: i };
+
+    // If the change is a deletion from the end
+    if (oldStr.startsWith(newStr)) {
+        return { type: 'delete', count: oldStr.length - newStr.length, index: newStr.length };
     }
+
+    // Else, treat it as a full replacement
+    return { type: 'full-replace', text: newStr };
 }
 
 // ============================================================================

@@ -542,7 +542,12 @@ function joinRoom(socket, roomId, userId) {
             roomName: room.name,
             roomType: room.type
         });
+
         updateRoom(roomId);  // Update the room with new user data
+
+        // Get current messages for all users in the room
+        const currentMessages = getCurrentMessages(room.users);
+
         socket.emit('room joined', {
             roomId: roomId,
             userId,
@@ -551,9 +556,11 @@ function joinRoom(socket, roomId, userId) {
             roomName: room.name,
             roomType: room.type,
             users: room.users,
-            layout: room.layout
+            layout: room.layout,
+            votes: room.votes,
+            currentMessages: currentMessages
         });
-        socket.leave('lobby');  // Leave the lobby once the user has joined a room
+        socket.leave('lobby');  // Leave the lobby once the user has joined the room
 
         // Clear room deletion timer if the room is now active
         if (roomDeletionTimers.has(roomId)) {
@@ -564,6 +571,14 @@ function joinRoom(socket, roomId, userId) {
 
     // Save rooms after user joins
     saveRooms();
+}
+
+function getCurrentMessages(users) {
+    const messages = {};
+    users.forEach(user => {
+        messages[user.id] = userMessageBuffers.get(user.id) || '';
+    });
+    return messages;
 }
 
 /*
