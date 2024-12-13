@@ -35,6 +35,9 @@ const WordFilter = require('./public/js/word-filter.js');
 
 const wordFilter = new WordFilter(path.join(__dirname, 'public', 'js', 'offensive_words.json'));
 
+const lastRoomCreationTimes = new Map(); // Maps userId to last creation timestamp
+const ROOM_CREATION_COOLDOWN = 30000; // 30 seconds cooldown, adjust as necessary
+
 // Initialize Express and HTTP server
 const app = express();
 const server = http.createServer(app);
@@ -269,23 +272,39 @@ io.on('connection', (socket) => {
 
     // Handle room creation
     socket.on('create room', (data) => {
+        const userId = socket.handshake.session.userId;
+        const now = Date.now();
+    
+        // Check when the user last created a room
+        const lastCreationTime = lastRoomCreationTimes.get(userId) || 0;
+        if (now - lastCreationTime < ROOM_CREATION_COOLDOWN) {
+            // User is creating rooms too fast
+            socket.emit('error', 'You are creating rooms too frequently. Please wait a bit before creating another room.');
+            return;
+        }
+    
+        // Update last creation time
+        lastRoomCreationTimes.set(userId, now);
+    
+        // Proceed with original room creation logic
         let roomId;
         do {
-            roomId = generateRoomId();  // Generate a unique room ID
-        } while (rooms.has(roomId));  // Ensure the room ID is unique
-
+            roomId = generateRoomId();
+        } while (rooms.has(roomId));
+    
         const newRoom = {
             id: roomId,
-            name: enforceRoomNameLimit(data.name),  // Enforce room name length limit
+            name: enforceRoomNameLimit(data.name),
             type: data.type,
             layout: data.layout,
             users: [],
-            accessCode: data.type === 'semi-private' ? data.accessCode : null,  // Set access code for semi-private rooms
+            accessCode: data.type === 'semi-private' ? data.accessCode : null,
         };
-        rooms.set(roomId, newRoom);  // Add new room to the rooms map
-        socket.emit('room created', roomId);  // Notify the user that the room was created
-        updateLobby();  // Update the lobby
-        saveRooms();  // Save the rooms to persistent storage
+        rooms.set(roomId, newRoom);
+    
+        socket.emit('room created', roomId);
+        updateLobby();
+        saveRooms();
     });
 
     // Handle a user joining a room
@@ -529,6 +548,9 @@ function joinRoom(socket, roomId, userId) {
         });
 
         updateRoom(roomId);  // Update the room with new user data
+        
+        // Update the lobby after the user joins the room
+        updateLobby();
 
         // Get current messages for all users in the room
         const currentMessages = getCurrentMessages(room.users);
@@ -576,38 +598,38 @@ async function leaveRoom(socket, userId) {
     if (socket.roomId) {
         const room = rooms.get(socket.roomId);
         if (room) {
-            // Remove the user from the room
+            // Remove user from room
             room.users = room.users.filter(user => user.id !== userId);
 
-            // Remove votes cast by the user
+            // Remove votes related to the user
             delete room.votes[userId];
-
-            // Remove votes against the user
             for (let voterId in room.votes) {
                 if (room.votes[voterId] === userId) {
                     delete room.votes[voterId];
                 }
             }
 
-            // Notify others of updated votes
             io.to(socket.roomId).emit('update votes', room.votes);
             socket.leave(socket.roomId);
-            io.to(socket.roomId).emit('user left', userId);  // Notify others that the user has left
-            updateRoom(socket.roomId);  // Update the room
+            io.to(socket.roomId).emit('user left', userId);
+            updateRoom(socket.roomId);
 
+            // If the room is now empty, start the deletion timer
+            // This applies to ALL room types, including semi-private.
             if (room.users.length === 0) {
-                startRoomDeletionTimer(socket.roomId);  // Start deletion timer if no users remain
+                startRoomDeletionTimer(socket.roomId);
             }
         }
+
         socket.roomId = null;
         socket.handshake.session.currentRoom = null;
         await new Promise((resolve) => {
-            socket.handshake.session.save(resolve);  // Save the session changes
+            socket.handshake.session.save(resolve);
         });
-        socket.join('lobby');  // Rejoin the lobby
+        socket.join('lobby');
     }
-    updateLobby();  // Update the lobby for all users
-    await saveRooms();  // Save the room data
+    updateLobby();
+    await saveRooms();
 }
 
 /*
