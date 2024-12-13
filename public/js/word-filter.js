@@ -109,9 +109,19 @@ class WordFilter {
      * @param {string} text - The input text to normalize.
      * @returns {string} The normalized alphanumeric string.
      */
-    stringToAlphanumeric(string) {
-        var normal = string.normalize("NFKD").replace(/\s+/g, " ").trim();
-        return normal.split("").filter(char => /[A-Za-z0-9\s\p{P}]/ugm.test(char)).join("");
+    stringToAlphanumeric(text) {
+        let result = '';
+        for (let char of text) {
+            let lowerChar = char.toLowerCase();
+            lowerChar = lowerChar.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // Remove diacritics
+            let mappedChar = this.obfuscationMap[lowerChar] || lowerChar;
+            if (/[a-z0-9]/.test(mappedChar)) {
+                result += mappedChar;
+            } else {
+                // Ignore non-alphanumeric characters
+            }
+        }
+        return result;
     }
 
     checkText(text) {
