@@ -375,21 +375,6 @@ io.on('connection', (socket) => {
         await leaveRoom(socket, userId);
     });
 
-    // Rejoin room event handler
-    socket.on('rejoin room', (roomId) => {
-        const room = rooms.get(roomId);
-        if (room) {
-            const { username, location, userId } = socket.handshake.session;
-            if (username && location && userId) {
-                joinRoom(socket, roomId, userId);
-            } else {
-                socket.emit('signin required');
-            }
-        } else {
-            socket.emit('room not found');
-        }
-    });
-
     // Chat update handler for diff-based text changes
     socket.on('chat update', (data) => {
         if (socket.roomId) {
