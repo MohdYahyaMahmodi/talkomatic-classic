@@ -247,19 +247,34 @@ io.on('connection', (socket) => {
 
     // Handle user joining the lobby
     socket.on('join lobby', (data) => {
-        const username = enforceUsernameLimit(data.username);
-        const location = enforceLocationLimit(data.location || 'On The Web');
-        const userId = socket.handshake.sessionID;  // Use session ID as user ID
+        let username = enforceUsernameLimit(data.username || '');
+        let location = enforceLocationLimit(data.location || 'On The Web');
 
+        // Check offensive words before making any changes
+        if (ENABLE_WORD_FILTER) {
+            const usernameCheck = wordFilter.checkText(username);
+            if (usernameCheck.hasOffensiveWord) {
+                socket.emit('error', 'Your chosen name contains forbidden words. Please pick another.');
+                return; // Return immediately, no state changes
+            }
+
+            const locationCheck = wordFilter.checkText(location);
+            if (locationCheck.hasOffensiveWord) {
+                socket.emit('error', 'Your chosen location contains forbidden words. Please pick another.');
+                return; // Return immediately, no state changes
+            }
+        }
+
+        const userId = socket.handshake.sessionID;
         socket.handshake.session.username = username;
         socket.handshake.session.location = location;
         socket.handshake.session.userId = userId;
 
         socket.handshake.session.save((err) => {
             if (!err) {
-                users.set(userId, { id: userId, username, location });  // Add user to active users list
-                socket.join('lobby');  // Join the lobby room
-                updateLobby();  // Update lobby view for all users
+                users.set(userId, { id: userId, username, location });
+                socket.join('lobby');
+                updateLobby();
                 socket.emit('signin status', { isSignedIn: true, username, location, userId });
             }
         });
@@ -275,18 +290,26 @@ io.on('connection', (socket) => {
         const userId = socket.handshake.session.userId;
         const now = Date.now();
     
-        // Check when the user last created a room
+        // Check rate-limiting first
         const lastCreationTime = lastRoomCreationTimes.get(userId) || 0;
         if (now - lastCreationTime < ROOM_CREATION_COOLDOWN) {
-            // User is creating rooms too fast
             socket.emit('error', 'You are creating rooms too frequently. Please wait a bit before creating another room.');
             return;
         }
     
-        // Update last creation time
+        let roomName = enforceRoomNameLimit(data.name || '');
+        // Check offensive words before doing anything else
+        if (ENABLE_WORD_FILTER) {
+            const roomNameCheck = wordFilter.checkText(roomName);
+            if (roomNameCheck.hasOffensiveWord) {
+                socket.emit('error', 'Your chosen room name contains forbidden words. Please pick another.');
+                return; // Return immediately, no state changes
+            }
+        }
+    
+        // Passed all checks, now proceed to create the room
         lastRoomCreationTimes.set(userId, now);
     
-        // Proceed with original room creation logic
         let roomId;
         do {
             roomId = generateRoomId();
@@ -294,14 +317,14 @@ io.on('connection', (socket) => {
     
         const newRoom = {
             id: roomId,
-            name: enforceRoomNameLimit(data.name),
+            name: roomName,
             type: data.type,
             layout: data.layout,
             users: [],
             accessCode: data.type === 'semi-private' ? data.accessCode : null,
         };
-        rooms.set(roomId, newRoom);
     
+        rooms.set(roomId, newRoom);
         socket.emit('room created', roomId);
         updateLobby();
         saveRooms();
