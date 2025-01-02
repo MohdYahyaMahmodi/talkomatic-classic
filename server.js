@@ -297,7 +297,7 @@ io.on('connection', (socket) => {
             return;
         }
     
-        let roomName = enforceRoomNameLimit(data.name || '');
+        let roomName = enforceRoomNameLimit(data.name || 'Just Chatting');
         // Check offensive words before doing anything else
         if (ENABLE_WORD_FILTER) {
             const roomNameCheck = wordFilter.checkText(roomName);
