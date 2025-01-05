@@ -231,6 +231,19 @@ socket.on('signin status', (data) => {
     }
 });
 
+socket.on('disconnect', () => {
+    window.location.reload();
+});
+
+socket.on('connect_error', () => {
+    window.location.reload();
+});
+
+// Also handle if the server explicitly closes
+socket.on('connect_failed', () => {
+    window.location.reload();
+});
+
 socket.on('lobby update', (rooms) => {
     updateLobby(rooms); // Update the room list in the lobby
 });

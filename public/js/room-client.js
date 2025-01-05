@@ -124,6 +124,19 @@ function joinRoom(roomId, accessCode = null) {
 // updates.
 // ============================================================================
 
+socket.on('disconnect', () => {
+    window.location.reload();
+});
+
+socket.on('connect_error', () => {
+    window.location.reload();
+});
+
+// Also handle if the server explicitly closes
+socket.on('connect_failed', () => {
+    window.location.reload();
+});
+
 /**
  * Prompts the user for an access code if required by the room.
  */
