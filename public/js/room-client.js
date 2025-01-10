@@ -29,6 +29,9 @@ let currentRoomName = '';
 let chatInput = null;
 const mutedUsers = new Set();
 
+// NEW: Store incoming chat data for muted users so we can apply them after unmute
+const storedMessagesForMutedUsers = new Map();
+
 // DOM elements for sound effects
 const joinSound = document.getElementById('joinSound'); // Sound for user joining
 const leaveSound = document.getElementById('leaveSound'); // Sound for user leaving
@@ -340,13 +343,22 @@ function addUserToRoom(user) {
     // Add click handler for mute button
     muteButton.addEventListener('click', () => {
         if (mutedUsers.has(user.id)) {
+            // Unmute
             mutedUsers.delete(user.id);
             muteButton.innerHTML = '🔊';
             muteButton.classList.remove('muted');
             // Show current chat content
             const chatInput = chatRow.querySelector('.chat-input');
             chatInput.style.opacity = '1';
+
+            // Apply all stored updates for this user
+            const queued = storedMessagesForMutedUsers.get(user.id);
+            if (queued && queued.length) {
+                queued.forEach(data => displayChatMessage(data));
+                storedMessagesForMutedUsers.delete(user.id);
+            }
         } else {
+            // Mute
             mutedUsers.add(user.id);
             muteButton.innerHTML = '🔇';
             muteButton.classList.add('muted');
@@ -377,7 +389,7 @@ function addUserToRoom(user) {
         chatInput = newChatInput;
     } else {
         newChatInput.readOnly = true;
-        // Apply muted state if user is muted
+        // Apply muted state if user is already muted
         if (mutedUsers.has(user.id)) {
             newChatInput.style.opacity = '0.3';
         }
@@ -476,8 +488,14 @@ function updateRoomUI(roomData) {
  * @param {Object} data - The chat message data from the server.
  */
 function displayChatMessage(data) {
-    // Don't update chat for muted users
-    if (mutedUsers.has(data.userId)) return;
+    // If the user is muted, store this update for later instead of applying it now
+    if (mutedUsers.has(data.userId)) {
+        if (!storedMessagesForMutedUsers.has(data.userId)) {
+            storedMessagesForMutedUsers.set(data.userId, []);
+        }
+        storedMessagesForMutedUsers.get(data.userId).push(data);
+        return;
+    }
 
     const chatInput = document.querySelector(`.chat-row[data-user-id="${data.userId}"] .chat-input`);
     if (!chatInput) return;
