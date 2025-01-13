@@ -14,9 +14,9 @@
 // ============================================================================
 
 // DOM Element References
-const leftPanel = document.getElementById('leftPanel'); // Reference to the left panel (menu)
-const toggleButton = document.getElementById('toggleButton'); // Button to toggle the panel
-const hideMenuButton = document.getElementById('hideMenuButton'); // Button to hide the panel
+const leftPanel = document.getElementById('leftPanel');
+const toggleButton = document.getElementById('toggleButton');
+const hideMenuButton = document.getElementById('hideMenuButton');
 
 // Modal functionality
 const modal = document.getElementById('roomInfoModal');
@@ -25,81 +25,61 @@ const closeModal = document.querySelector('.close-modal');
 
 /**
  * Toggles the left panel open/closed state
- * ----------------------------------------------------------------------------
- * This function toggles the 'open' class on the left panel. When the panel is
- * open, the toggle button becomes invisible, and when it's closed, the button
- * becomes visible again.
  */
 function toggleLeftPanel() {
-    leftPanel.classList.toggle('open'); // Toggle the 'open' class
-    toggleButton.style.opacity = leftPanel.classList.contains('open') ? '0' : '1'; // Hide/show toggle button
+    leftPanel.classList.toggle('open');
+    toggleButton.style.opacity = leftPanel.classList.contains('open') ? '0' : '1';
 }
 
 /**
  * Hides the left panel
- * ----------------------------------------------------------------------------
- * This function closes the left panel by removing the 'open' class. After a
- * short delay (300ms) to allow for the close animation, the toggle button is
- * made visible again.
  */
 function hideLeftPanel() {
-    leftPanel.classList.remove('open'); // Remove the 'open' class
+    leftPanel.classList.remove('open');
     setTimeout(() => {
-        toggleButton.style.opacity = '1'; // Show the toggle button after panel closes
-    }, 300); // Delay to allow panel animation to complete
+        toggleButton.style.opacity = '1';
+    }, 300);
 }
 
 /**
  * Handles window resize events
- * ----------------------------------------------------------------------------
- * This function adjusts the visibility of the left panel and buttons based on
- * the window size. On larger screens (>992px), the left panel is hidden, and
- * the toggle button is also hidden. On smaller screens, the toggle button is
- * shown if the panel is not open.
  */
 function handleResize() {
     if (window.innerWidth > 992) {
-        leftPanel.classList.remove('open'); // Close panel on large screens
-        toggleButton.style.opacity = '0'; // Hide toggle button on large screens
-        hideMenuButton.style.display = 'none'; // Hide the "Hide Menu" button
+        leftPanel.classList.remove('open');
+        toggleButton.style.opacity = '0';
+        hideMenuButton.style.display = 'none';
     } else {
         if (!leftPanel.classList.contains('open')) {
-            toggleButton.style.opacity = '1'; // Show toggle button on smaller screens if panel is closed
+            toggleButton.style.opacity = '1';
         }
-        hideMenuButton.style.display = 'block'; // Show the "Hide Menu" button on smaller screens
+        hideMenuButton.style.display = 'block';
     }
 }
 
 /**
  * Handles clicks outside the left panel to close it
- * ----------------------------------------------------------------------------
- * This function checks if the user clicked outside the left panel or the toggle
- * button. If a click occurs outside the panel and the panel is open, it will
- * close the panel.
  * @param {Event} event - The click event
  */
 function handleOutsideClick(event) {
-    const isClickInside = leftPanel.contains(event.target) || toggleButton.contains(event.target); // Check if the click is inside the panel or toggle button
+    const isClickInside = leftPanel.contains(event.target) || toggleButton.contains(event.target);
     if (!isClickInside && leftPanel.classList.contains('open')) {
-        hideLeftPanel(); // Close panel if click is outside
+        hideLeftPanel();
     }
 }
 
-// Event Listeners
-document.addEventListener('click', handleOutsideClick); // Listen for clicks anywhere on the page
-window.addEventListener('resize', handleResize); // Listen for window resize events
-hideMenuButton.addEventListener('click', hideLeftPanel); // Listen for clicks on the "Hide Menu" button
-toggleButton.addEventListener('click', toggleLeftPanel); // Listen for clicks on the toggle button
+// Event Listeners for the panel
+document.addEventListener('click', handleOutsideClick);
+window.addEventListener('resize', handleResize);
+hideMenuButton.addEventListener('click', hideLeftPanel);
+toggleButton.addEventListener('click', toggleLeftPanel);
 
 /**
  * Initial Setup
- * ----------------------------------------------------------------------------
- * This function sets the initial state when the page loads. If the window is
- * smaller than or equal to 992px, the toggle button is made visible.
  */
 function init() {
     if (window.innerWidth <= 992) {
-        toggleButton.style.opacity = '1'; // Show toggle button if screen is small
+        toggleButton.style.opacity = '1';
     }
 }
 
@@ -120,7 +100,7 @@ function closeModalHandler() {
     modal.classList.remove('show');
     setTimeout(() => {
         modal.style.display = 'none';
-    }, 300); // Match the CSS transition duration
+    }, 300);
 }
 
 // Event listeners for modal
@@ -128,32 +108,130 @@ learnMoreBtn.addEventListener('click', (e) => {
     e.preventDefault();
     openModal();
 });
-
 closeModal.addEventListener('click', closeModalHandler);
-
-// Close modal when clicking outside
 modal.addEventListener('click', (e) => {
     if (e.target === modal) {
         closeModalHandler();
     }
 });
-
-// Close modal with Escape key
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && modal.classList.contains('show')) {
         closeModalHandler();
     }
 });
 
-// Wait for DOM to be fully loaded
-// Wait for DOM to be fully loaded
-document.addEventListener('DOMContentLoaded', function() {
-    // Function to check if browser is Firefox
-    function isFirefox() {
-        return navigator.userAgent.toLowerCase().includes('firefox');
+/**
+ * Helper: setCookie
+ * Sets a cookie with given name, value, and expiration in days
+ */
+function setCookie(name, value, days) {
+    const d = new Date();
+    d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
+    const expires = "expires=" + d.toUTCString();
+    document.cookie = name + "=" + value + ";" + expires + ";path=/";
+}
+
+/**
+ * Helper: getCookie
+ * Returns the cookie value or an empty string if not found
+ */
+function getCookie(name) {
+    const nameEQ = name + "=";
+    const ca = document.cookie.split(';');
+    for (let i = 0; i < ca.length; i++) {
+        let c = ca[i].trim();
+        if (c.indexOf(nameEQ) === 0) {
+            return c.substring(nameEQ.length, c.length);
+        }
+    }
+    return "";
+}
+
+/**
+ * Show a Toastr notification inviting the user to join Discord,
+ * once every 14 days or until they dismiss it.
+ */
+function showDiscordInviteNotification() {
+    // If cookie says "true", means user previously dismissed
+    if (getCookie('dismissedDiscordInvite') === 'true') {
+        return; // Do not show again
     }
 
-    // Configure toastr
+    // Configure Toastr for a sticky notification (until closed)
+    toastr.options = {
+        closeButton: true,
+        positionClass: "toast-top-right",
+        timeOut: 0,
+        extendedTimeOut: 0,
+        tapToDismiss: false,
+        preventDuplicates: false,
+        showDuration: 300,
+        hideDuration: 300,
+        showEasing: "swing",
+        hideEasing: "linear",
+        showMethod: "fadeIn",
+        hideMethod: "fadeOut"
+    };
+
+    const titleText = "Join Our Discord!";
+
+    // Build a small DOM fragment for the toast content
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '8px';
+
+    // A short description
+    const desc = document.createElement('div');
+    desc.textContent = "For community help, support, bug reports, or just to meet others!";
+    container.appendChild(desc);
+
+    // A styled button to open Discord
+    const button = document.createElement('button');
+    button.textContent = "Join Discord";
+    button.style.backgroundColor = '#5865F2';
+    button.style.color = '#FFF';
+    button.style.border = 'none';
+    button.style.padding = '6px 12px';
+    button.style.borderRadius = '4px';
+    button.style.cursor = 'pointer';
+    button.style.fontWeight = 'bold';
+
+    // Click => open the Discord link in new tab
+    button.addEventListener('click', (e) => {
+        e.stopPropagation(); // So clicking button won't also trigger toast click
+        window.open('https://discord.gg/NheE6JBr', '_blank');
+    });
+    container.appendChild(button);
+
+    // Convert container to HTML for Toastr
+    const contentHTML = container.outerHTML;
+
+    // Show an info toast
+    const $toast = toastr.info(contentHTML, titleText);
+
+    // If the user clicks anywhere on the toast (except the close button),
+    // open the Discord link in a new tab
+    if ($toast) {
+        $toast.on('click', function(e) {
+            // If user didn't click the close button, open the link
+            if (!$(e.target).hasClass('toast-close-button')) {
+                window.open('https://discord.gg/NheE6JBr', '_blank');
+            }
+        });
+    }
+
+    // When user clicks the X, set cookie for 14 days
+    if ($toast && $toast.find('.toast-close-button')) {
+        $toast.find('.toast-close-button').on('click', function() {
+            setCookie('dismissedDiscordInvite', 'true', 14);
+        });
+    }
+}
+
+// Run after DOM is fully loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Basic Toastr options (some overridden above)
     toastr.options = {
         closeButton: true,
         newestOnTop: true,
@@ -170,17 +248,10 @@ document.addEventListener('DOMContentLoaded', function() {
         hideMethod: "fadeOut"
     };
 
-    // Log browser info and show notification only if Firefox
-    console.log("Current browser user agent:", navigator.userAgent);
-    const isFirefoxBrowser = isFirefox();
-    console.log("Is Firefox?", isFirefoxBrowser);
-    
-    if (isFirefoxBrowser) {
-        setTimeout(() => {
-            toastr.warning("Talkomatic Classic does not work on Firefox browsers currently");
-            console.log("Firefox warning notification shown");
-        }, 1000);
-    }
+    // Show the Discord invite after a brief delay
+    setTimeout(() => {
+        showDiscordInviteNotification();
+    }, 2000);
 });
 
 // Run initial setup
