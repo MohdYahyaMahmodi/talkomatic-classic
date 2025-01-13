@@ -44,7 +44,7 @@ const ENABLE_WORD_FILTER = true;
 const allowedOrigins = [
     'http://localhost:3000', 
     'http://127.0.0.1:3000', 
-    'https://classic.talkomatic.co',
+    'https://classic.talkomatic.co'
 ];
 
 const corsOptions = {
@@ -73,8 +73,16 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-            "script-src": ["'self'", (req, res) => `'nonce-${res.locals.nonce}'`],
-            "style-src": ["'self'", "'unsafe-inline'"],
+            "script-src": [
+                "'self'", 
+                (req, res) => `'nonce-${res.locals.nonce}'`,
+                "https://cdnjs.cloudflare.com"
+            ],
+            "style-src": [
+                "'self'", 
+                "'unsafe-inline'",
+                "https://cdnjs.cloudflare.com"
+            ],
         },
     },
 }));
@@ -95,7 +103,7 @@ const sessionMiddleware = session({
     cookie: { 
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
-        maxAge: 14 * 24 * 60 * 60 * 1000 
+        maxAge: 14 * 24 * 60 * 60 * 1000,
     }
 });
 app.use(sessionMiddleware);
@@ -244,6 +252,9 @@ async function leaveRoom(socket, userId) {
         const room = rooms.get(socket.roomId);
         if (room) {
             room.users = room.users.filter(user => user.id !== userId);
+
+            // (NEW) Refresh lastActiveTime
+            room.lastActiveTime = Date.now();
             
             // Remove votes from or for this user
             if (room.votes) {
@@ -315,6 +326,8 @@ function joinRoom(socket, roomId, userId) {
         username: socket.handshake.session.username,
         location: socket.handshake.session.location,
     });
+    // (NEW) Refresh lastActiveTime
+    room.lastActiveTime = Date.now();
     socket.roomId = roomId;
     socket.handshake.session.currentRoom = roomId;
     socket.handshake.session.save(() => {
@@ -487,9 +500,10 @@ io.on('connection', (socket) => {
                 users: [],
                 accessCode: roomType === 'semi-private' ? data.accessCode : null,
                 votes: {},
-                // NEW: track banned or kicked users
                 bannedUserIds: new Set(),
-            };
+                // NEW: track last active time
+                lastActiveTime: Date.now(),
+            };            
             rooms.set(roomId, newRoom);
 
             socket.emit('room created', roomId);
@@ -726,6 +740,24 @@ io.on('connection', (socket) => {
         }
     });
 });
+
+// (NEW) Periodically remove any rooms that have 0 users and stayed empty for >15s
+setInterval(() => {
+    for (const [roomId, room] of rooms.entries()) {
+        if (room.users.length === 0) {
+            // How long has it been empty?
+            const timeSinceLastActive = Date.now() - (room.lastActiveTime || 0);
+            if (timeSinceLastActive > 15000) {
+                // More than 15s empty => remove
+                rooms.delete(roomId);
+                roomDeletionTimers.delete(roomId); // if you wish to ensure no leftover timers
+                updateLobby();
+                saveRooms();
+                console.log(`Periodic cleanup: removed empty room ${roomId}`);
+            }
+        }
+    }
+}, 10_000);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

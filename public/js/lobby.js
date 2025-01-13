@@ -145,5 +145,43 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+// Wait for DOM to be fully loaded
+// Wait for DOM to be fully loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Function to check if browser is Firefox
+    function isFirefox() {
+        return navigator.userAgent.toLowerCase().includes('firefox');
+    }
+
+    // Configure toastr
+    toastr.options = {
+        closeButton: true,
+        newestOnTop: true,
+        positionClass: "toast-top-right",
+        timeOut: 0,
+        extendedTimeOut: 0,
+        tapToDismiss: true,
+        preventDuplicates: false,
+        showDuration: 300,
+        hideDuration: 300,
+        showEasing: "swing",
+        hideEasing: "linear",
+        showMethod: "fadeIn",
+        hideMethod: "fadeOut"
+    };
+
+    // Log browser info and show notification only if Firefox
+    console.log("Current browser user agent:", navigator.userAgent);
+    const isFirefoxBrowser = isFirefox();
+    console.log("Is Firefox?", isFirefoxBrowser);
+    
+    if (isFirefoxBrowser) {
+        setTimeout(() => {
+            toastr.warning("Talkomatic Classic does not work on Firefox browsers currently");
+            console.log("Firefox warning notification shown");
+        }, 1000);
+    }
+});
+
 // Run initial setup
-init(); // Initialize when the page loads
+init();
