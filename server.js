@@ -75,13 +75,11 @@ app.use(helmet({
             ...helmet.contentSecurityPolicy.getDefaultDirectives(),
             "script-src": [
                 "'self'", 
-                (req, res) => `'nonce-${res.locals.nonce}'`,
-                "https://cdnjs.cloudflare.com"
+                (req, res) => `'nonce-${res.locals.nonce}'`
             ],
             "style-src": [
                 "'self'", 
-                "'unsafe-inline'",
-                "https://cdnjs.cloudflare.com"
+                "'unsafe-inline'"
             ],
         },
     },
