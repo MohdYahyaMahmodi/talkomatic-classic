@@ -122,6 +122,34 @@
     font-family: talkoSS, Arial, sans-serif;
     white-space: nowrap;
   }
+
+  /* Mute Toggle Button Styles */
+  .mute-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+    margin-left: 10px;
+    margin-right: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease;
+  }
+
+  .mute-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+  }
+
+  .mute-toggle:active {
+    background-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .mute-toggle img {
+    width: 24px;
+    height: 24px;
+  }
   
   /* Second navbar specific styles: room info */
   .second-navbar {
@@ -387,6 +415,14 @@
     #copyInviteLink img {
       width: 16px;
       height: 16px;
+    }
+
+    .navbar-left {
+      display: none;
+    }
+
+    .navbar-center {
+      justify-content: flex-start;
     }
   }
   

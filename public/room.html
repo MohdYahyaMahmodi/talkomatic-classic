@@ -49,7 +49,7 @@
     <!-- Page container for the entire layout -->
     <div class="page-container">
         
-        <!-- Top navigation bar containing date, time, brand name, and leave room option -->
+        <!-- Top navigation bar containing date, time, brand name, leave room option, and mute toggle -->
         <nav class="top-navbar">
             <!-- Left section of the navbar containing date and time -->
             <div class="navbar-section navbar-left">
@@ -65,9 +65,17 @@
                 <div class="brand">Talkomatic™</div>
             </div>
 
-            <!-- Right section of the navbar with a button to leave the chat room -->
+            <!-- Right section of the navbar with buttons -->
             <div class="navbar-section navbar-right">
+
+                <!-- Mute Toggle Button -->
+                <button id="muteToggle" class="mute-toggle" aria-label="Toggle Sound">
+                    <img src="images/icons/sound-on.svg" alt="Sound On" id="muteIcon">
+                </button>
+                
+                <!-- Leave Room Button -->
                 <div class="leave-room">Leave Room</div>
+                
             </div>
         </nav>
 

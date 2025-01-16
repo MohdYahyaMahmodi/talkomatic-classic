@@ -18,7 +18,6 @@
 
 const socket = io(); // Initialize Socket.IO connection
 
-// Variables to store current room, user, and message information
 let currentUsername = '';
 let currentLocation = '';
 let currentRoomId = '';
@@ -36,6 +35,10 @@ const storedMessagesForMutedUsers = new Map();
 const joinSound = document.getElementById('joinSound'); // Sound for user joining
 const leaveSound = document.getElementById('leaveSound'); // Sound for user leaving
 let soundEnabled = true; // Flag to control sound effects
+
+// NEW: Mute Toggle Elements
+const muteToggleButton = document.getElementById('muteToggle');
+const muteIcon = document.getElementById('muteIcon');
 
 // Maximum allowed length for chat messages
 const MAX_MESSAGE_LENGTH = 5000;
@@ -55,6 +58,25 @@ function playJoinSound() {
 function playLeaveSound() {
     if (soundEnabled) {
         leaveSound.play().catch(error => console.error('Error playing leave sound:', error));
+    }
+}
+
+function toggleMute() {
+    soundEnabled = !soundEnabled;
+    localStorage.setItem('soundEnabled', JSON.stringify(soundEnabled)); // Persist the state
+    updateMuteIcon();
+}
+
+/**
+ * Updates the mute icon based on the current soundEnabled state.
+ */
+function updateMuteIcon() {
+    if (soundEnabled) {
+        muteIcon.src = 'images/icons/sound-on.svg';
+        muteIcon.alt = 'Sound On';
+    } else {
+        muteIcon.src = 'images/icons/sound-off.svg';
+        muteIcon.alt = 'Sound Off';
     }
 }
 
@@ -686,7 +708,20 @@ window.addEventListener('load', () => {
     updateDateTime(); // Update the date and time display
     adjustLayout(); // Adjust the layout based on current screen size
     updateInviteLink(); // Update the invite link
-    document.getElementById('copyInviteLink').addEventListener('click', copyInviteLink); // Set up invite link copy functionality
+    
+    // Set up invite link copy functionality
+    document.getElementById('copyInviteLink').addEventListener('click', copyInviteLink);
+    
+    // Initialize Mute State from localStorage
+    const savedMuteState = localStorage.getItem('soundEnabled');
+    if (savedMuteState !== null) {
+        soundEnabled = JSON.parse(savedMuteState);
+        updateMuteIcon();
+    }
+
+    // Set up Mute Toggle Button Click Event
+    muteToggleButton.addEventListener('click', toggleMute);
+    
     if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', handleViewportChange); // Listen for viewport changes
     }
