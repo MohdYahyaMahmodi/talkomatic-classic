@@ -64,25 +64,57 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(cookieParser());
 
+// Generate nonce for each request
 app.use((req, res, next) => {
     res.locals.nonce = crypto.randomBytes(16).toString('base64');
     next();
 });
 
+// Updated Helmet configuration
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
-            ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-            "script-src": [
-                "'self'", 
+            defaultSrc: ["'self'"],
+            scriptSrc: [
+                "'self'",
+                "'unsafe-inline'",
+                "'unsafe-eval'",
+                "https://cdnjs.cloudflare.com",
                 (req, res) => `'nonce-${res.locals.nonce}'`
             ],
-            "style-src": [
-                "'self'", 
-                "'unsafe-inline'"
+            styleSrc: [
+                "'self'",
+                "'unsafe-inline'",
+                "https://cdnjs.cloudflare.com"
             ],
+            imgSrc: [
+                "'self'",
+                "data:",
+                "https:",
+                "blob:"
+            ],
+            connectSrc: ["'self'"],
+            fontSrc: ["'self'", "https:"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
+            // Add this to ensure CSS can load from CDN
+            styleSrcElem: [
+                "'self'",
+                "'unsafe-inline'",
+                "https://cdnjs.cloudflare.com"
+            ],
+            // Add this to ensure scripts can load from CDN
+            scriptSrcElem: [
+                "'self'",
+                "https://cdnjs.cloudflare.com",
+                (req, res) => `'nonce-${res.locals.nonce}'`
+            ]
         },
     },
+    crossOriginEmbedderPolicy: false, // This helps with loading resources from CDN
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginOpenerPolicy: false
 }));
 
 app.use(xss());
