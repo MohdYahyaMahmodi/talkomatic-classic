@@ -205,7 +205,7 @@
     font-size: 14px;
     padding: 8px;
     color: #ffffff;
-    background-color: #616161;
+    background: linear-gradient(to bottom, #616161, #303030);
     display: flex;
     align-items: center;
   }
