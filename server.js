@@ -85,7 +85,8 @@ app.use(helmet({
             styleSrc: [
                 "'self'",
                 "'unsafe-inline'",
-                "https://cdnjs.cloudflare.com"
+                "https://cdnjs.cloudflare.com",
+                "https://fonts.googleapis.com"
             ],
             imgSrc: [
                 "'self'",
@@ -94,28 +95,33 @@ app.use(helmet({
                 "blob:"
             ],
             connectSrc: ["'self'"],
-            fontSrc: ["'self'", "https:"],
+            fontSrc: [
+                "'self'", 
+                "https://fonts.gstatic.com",
+                "https://cdnjs.cloudflare.com"
+            ],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'"],
             frameSrc: ["'none'"],
-            // Add this to ensure CSS can load from CDN
             styleSrcElem: [
                 "'self'",
                 "'unsafe-inline'",
-                "https://cdnjs.cloudflare.com"
+                "https://cdnjs.cloudflare.com",
+                "https://fonts.googleapis.com"
             ],
-            // Add this to ensure scripts can load from CDN
             scriptSrcElem: [
                 "'self'",
                 "https://cdnjs.cloudflare.com",
+                "https://classic.talkomatic.co",
                 (req, res) => `'nonce-${res.locals.nonce}'`
             ]
         },
     },
-    crossOriginEmbedderPolicy: false, // This helps with loading resources from CDN
+    crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
     crossOriginOpenerPolicy: false
 }));
+
 
 app.use(xss());
 app.use(hpp());
@@ -151,7 +157,7 @@ io.use(sharedsession(sessionMiddleware, { autoSave: true }));
 app.use(express.static(path.join(__dirname, 'public'), {
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('.js')) {
-            res.setHeader('Content-Type', 'application/javascript');
+            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
             res.setHeader('Cache-Control', 'public, max-age=31536000');
         }
         if (filePath.endsWith('.ttf')) {
