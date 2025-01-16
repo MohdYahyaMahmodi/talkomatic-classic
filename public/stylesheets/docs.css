@@ -33,7 +33,7 @@
   --mb-icon-light: #94a3b8;
   --mb-powered-by-light-hover: #3b82f6; /* Changed to primary color for better consistency */
   --mb-powered-by-light-text-hover: #ffffff;
-  --mb-code-bg-light: #f5f5f5; /* Lighter code block bg for light theme */
+  --mb-code-bg-light: #464646; /* Lighter code block bg for light theme */
   --mb-sidebar-bg-light: #ffffffff; /* Sidebar background */
   --mb-navbar-bg-light: var(--mb-background-light);
   --mb-main-content-bg-light: var(--mb-background-light);
@@ -672,12 +672,12 @@ code[class*="language-"] span {
 /* Use custom variables for the code background */
 :not(pre) > code[class*="language-"],
 pre[class*="language-"] {
-  background: var(--mb-code-bg-light);
+  background: var(--mb-code-bg-light) !important;
 }
 
 .dark-theme :not(pre) > code[class*="language-"],
 .dark-theme pre[class*="language-"] {
-  background: var(--mb-code-bg-dark);
+  background: var(--mb-code-bg-dark) !important;
 }
 
 /* ===== PRISM TOOLBAR + COPY BUTTON ===== */
