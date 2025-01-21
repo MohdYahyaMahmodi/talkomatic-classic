@@ -54,8 +54,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'https://classic.talkomatic.co'
-  // If you want other frontends to connect from different domains,
-  // add them here
+  // Add other allowed frontends here, if needed.
 ];
 
 // CORS config
@@ -581,7 +580,7 @@ io.on('connection', (socket) => {
   });
 
   /************************
-   * "vote" event
+   * "vote" event (FIXED)
    ************************/
   socket.on('vote', (data) => {
     try {
@@ -602,28 +601,38 @@ io.on('connection', (socket) => {
       const room = rooms.get(roomId);
       if (!room) return;
 
+      // Must be in the room
       if (!room.users.find(u => u.id === userId)) return;
+      // Cannot vote against yourself
       if (userId === targetUserId) return;
 
       if (!room.votes) {
         room.votes = {};
       }
 
-      // Remove any previous vote from this user
-      room.votes[userId] = targetUserId;
-      io.to(roomId).emit('update votes', room.votes);
+      // TOGGLE the vote
+      if (room.votes[userId] === targetUserId) {
+        // User is un-voting (removing their vote)
+        delete room.votes[userId];
+        io.to(roomId).emit('update votes', room.votes);
+      } else {
+        // Cast/change the vote
+        room.votes[userId] = targetUserId;
+        io.to(roomId).emit('update votes', room.votes);
 
-      // Check for majority
-      const votesAgainstTarget = Object.values(room.votes).filter(v => v === targetUserId).length;
-      const totalUsers = room.users.length;
-      if (votesAgainstTarget > Math.floor(totalUsers / 2)) {
-        // Kick target
-        const targetSocket = [...io.sockets.sockets.values()]
-          .find(s => s.handshake.session.userId === targetUserId);
-        if (targetSocket) {
-          targetSocket.emit('kicked');
-          room.bannedUserIds.add(targetUserId);
-          leaveRoom(targetSocket, targetUserId);
+        // Check for majority only after a new vote
+        const votesAgainstTarget = Object.values(room.votes).filter(v => v === targetUserId).length;
+        const totalUsers = room.users.length;
+        // If votesAgainstTarget > half of total users => majority
+        if (votesAgainstTarget > Math.floor(totalUsers / 2)) {
+          // Kick target
+          const targetSocket = [...io.sockets.sockets.values()]
+            .find(s => s.handshake.session.userId === targetUserId);
+          if (targetSocket) {
+            targetSocket.emit('kicked');
+            room.bannedUserIds.add(targetUserId);
+            leaveRoom(targetSocket, targetUserId);
+          }
         }
       }
     } catch (err) {
