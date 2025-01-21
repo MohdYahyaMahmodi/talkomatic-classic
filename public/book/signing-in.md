@@ -1,75 +1,21 @@
-# Signing In to Talkomatic
+# Signing In
 
-This guide explains how to sign in to Talkomatic and set up your chat identity.
+Signing in to Talkomatic is quick and straightforward - no account required!
 
-## Understanding Sign-In
+<img src="/api/placeholder/600/300" alt="Signing In Interface" />
 
-Unlike traditional chat platforms, Talkomatic doesn't require account creation or registration. Instead, you simply choose a temporary name and optional location that will be used during your session.
+## How to Sign In
+1. Enter your chosen username (max 12 characters)
+2. Add your location (optional)
+3. Click "Sign In"
 
-## Sign-In Process
-
-### Step 1: Enter Your Name
-- Look for the "Be Known As..." section in the lobby
-- Enter your preferred name in the "Your Name" field
-- Maximum length: 12 characters
-- Names must not contain inappropriate content (automatically filtered)
-
-### Step 2: Set Your Location
-- Below your name, find the "Location" field
-- Enter your location (optional)
-- Maximum length: 12 characters
-- Default: "On The Web" if left empty
-
-### Step 3: Complete Sign-In
-- Click the "Sign In" button
-- The button changes to "Change" after signing in
-- You can update your name/location anytime by using the "Change" button
-
-## Name Guidelines
-
-### Choosing a Name
-- Keep it family-friendly
-- Avoid impersonating others
-- Don't use offensive language
-- Special characters are filtered
-
-### Location Guidelines
-- Can be real or fictional
-- Keep it appropriate
-- Avoid personal information
-- Special characters are filtered
+> **Note:** Your username will be visible to others in chat rooms.
 
 ## After Signing In
-
-Once signed in, you'll have access to:
-- Room list visibility
-- Room creation abilities
+- Access to create rooms
 - Ability to join existing rooms
-- Chat participation permissions
+- Your name appears in the room list
 
-## Session Information
+> **Tip:** You can change your name anytime by clicking the "Change" button in the lobby.
 
-- Your session lasts until you close your browser
-- No data is stored between sessions
-- You can change your name/location anytime
-- Each browser/tab can have a different identity
-
-## Troubleshooting
-
-### Common Issues
-- If your name is rejected, it may contain filtered words
-- If you can't sign in, try refreshing the page
-- If the button doesn't respond, check your internet connection
-
-### Error Messages
-- "Please enter a username" - Name field is empty
-- "Name contains forbidden words" - Choose a different name
-- "Location contains forbidden words" - Choose a different location
-
-## Privacy Note
-
-Remember that:
-- Your chosen name and location are visible to other users
-- No personal information is required or stored
-- Each session starts fresh
-- No chat history is maintained
+That's it! Once signed in, you're ready to start chatting.

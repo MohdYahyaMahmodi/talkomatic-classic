@@ -10,25 +10,29 @@
 # Creating Rooms [icon:fa:fa-solid fa-plus]
 # Joining Rooms [icon:fa:fa-solid fa-users]
 # Chat Interface [icon:fa:fa-solid fa-message]
-
-**Room Features**
 # Room Layouts [icon:fa:fa-solid fa-table-columns]
 # Sound Notifications [icon:fa:fa-solid fa-volume-high]
-# User Management [icon:fa:fa-solid fa-user-group]
 # Muting Users [icon:fa:fa-solid fa-volume-xmark]
 # Voting System [icon:fa:fa-solid fa-thumbs-down]
-# Invite Links [icon:fa:fa-solid fa-share]
-
-**Security & Moderation**
-# Content Filtering [icon:fa:fa-solid fa-filter]
-# Room Privacy [icon:fa:fa-solid fa-lock]
 # Access Codes [icon:fa:fa-solid fa-key]
+# Room Privacy [icon:fa:fa-solid fa-lock]
+# Content Filtering [icon:fa:fa-solid fa-filter]
 # User Guidelines [icon:fa:fa-solid fa-book]
 
 **Bot Development**
 # Getting Started with Bots [icon:fa:fa-solid fa-plug]
-# Socket.IO Events [icon:fa:fa-solid fa-bolt]
+# Socket IO Events [icon:fa:fa-solid fa-bolt]
 # Authentication [icon:fa:fa-solid fa-fingerprint]
 # Message Handling [icon:fa:fa-solid fa-envelope]
 # Room Management [icon:fa:fa-solid fa-gears]
 # Best Practices [icon:fa:fa-solid fa-check-double]
+# Example Bot [icon:fa:fa-solid fa-code]
+
+**Frontend Development**
+# Understanding the REST API [icon:fa:fa-solid fa-code]
+# Creating a Custom Lobby [icon:fa:fa-solid fa-sitemap]
+# Building a Chat Room UI [icon:fa:fa-solid fa-comments]
+# Tailwind and UI Customizations [icon:fa:fa-solid fa-paintbrush]
+# Deploying to GitHub Pages [icon:fa:fa-solid fa-cloud-arrow-up]
+# Handling Ephemeral Chat [icon:fa:fa-solid fa-keyboard]
+# Advanced Customizations [icon:fa:fa-solid fa-wrench]

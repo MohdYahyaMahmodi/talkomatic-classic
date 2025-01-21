@@ -1,91 +1,122 @@
-# Getting Started with Talkomatic
+# Getting Started
 
-This guide will walk you through your first steps with Talkomatic, from entering the lobby to joining your first chat.
+Welcome to your first steps with Talkomatic! This guide will walk you through everything you need to know to start chatting.
 
-## Accessing Talkomatic
+## Quick Start Guide
 
-1. Open your web browser
-2. Navigate to [Talkomatic Classic](https://classic.talkomatic.co)
-3. You'll be presented with the lobby interface
+<img src="/api/placeholder/800/300" alt="Talkomatic Lobby Interface" />
 
-No registration or account creation is needed to start using Talkomatic!
+### 1. Joining the Lobby
 
-## Setting Up Your Identity
+When you first visit Talkomatic, you'll need to:
 
-### Choosing Your Name
-1. Look for the "Be Known As..." section
-2. Enter your preferred name (up to 12 characters)
-3. Optionally, enter your location (up to 12 characters)
-4. Click "Sign In"
+1. Enter your chosen username (up to 12 characters)
+2. Optionally add your location
+3. Click "Sign In" to enter the lobby
 
-> **Note**: Your name and location are temporary and only last for your current session
+> **Tip:** Choose a username that's friendly and appropriate – it's how others will know you!
 
-## Joining Your First Chat
+### 2. Creating a Room
 
-### Finding a Room
-1. After signing in, you'll see a list of available public rooms
-2. Each room shows:
-   - Room name
-   - Number of current users
-   - Room type (Public/Semi-Private)
-   - Current users and their locations
+To create your own chat room:
 
-### Entering a Room
-1. Find a room you'd like to join
-2. Click the "Enter" button next to the room
-3. For semi-private rooms, you'll need to enter an access code
-4. You'll be connected to the chat room immediately
-
-## Creating Your Own Room
-
-### Basic Room Creation
-1. Look for the "Create A Room..." section
+1. Click "Create A Room"
 2. Enter a room name (up to 20 characters)
-3. Choose the room type:
-   - Public: Anyone can join
-   - Semi-Private: Requires access code
-   - Private: Hidden from lobby
-4. Select your preferred layout:
-   - Horizontal: Side-by-side chat windows
-   - Vertical: Stacked chat windows
-5. Click "Go Chat..."
+3. Select your room type:
+   - Public (open to everyone)
+   - Semi-private (requires access code)
+   - Private (invite-only)
+4. Choose your preferred layout:
+   - Horizontal (side-by-side)
+   - Vertical (stacked)
 
-## Using the Chat Interface
+> **Note:** For semi-private rooms, you'll need to create a 6-digit access code to share with others.
 
-### Basic Chat Functions
-- Type in your chat window to send messages
-- Messages appear in real-time as you type
-- See other users' messages update live
-- Hear sound notifications when users join/leave
+### 3. Joining Existing Rooms
 
-### Room Controls
-- Click "Leave Room" to exit
-- Use the mute button to toggle sound notifications
-- Click the copy button to share the room's invite link
+To join an existing room:
 
-## Navigation Tips
+1. Browse the room list in the lobby
+2. Click "Enter" on any available room
+3. Enter access code if required (for semi-private rooms)
 
-### Lobby Navigation
-- Toggle menu button shows/hides the left panel
-- Room list automatically updates
-- "No rooms available" message appears when empty
+<img src="/api/placeholder/800/300" alt="Room List Example" />
 
-### Room Navigation
-- Current room name and type shown at top
-- User count and room ID displayed
-- Date and time shown in navigation bar
+> **Info:** Rooms showing as "Full" already have 5 participants and cannot accept more users.
 
-## Getting Help
+## Basic Chat Functions
+
+### Chatting in a Room
+
+Once you're in a room, you can:
+- Type messages in your chat box
+- See others typing in real-time
+- Mute specific users if needed
+- Vote on disruptive users
+- Toggle sound notifications
+
+> **Warning:** Messages are ephemeral and not stored – once you leave a room, the conversation is gone!
+
+### Inviting Others
+
+To invite friends to your room:
+
+1. Look for the invite section below the chat
+2. Click the copy button next to the invite link
+3. Share the link with your friends
+
+> **Tip:** Anyone with the invite link can join private rooms directly, so share carefully!
+
+## Chat Room Layout
+
+### Understanding Your Screen
+
+Here's what you'll see in a chat room:
+
+1. **Top Bar**
+   - Current date and time
+   - Room name and type
+   - Sound toggle
+   - Leave room button
+
+2. **Chat Area**
+   - Individual chat windows for each user
+   - Username and location displays
+   - Real-time typing areas
+
+3. **Invite Section**
+   - Room invite link
+   - Copy link button
+
+## Common Actions
+
+### Muting Users
+1. Click the 🔊 icon next to a username
+2. Icon changes to 🔇 when muted
+3. Click again to unmute
+
+### Voting System
+1. Click the 👎 button next to a username
+2. A majority vote is needed to remove a user
+3. Voted-out users cannot rejoin
+
+> **Warning:** Use the voting system responsibly and only for legitimate disruptions.
+
+## Mobile Usage
+
+When using Talkomatic on mobile:
+
+- Layout automatically adjusts to vertical
+- Smooth typing experience optimized for touch
+- Full functionality on all devices
+
+> **Tip:** Turn your phone sideways for a better viewing experience in rooms with multiple users.
+
+## Need Help?
 
 If you need assistance:
-1. Check the documentation menu on the left
-2. Join our Discord community for support
-3. Report issues on our GitHub repository
+- Check our [Features Overview](features.html) for detailed information
+- Contact us through the Discord server
+- Report issues on our GitHub repository
 
-## Next Steps
-
-Once you're comfortable with the basics, explore:
-- [Room Types](room-types.md) - Learn about different room privacy options
-- [Room Layouts](room-layouts.md) - Understand layout customization
-- [Chat Interface](chat-interface.md) - Discover all chat features
-- [User Management](user-management.md) - Learn about user controls and moderation
+Ready to start chatting? Head back to the [lobby](/) and join your first room!

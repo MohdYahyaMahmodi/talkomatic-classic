@@ -1,96 +1,47 @@
 # Welcome to Talkomatic
 
-> **Note**: This documentation is currently under development. Some sections may be incomplete or subject to change. We're working to provide comprehensive documentation for all features.
+Welcome to Talkomatic, a modern real-time chat platform that brings the classic chat room experience into the present day. Talkomatic is designed to foster genuine conversations and build communities in a clean, intuitive environment.
 
-Talkomatic is a modern real-time chat platform that brings people together in dynamic conversation rooms. Inspired by the original PLATO Talkomatic system from the 1970s, our platform combines classic chat functionality with modern features and security.
+<img src="/api/placeholder/800/400" alt="Talkomatic Welcome Banner" />
 
-## What is Talkomatic?
+> **Info:** Talkomatic is completely free and open source. You can start chatting right away without creating an account!
 
-Talkomatic is a unique chat platform where users can create and join different types of chat rooms, communicate in real-time, and enjoy features like:
+## What Makes Talkomatic Special?
 
-- Public, semi-private, and private chat rooms
-- Customizable room layouts
-- Real-time message synchronization
-- Built-in moderation tools
-- User presence indicators
-- Sound notifications
-- Community voting system
+Talkomatic offers a unique chatting experience that sets it apart from other platforms:
 
-## Quick Start
+- **Real-Time Interaction**: See messages as they're being typed, creating a more natural and engaging conversation flow
+- **Flexible Room Types**: Choose between public, semi-private, and private rooms to control who can join your conversations
+- **Dynamic Layouts**: Switch between horizontal and vertical layouts to suit your preferred chat style
+- **No Account Required**: Jump right in by simply choosing a username and optional location
 
-1. Visit the Talkomatic lobby
-2. Enter your name and optional location
-3. Create a new room or join an existing one
-4. Start chatting!
+> **Tip:** Try both horizontal and vertical layouts to find which works best for your screen size and chatting style.
 
-No registration or account creation is required. Just pick a name and start chatting!
+## The Talkomatic Experience
 
-## Room Types
+At its core, Talkomatic is about bringing people together. Whether you're:
+- Meeting new friends from around the world
+- Having team discussions
+- Creating private spaces for close friends
+- Hosting public discussions about your favorite topics
 
-Talkomatic offers three types of chat rooms:
+Talkomatic provides the perfect space for meaningful conversations.
 
-- **Public Rooms**: Open to everyone and visible in the room list
-- **Semi-Private Rooms**: Visible but require an access code to join
-- **Private Rooms**: Hidden from the room list, accessible only via direct links
+> **Note:** Each room can host up to 5 people, creating an intimate environment that encourages quality conversations.
 
-## Chat Experience
+## Community Guidelines
 
-Our chat system features:
+To ensure everyone has a positive experience, we follow these basic principles:
 
-- Real-time message updates as you type
-- Support for up to 5 users per room
-- Flexible room layouts (horizontal or vertical)
-- User muting capabilities
-- Voting system for room moderation
-- Sound notifications for user activity
+1. **Be Respectful**: Treat others as you would like to be treated
+2. **Stay Safe**: Don't share personal information in public rooms
+3. **Keep it Clean**: Our content filter helps maintain a family-friendly environment
+4. **Have Fun**: Engage in conversations, make friends, and enjoy the experience!
 
-## Browser Support
-
-Talkomatic works best on modern browsers such as:
-
-- Google Chrome (recommended)
-- Mozilla Firefox
-- Microsoft Edge
-- Safari
-
-## Mobile Support
-
-Talkomatic is fully responsive and works on mobile devices. The interface automatically adjusts to provide the best experience on smaller screens.
+> **Warning:** Users who violate community guidelines may be removed from rooms through our democratic voting system.
 
 ## Getting Help
 
-If you need assistance:
+If you're new to Talkomatic, check out our [Getting Started](getting-started.html) guide to learn the basics. For more detailed information about our features, visit the [Features Overview](features.html) page.
 
-- Check the documentation sections on the left
-- Look for the specific feature in the table of contents
-- Join our [Discord Server](https://discord.gg/CFFVxNby6A) for community support
-- Report issues on our [GitHub repository](https://github.com/MohdYahyaMahmodi/talkomatic-classic)
-
-## Open Source
-
-Talkomatic is open-source software. You can:
-
-- View the source code
-- Contribute to development
-- Report issues
-- Suggest new features
-
-Visit our [GitHub repository](https://github.com/MohdYahyaMahmodi/talkomatic-classic) to learn more.
-
-## Supporting Talkomatic
-
-If you enjoy using Talkomatic, consider:
-
-- [Making a donation](https://talkomatic.co/donate.html) to support development
-- Sharing Talkomatic with others
-- Contributing to the codebase
-- Reporting bugs and suggesting improvements
-
-## Next Steps
-
-Ready to get started? Check out these guides:
-
-- [Features Overview](features-overview.md) - Learn about all available features
-- [Getting Started](getting-started.md) - Detailed guide for new users
-- [Creating Rooms](creating-rooms.md) - Learn how to create and manage chat rooms
-- [Room Layouts](room-layouts.md) - Understand different chat layout options
+Ready to start chatting? Click the "Sign In" button in the lobby to begin your Talkomatic journey!
