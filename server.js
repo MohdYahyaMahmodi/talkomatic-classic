@@ -1,8 +1,10 @@
-/*
-    server.js
-    =========
-    Last updated: 2025
-*/
+/****************************
+ * server.js
+ * ==========================
+ * Last updated: 2025
+ ****************************/
+
+require('dotenv').config(); // Loads environment vars from .env
 
 const express = require('express');
 const http = require('http');
@@ -21,7 +23,9 @@ const hpp = require('hpp');
 const crypto = require('crypto');
 const WordFilter = require('./public/js/word-filter.js');
 
-const wordFilter = new WordFilter(path.join(__dirname, 'public', 'js', 'offensive_words.json'));
+const wordFilter = new WordFilter(
+  path.join(__dirname, 'public', 'js', 'offensive_words.json')
+);
 
 const lastRoomCreationTimes = new Map();
 const ROOM_CREATION_COOLDOWN = 30000; // 30 seconds cooldown
@@ -29,8 +33,12 @@ const ROOM_CREATION_COOLDOWN = 30000; // 30 seconds cooldown
 const app = express();
 const server = http.createServer(app);
 
+// Parse JSON bodies for the REST API
+app.use(express.json());
+
+// Security & limits
 function sanitizeInput(input) {
-    return input; 
+  return input;
 }
 
 const MAX_USERNAME_LENGTH = 12;
@@ -41,761 +49,850 @@ const MAX_ROOM_CAPACITY = 5;
 
 const ENABLE_WORD_FILTER = true;
 
+// Allowed origins for CORS
 const allowedOrigins = [
-    'http://localhost:3000', 
-    'http://127.0.0.1:3000', 
-    'https://classic.talkomatic.co'
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'https://classic.talkomatic.co'
+  // If you want other frontends to connect from different domains,
+  // add them here
 ];
 
+// CORS config
 const corsOptions = {
-    origin: function (origin, callback) {
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) === -1) {
-            return callback(new Error('The CORS policy does not allow access from the specified origin.'), false);
-        }
-        return callback(null, true);
-    },
-    methods: ['GET', 'POST'],
-    credentials: true,
-    optionsSuccessStatus: 200,
-    allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      return callback(
+        new Error('The CORS policy does not allow access from this origin.'),
+        false
+      );
+    }
+    return callback(null, true);
+  },
+  methods: ['GET', 'POST'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
 };
 
 app.use(cors(corsOptions));
 app.use(cookieParser());
 
-// Generate nonce for each request
+// Setup a nonce for each request for CSP
 app.use((req, res, next) => {
-    res.locals.nonce = crypto.randomBytes(16).toString('base64');
-    next();
+  res.locals.nonce = crypto.randomBytes(16).toString('base64');
+  next();
 });
 
-// Updated Helmet configuration
-app.use(helmet({
+// Helmet config for improved security
+app.use(
+  helmet({
     contentSecurityPolicy: {
-        directives: {
-            defaultSrc: ["'self'"],
-            scriptSrc: [
-                "'self'",
-                "'unsafe-inline'",
-                "'unsafe-eval'",
-                "https://cdnjs.cloudflare.com",
-                (req, res) => `'nonce-${res.locals.nonce}'`
-            ],
-            styleSrc: [
-                "'self'",
-                "'unsafe-inline'",
-                "https://cdnjs.cloudflare.com",
-                "https://fonts.googleapis.com"
-            ],
-            imgSrc: [
-                "'self'",
-                "data:",
-                "https:",
-                "blob:"
-            ],
-            connectSrc: ["'self'"],
-            fontSrc: [
-                "'self'", 
-                "https://fonts.gstatic.com",
-                "https://cdnjs.cloudflare.com"
-            ],
-            objectSrc: ["'none'"],
-            mediaSrc: ["'self'"],
-            frameSrc: ["'none'"],
-            styleSrcElem: [
-                "'self'",
-                "'unsafe-inline'",
-                "https://cdnjs.cloudflare.com",
-                "https://fonts.googleapis.com"
-            ],
-            scriptSrcElem: [
-                "'self'",
-                "https://cdnjs.cloudflare.com",
-                "https://classic.talkomatic.co",
-                (req, res) => `'nonce-${res.locals.nonce}'`
-            ]
-        },
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "'unsafe-eval'",
+          "https://cdnjs.cloudflare.com",
+          (req, res) => `'nonce-${res.locals.nonce}'`
+        ],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://cdnjs.cloudflare.com",
+          "https://fonts.googleapis.com"
+        ],
+        imgSrc: ["'self'", "data:", "https:", "blob:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'"],
+        frameSrc: ["'none'"],
+        styleSrcElem: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://cdnjs.cloudflare.com",
+          "https://fonts.googleapis.com"
+        ],
+        scriptSrcElem: [
+          "'self'",
+          "https://cdnjs.cloudflare.com",
+          "https://classic.talkomatic.co",
+          (req, res) => `'nonce-${res.locals.nonce}'`
+        ]
+      },
     },
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
     crossOriginOpenerPolicy: false
-}));
-
+  })
+);
 
 app.use(xss());
 app.use(hpp());
 
+// Rate limit: 1000 requests per 15 minutes
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 1000,
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
 });
 app.use(limiter);
 
+// Session config
 const sessionMiddleware = session({
-    secret: process.env.SESSION_SECRET || '723698977cc31aaf8e84...',
-    resave: false,
-    saveUninitialized: true,
-    cookie: { 
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-        maxAge: 14 * 24 * 60 * 60 * 1000,
-    }
+  secret: process.env.SESSION_SECRET || '723698977cc31aaf8e84...',
+  resave: false,
+  saveUninitialized: true,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 14 * 24 * 60 * 60 * 1000,
+  }
 });
 app.use(sessionMiddleware);
 
+// Socket.io setup with shared session
 const io = socketIo(server, {
-    cors: {
-        origin: allowedOrigins,
-        methods: ["GET", "POST"],
-        credentials: true
-    }
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: true
+  }
 });
-
 io.use(sharedsession(sessionMiddleware, { autoSave: true }));
 
+// Serve static files
 app.use(express.static(path.join(__dirname, 'public'), {
-    setHeaders: (res, filePath) => {
-        if (filePath.endsWith('.js')) {
-            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-            res.setHeader('Cache-Control', 'public, max-age=31536000');
-        }
-        if (filePath.endsWith('.ttf')) {
-            res.setHeader('Content-Type', 'font/ttf');
-        }
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
     }
+    if (filePath.endsWith('.ttf')) {
+      res.setHeader('Content-Type', 'font/ttf');
+    }
+  }
 }));
 
+// In-memory data
 let rooms = new Map();
 const users = new Map();
 const roomDeletionTimers = new Map();
 const typingTimeouts = new Map();
 const userMessageBuffers = new Map();
 
+// Helper functions
 function enforceCharacterLimit(message) {
-    return typeof message === 'string' ? message.slice(0, MAX_MESSAGE_LENGTH) : message;
+  return typeof message === 'string' ? message.slice(0, MAX_MESSAGE_LENGTH) : message;
 }
-
 function enforceUsernameLimit(username) {
-    return username.slice(0, MAX_USERNAME_LENGTH);
+  return username.slice(0, MAX_USERNAME_LENGTH);
 }
-
 function enforceLocationLimit(location) {
-    return location.slice(0, MAX_LOCATION_LENGTH);
+  return location.slice(0, MAX_LOCATION_LENGTH);
 }
-
 function enforceRoomNameLimit(roomName) {
-    return roomName.slice(0, MAX_ROOM_NAME_LENGTH);
+  return roomName.slice(0, MAX_ROOM_NAME_LENGTH);
 }
 
 async function saveRooms() {
-    try {
-        const roomsData = JSON.stringify(Array.from(rooms.entries()));
-        await fs.writeFile(path.join(__dirname, 'rooms.json'), roomsData);
-    } catch (error) {
-        console.error('Error saving rooms:', error);
-    }
+  try {
+    const roomsData = JSON.stringify(Array.from(rooms.entries()));
+    await fs.writeFile(path.join(__dirname, 'rooms.json'), roomsData);
+  } catch (error) {
+    console.error('Error saving rooms:', error);
+  }
 }
 
 async function loadRooms() {
-    try {
-        const roomsData = await fs.readFile(path.join(__dirname, 'rooms.json'), 'utf8');
-        const loadedRooms = JSON.parse(roomsData);
-        rooms = new Map(loadedRooms);
-        
-        // Clear all rooms on server restart
-        rooms.clear();
-    } catch (error) {
-        if (error.code !== 'ENOENT') {
-            console.error('Error loading rooms:', error);
-        }
+  try {
+    const roomsData = await fs.readFile(path.join(__dirname, 'rooms.json'), 'utf8');
+    const loadedRooms = JSON.parse(roomsData);
+    rooms = new Map(loadedRooms);
+    // Clear all rooms on server restart
+    rooms.clear();
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.error('Error loading rooms:', error);
     }
+  }
 }
-
 loadRooms();
 
-/** 
- *  Helper: Generate random 6-digit room ID 
- */
 function generateRoomId() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+  return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-/**
- *  startRoomDeletionTimer
- */
 function startRoomDeletionTimer(roomId) {
-    if (roomDeletionTimers.has(roomId)) {
-        clearTimeout(roomDeletionTimers.get(roomId));
+  if (roomDeletionTimers.has(roomId)) {
+    clearTimeout(roomDeletionTimers.get(roomId));
+  }
+  const timer = setTimeout(() => {
+    rooms.delete(roomId);
+    roomDeletionTimers.delete(roomId);
+    updateLobby();
+    saveRooms();
+  }, 15000);
+  roomDeletionTimers.set(roomId, timer);
+}
+
+function updateLobby() {
+  const publicRooms = Array.from(rooms.values())
+    .filter(room => room.type !== 'private')
+    .map(room => ({
+      ...room,
+      accessCode: undefined, // Hide the access code
+      isFull: room.users.length >= MAX_ROOM_CAPACITY
+    }));
+  io.to('lobby').emit('lobby update', publicRooms);
+}
+
+function updateRoom(roomId) {
+  const room = rooms.get(roomId);
+  if (room) {
+    io.to(roomId).emit('room update', {
+      id: room.id,
+      name: room.name,
+      type: room.type,
+      layout: room.layout,
+      users: room.users,
+      votes: room.votes,
+      accessCode: undefined // do not expose
+    });
+  }
+}
+
+function getCurrentMessages(users) {
+  const messages = {};
+  users.forEach(user => {
+    messages[user.id] = userMessageBuffers.get(user.id) || '';
+  });
+  return messages;
+}
+
+async function leaveRoom(socket, userId) {
+  if (socket.roomId) {
+    const room = rooms.get(socket.roomId);
+    if (room) {
+      room.users = room.users.filter(user => user.id !== userId);
+      room.lastActiveTime = Date.now();
+
+      // Remove any votes from or for this user
+      if (room.votes) {
+        delete room.votes[userId];
+        for (let voterId in room.votes) {
+          if (room.votes[voterId] === userId) {
+            delete room.votes[voterId];
+          }
+        }
+        io.to(socket.roomId).emit('update votes', room.votes);
+      }
+
+      socket.leave(socket.roomId);
+      io.to(socket.roomId).emit('user left', userId);
+      updateRoom(socket.roomId);
+
+      if (room.users.length === 0) {
+        startRoomDeletionTimer(socket.roomId);
+      }
     }
-    const timer = setTimeout(() => {
+
+    socket.roomId = null;
+    socket.handshake.session.currentRoom = null;
+    await new Promise((resolve) => {
+      socket.handshake.session.save(resolve);
+    });
+    socket.join('lobby');
+  }
+  updateLobby();
+  await saveRooms();
+}
+
+function joinRoom(socket, roomId, userId) {
+  // Validate
+  if (!roomId || typeof roomId !== 'string' || roomId.length !== 6) {
+    socket.emit('room not found');
+    return;
+  }
+
+  const room = rooms.get(roomId);
+  if (!room) {
+    socket.emit('room not found');
+    return;
+  }
+
+  // Banned?
+  if (room.bannedUserIds && room.bannedUserIds.has(userId)) {
+    socket.emit('error', 'You have been banned from rejoining this room.');
+    return;
+  }
+
+  if (!room.users) room.users = [];
+  if (!room.votes) room.votes = {};
+
+  if (room.users.length >= MAX_ROOM_CAPACITY) {
+    socket.emit('room full');
+    return;
+  }
+
+  // Remove if they're already in
+  room.users = room.users.filter(user => user.id !== userId);
+
+  socket.join(roomId);
+  room.users.push({
+    id: userId,
+    username: socket.handshake.session.username,
+    location: socket.handshake.session.location,
+  });
+  room.lastActiveTime = Date.now();
+  socket.roomId = roomId;
+  socket.handshake.session.currentRoom = roomId;
+  socket.handshake.session.save(() => {
+    io.to(roomId).emit('user joined', {
+      id: userId,
+      username: socket.handshake.session.username,
+      location: socket.handshake.session.location,
+      roomName: room.name,
+      roomType: room.type
+    });
+    
+    updateRoom(roomId);
+    updateLobby();
+
+    const currentMessages = getCurrentMessages(room.users);
+    socket.emit('room joined', {
+      roomId: roomId,
+      userId,
+      username: socket.handshake.session.username,
+      location: socket.handshake.session.location,
+      roomName: room.name,
+      roomType: room.type,
+      users: room.users,
+      layout: room.layout,
+      votes: room.votes,
+      currentMessages: currentMessages
+    });
+    socket.leave('lobby');
+
+    if (roomDeletionTimers.has(roomId)) {
+      clearTimeout(roomDeletionTimers.get(roomId));
+      roomDeletionTimers.delete(roomId);
+    }
+  });
+  saveRooms();
+}
+
+function handleTyping(socket, userId, username, isTyping) {
+  if (typingTimeouts.has(userId)) {
+    clearTimeout(typingTimeouts.get(userId));
+  }
+  if (isTyping) {
+    socket.to(socket.roomId).emit('user typing', { userId, username, isTyping: true });
+    typingTimeouts.set(userId, setTimeout(() => {
+      socket.to(socket.roomId).emit('user typing', { userId, username, isTyping: false });
+      typingTimeouts.delete(userId);
+    }, 2000));
+  } else {
+    socket.to(socket.roomId).emit('user typing', { userId, username, isTyping: false });
+    typingTimeouts.delete(userId);
+  }
+}
+
+/***************************************
+ * SOCKET.IO CONNECTION & EVENT HANDLERS
+ ***************************************/
+io.on('connection', (socket) => {
+  socket.on('check signin status', () => {
+    const { username, location, userId } = socket.handshake.session;
+    if (username && location && userId) {
+      socket.emit('signin status', {
+        isSignedIn: true,
+        username,
+        location,
+        userId
+      });
+      socket.join('lobby');
+      users.set(userId, { id: userId, username, location });
+      updateLobby();
+    } else {
+      socket.emit('signin status', { isSignedIn: false });
+    }
+  });
+
+  socket.on('join lobby', (data) => {
+    try {
+      if (!data) {
+        socket.emit('error', 'No data provided when joining lobby.');
+        return;
+      }
+      let username = enforceUsernameLimit(data.username || '');
+      let location = enforceLocationLimit(data.location || 'On The Web');
+
+      if (ENABLE_WORD_FILTER) {
+        const usernameCheck = wordFilter.checkText(username);
+        if (usernameCheck.hasOffensiveWord) {
+          socket.emit('error', 'Your chosen name contains forbidden words. Please pick another.');
+          return;
+        }
+        const locationCheck = wordFilter.checkText(location);
+        if (locationCheck.hasOffensiveWord) {
+          socket.emit('error', 'Your chosen location contains forbidden words. Please pick another.');
+          return;
+        }
+      }
+
+      const userId = socket.handshake.sessionID;
+      socket.handshake.session.username = username;
+      socket.handshake.session.location = location;
+      socket.handshake.session.userId = userId;
+
+      socket.handshake.session.save((err) => {
+        if (!err) {
+          users.set(userId, { id: userId, username, location });
+          socket.join('lobby');
+          updateLobby();
+          socket.emit('signin status', {
+            isSignedIn: true,
+            username,
+            location,
+            userId
+          });
+        }
+      });
+    } catch (err) {
+      console.error('Error in join lobby:', err);
+      socket.emit('error', 'Internal server error while joining lobby.');
+    }
+  });
+
+  socket.on('create room', (data) => {
+    try {
+      if (!data) {
+        socket.emit('error', 'No data provided to create room.');
+        return;
+      }
+      const userId = socket.handshake.session.userId;
+      if (!userId) {
+        socket.emit('error', 'You must be signed in to create a room.');
+        return;
+      }
+
+      const now = Date.now();
+      const lastCreationTime = lastRoomCreationTimes.get(userId) || 0;
+      if (now - lastCreationTime < ROOM_CREATION_COOLDOWN) {
+        socket.emit('error', 'You are creating rooms too frequently. Please wait a bit.');
+        return;
+      }
+
+      let roomName = enforceRoomNameLimit(data.name || 'Just Chatting');
+      let roomType = data.type;
+      let layout = data.layout;
+
+      if (!roomType) {
+        socket.emit('error', 'Room type is missing.');
+        return;
+      }
+      if (!layout) {
+        socket.emit('error', 'Room layout is missing.');
+        return;
+      }
+
+      if (ENABLE_WORD_FILTER) {
+        const roomNameCheck = wordFilter.checkText(roomName);
+        if (roomNameCheck.hasOffensiveWord) {
+          socket.emit('error', 'Your chosen room name contains forbidden words. Please pick another.');
+          return;
+        }
+      }
+
+      lastRoomCreationTimes.set(userId, now);
+
+      let roomId;
+      do {
+        roomId = generateRoomId();
+      } while (rooms.has(roomId));
+
+      const newRoom = {
+        id: roomId,
+        name: roomName,
+        type: roomType,
+        layout: layout,
+        users: [],
+        accessCode: roomType === 'semi-private' ? data.accessCode : null,
+        votes: {},
+        bannedUserIds: new Set(),
+        lastActiveTime: Date.now(),
+      };
+      rooms.set(roomId, newRoom);
+
+      socket.emit('room created', roomId);
+      updateLobby();
+      saveRooms();
+    } catch (err) {
+      console.error('Error in create room:', err);
+      socket.emit('error', 'Internal server error while creating room.');
+    }
+  });
+
+  socket.on('join room', (data) => {
+    try {
+      if (!data || !data.roomId) {
+        socket.emit('error', 'Invalid or missing data when attempting to join room.');
+        return;
+      }
+      const room = rooms.get(data.roomId);
+      if (!room) {
+        socket.emit('room not found');
+        return;
+      }
+
+      // For semi-private
+      if (room.type === 'semi-private') {
+        if (!data.accessCode) {
+          socket.emit('access code required');
+          return;
+        }
+        if (room.accessCode !== data.accessCode) {
+          socket.emit('error', 'Incorrect access code');
+          return;
+        }
+      }
+
+      let { username, location, userId } = socket.handshake.session;
+      if (!username || !location || !userId) {
+        userId = socket.handshake.sessionID;
+        username = "Anonymous";
+        location = 'On The Web';
+        socket.handshake.session.username = username;
+        socket.handshake.session.location = location;
+        socket.handshake.session.userId = userId;
+      }
+
+      socket.handshake.session.save((err) => {
+        if (!err) {
+          joinRoom(socket, data.roomId, userId);
+        }
+      });
+    } catch (err) {
+      console.error('Error in join room:', err);
+      socket.emit('error', 'Internal server error while joining room.');
+    }
+  });
+
+  /************************
+   * "vote" event
+   ************************/
+  socket.on('vote', (data) => {
+    try {
+      if (!data || typeof data !== 'object') {
+        socket.emit('error', 'Invalid data for vote.');
+        return;
+      }
+      const { targetUserId } = data;
+      if (!targetUserId) {
+        socket.emit('error', 'Missing target user ID for vote.');
+        return;
+      }
+
+      const userId = socket.handshake.session.userId;
+      const roomId = socket.roomId;
+      if (!roomId) return;
+
+      const room = rooms.get(roomId);
+      if (!room) return;
+
+      if (!room.users.find(u => u.id === userId)) return;
+      if (userId === targetUserId) return;
+
+      if (!room.votes) {
+        room.votes = {};
+      }
+
+      // Remove any previous vote from this user
+      room.votes[userId] = targetUserId;
+      io.to(roomId).emit('update votes', room.votes);
+
+      // Check for majority
+      const votesAgainstTarget = Object.values(room.votes).filter(v => v === targetUserId).length;
+      const totalUsers = room.users.length;
+      if (votesAgainstTarget > Math.floor(totalUsers / 2)) {
+        // Kick target
+        const targetSocket = [...io.sockets.sockets.values()]
+          .find(s => s.handshake.session.userId === targetUserId);
+        if (targetSocket) {
+          targetSocket.emit('kicked');
+          room.bannedUserIds.add(targetUserId);
+          leaveRoom(targetSocket, targetUserId);
+        }
+      }
+    } catch (err) {
+      console.error('Error in vote handler:', err);
+      socket.emit('error', 'Internal server error during vote.');
+    }
+  });
+
+  socket.on('leave room', async () => {
+    try {
+      const userId = socket.handshake.session.userId;
+      await leaveRoom(socket, userId);
+    } catch (err) {
+      console.error('Error in leave room:', err);
+      socket.emit('error', 'Internal server error while leaving room.');
+    }
+  });
+
+  socket.on('chat update', (data) => {
+    try {
+      if (!socket.roomId) return;
+      const userId = socket.handshake.session.userId;
+      const username = socket.handshake.session.username;
+
+      if (!userMessageBuffers.has(userId)) {
+        userMessageBuffers.set(userId, '');
+      }
+      let userMessage = userMessageBuffers.get(userId);
+
+      if (!data || typeof data !== 'object') {
+        socket.emit('error', 'Invalid chat update data.');
+        return;
+      }
+      let diff = data.diff;
+      if (!diff) return;
+
+      if (diff.text) {
+        diff.text = enforceCharacterLimit(diff.text);
+      }
+
+      switch (diff.type) {
+        case 'full-replace':
+          userMessage = diff.text;
+          break;
+        case 'add':
+          userMessage =
+            userMessage.slice(0, diff.index) + diff.text + userMessage.slice(diff.index);
+          break;
+        case 'delete':
+          userMessage =
+            userMessage.slice(0, diff.index) + userMessage.slice(diff.index + diff.count);
+          break;
+        case 'replace':
+          userMessage =
+            userMessage.slice(0, diff.index) +
+            diff.text +
+            userMessage.slice(diff.index + diff.text.length);
+          break;
+        default:
+          socket.emit('error', 'Unknown diff type.');
+          return;
+      }
+
+      userMessageBuffers.set(userId, userMessage);
+
+      if (ENABLE_WORD_FILTER) {
+        const filterResult = wordFilter.checkText(userMessage);
+        if (filterResult.hasOffensiveWord) {
+          userMessage = wordFilter.filterText(userMessage);
+          userMessageBuffers.set(userId, userMessage);
+          io.to(socket.roomId).emit('offensive word detected', {
+            userId,
+            filteredMessage: userMessage,
+          });
+        } else {
+          socket.to(socket.roomId).emit('chat update', {
+            userId,
+            username,
+            diff: diff,
+          });
+        }
+      } else {
+        socket.to(socket.roomId).emit('chat update', {
+          userId,
+          username,
+          diff: diff,
+        });
+      }
+    } catch (err) {
+      console.error('Error in chat update:', err);
+      socket.emit('error', 'Internal server error during chat update.');
+    }
+  });
+
+  socket.on('typing', (data) => {
+    try {
+      if (!socket.roomId) return;
+      const userId = socket.handshake.session.userId;
+      const username = socket.handshake.session.username;
+      if (!data || typeof data.isTyping !== 'boolean') {
+        return;
+      }
+      handleTyping(socket, userId, username, data.isTyping);
+    } catch (err) {
+      console.error('Error in typing handler:', err);
+    }
+  });
+
+  socket.on('get rooms', () => {
+    socket.emit('initial rooms', Array.from(rooms.values()));
+  });
+
+  socket.on('disconnect', async () => {
+    try {
+      const userId = socket.handshake.session.userId;
+      await leaveRoom(socket, userId);
+      userMessageBuffers.delete(userId);
+      users.delete(userId);
+    } catch (err) {
+      console.error('Error on disconnect:', err);
+    }
+  });
+});
+
+// Periodic cleanup for empty rooms
+setInterval(() => {
+  for (const [roomId, room] of rooms.entries()) {
+    if (room.users.length === 0) {
+      const timeSinceLastActive = Date.now() - (room.lastActiveTime || 0);
+      if (timeSinceLastActive > 15000) {
         rooms.delete(roomId);
         roomDeletionTimers.delete(roomId);
         updateLobby();
         saveRooms();
-    }, 15000);
-    roomDeletionTimers.set(roomId, timer);
+        console.log(`Periodic cleanup: removed empty room ${roomId}`);
+      }
+    }
+  }
+}, 10000);
+
+/***************************************************
+ * OPTIONAL: Additional REST API (with API key)
+ ***************************************************/
+function apiAuth(req, res, next) {
+  const apiKey = req.header('x-api-key');
+  const validApiKey = 'tK_public_key_4f8a9b2c7d6e3f1a5g8h9i0j4k5l6m7n8o9p';
+  if (!apiKey || apiKey !== validApiKey) {
+    return res.status(403).json({ error: 'Forbidden: invalid or missing x-api-key.' });
+  }
+  next();
 }
 
-/** 
- *  updateLobby 
- */
-function updateLobby() {
-    const publicRooms = Array.from(rooms.values())
-        .filter(room => room.type !== 'private')
-        .map(room => ({
-            ...room,
-            accessCode: undefined,
-            isFull: room.users.length >= MAX_ROOM_CAPACITY
-        }));
-    io.to('lobby').emit('lobby update', publicRooms);
-}
-
-/** 
- *  updateRoom 
- */
-function updateRoom(roomId) {
-    const room = rooms.get(roomId);
-    if (room) {
-        io.to(roomId).emit('room update', {
-            id: room.id,
-            name: room.name,
-            type: room.type,
-            layout: room.layout,
-            users: room.users,
-            votes: room.votes,
-            accessCode: undefined
-        });
-    }
-}
-
-/**
- *  getCurrentMessages
- */
-function getCurrentMessages(users) {
-    const messages = {};
-    users.forEach(user => {
-        messages[user.id] = userMessageBuffers.get(user.id) || '';
-    });
-    return messages;
-}
-
-/**
- *  leaveRoom
- */
-async function leaveRoom(socket, userId) {
-    if (socket.roomId) {
-        const room = rooms.get(socket.roomId);
-        if (room) {
-            room.users = room.users.filter(user => user.id !== userId);
-
-            // (NEW) Refresh lastActiveTime
-            room.lastActiveTime = Date.now();
-            
-            // Remove votes from or for this user
-            if (room.votes) {
-                delete room.votes[userId];
-                for (let voterId in room.votes) {
-                    if (room.votes[voterId] === userId) {
-                        delete room.votes[voterId];
-                    }
-                }
-                io.to(socket.roomId).emit('update votes', room.votes);
-            }
-
-            socket.leave(socket.roomId);
-            io.to(socket.roomId).emit('user left', userId);
-            updateRoom(socket.roomId);
-
-            if (room.users.length === 0) {
-                startRoomDeletionTimer(socket.roomId);
-            }
-        }
-
-        socket.roomId = null;
-        socket.handshake.session.currentRoom = null;
-        await new Promise((resolve) => {
-            socket.handshake.session.save(resolve);
-        });
-        socket.join('lobby');
-    }
-    updateLobby();
-    await saveRooms();
-}
-
-/**
- *  joinRoom
- */
-function joinRoom(socket, roomId, userId) {
-    // Basic validation
-    if (!roomId || typeof roomId !== 'string' || roomId.length !== 6) {
-        socket.emit('room not found');
-        return;
-    }
-
-    const room = rooms.get(roomId);
-    if (!room) {
-        socket.emit('room not found');
-        return;
-    }
-
-    // NEW: Check if user is banned from this room
-    if (room.bannedUserIds && room.bannedUserIds.has(userId)) {
-        socket.emit('error', 'You have been banned from rejoining this room.');
-        return; // Stop here so they can’t rejoin
-    }
-
-    if (!room.users) room.users = [];
-    if (!room.votes) room.votes = {};
-
-    if (room.users.length >= MAX_ROOM_CAPACITY) {
-        socket.emit('room full');
-        return;
-    }
-
-    // Remove user if they're already in the room
-    room.users = room.users.filter(user => user.id !== userId);
-
-    socket.join(roomId);
-    room.users.push({
-        id: userId,
-        username: socket.handshake.session.username,
-        location: socket.handshake.session.location,
-    });
-    // (NEW) Refresh lastActiveTime
-    room.lastActiveTime = Date.now();
-    socket.roomId = roomId;
-    socket.handshake.session.currentRoom = roomId;
-    socket.handshake.session.save(() => {
-        io.to(roomId).emit('user joined', {
-            id: userId,
-            username: socket.handshake.session.username,
-            location: socket.handshake.session.location,
-            roomName: room.name,
-            roomType: room.type
-        });
-        
-        updateRoom(roomId);
-        updateLobby();
-
-        // Gather current messages
-        const currentMessages = getCurrentMessages(room.users);
-
-        socket.emit('room joined', {
-            roomId: roomId,
-            userId,
-            username: socket.handshake.session.username,
-            location: socket.handshake.session.location,
-            roomName: room.name,
-            roomType: room.type,
-            users: room.users,
-            layout: room.layout,
-            votes: room.votes,
-            currentMessages: currentMessages
-        });
-        socket.leave('lobby');
-
-        // Clear room deletion timer if it exists
-        if (roomDeletionTimers.has(roomId)) {
-            clearTimeout(roomDeletionTimers.get(roomId));
-            roomDeletionTimers.delete(roomId);
-        }
-    });
-    saveRooms();
-}
-
-/**
- *  handleTyping
- */
-function handleTyping(socket, userId, username, isTyping) {
-    if (typingTimeouts.has(userId)) {
-        clearTimeout(typingTimeouts.get(userId));
-    }
-    if (isTyping) {
-        socket.to(socket.roomId).emit('user typing', { userId, username, isTyping: true });
-        typingTimeouts.set(userId, setTimeout(() => {
-            socket.to(socket.roomId).emit('user typing', { userId, username, isTyping: false });
-            typingTimeouts.delete(userId);
-        }, 2000));
-    } else {
-        socket.to(socket.roomId).emit('user typing', { userId, username, isTyping: false });
-        typingTimeouts.delete(userId);
-    }
-}
-
-io.on('connection', (socket) => {
-
-    socket.on('check signin status', () => {
-        const { username, location, userId } = socket.handshake.session;
-        if (username && location && userId) {
-            socket.emit('signin status', { isSignedIn: true, username, location, userId });
-            socket.join('lobby');
-            users.set(userId, { id: userId, username, location });
-            updateLobby();
-        } else {
-            socket.emit('signin status', { isSignedIn: false });
-        }
-    });
-
-    socket.on('join lobby', (data) => {
-        try {
-            if (!data) {
-                socket.emit('error', 'No data provided when joining lobby.');
-                return;
-            }
-            let username = enforceUsernameLimit(data.username || '');
-            let location = enforceLocationLimit(data.location || 'On The Web');
-
-            if (ENABLE_WORD_FILTER) {
-                const usernameCheck = wordFilter.checkText(username);
-                if (usernameCheck.hasOffensiveWord) {
-                    socket.emit('error', 'Your chosen name contains forbidden words. Please pick another.');
-                    return;
-                }
-
-                const locationCheck = wordFilter.checkText(location);
-                if (locationCheck.hasOffensiveWord) {
-                    socket.emit('error', 'Your chosen location contains forbidden words. Please pick another.');
-                    return;
-                }
-            }
-
-            const userId = socket.handshake.sessionID;
-            socket.handshake.session.username = username;
-            socket.handshake.session.location = location;
-            socket.handshake.session.userId = userId;
-
-            socket.handshake.session.save((err) => {
-                if (!err) {
-                    users.set(userId, { id: userId, username, location });
-                    socket.join('lobby');
-                    updateLobby();
-                    socket.emit('signin status', { isSignedIn: true, username, location, userId });
-                }
-            });
-        } catch (err) {
-            console.error('Error in join lobby:', err);
-            socket.emit('error', 'Internal server error while joining lobby.');
-        }
-    });
-
-    socket.on('create room', (data) => {
-        try {
-            if (!data) {
-                socket.emit('error', 'No data provided to create room.');
-                return;
-            }
-            const userId = socket.handshake.session.userId;
-            if (!userId) {
-                socket.emit('error', 'You must be signed in to create a room.');
-                return;
-            }
-
-            const now = Date.now();
-            const lastCreationTime = lastRoomCreationTimes.get(userId) || 0;
-            if (now - lastCreationTime < ROOM_CREATION_COOLDOWN) {
-                socket.emit('error', 'You are creating rooms too frequently. Please wait a bit.');
-                return;
-            }
-
-            // Validate user data
-            let roomName = enforceRoomNameLimit(data.name || 'Just Chatting');
-            let roomType = data.type;
-            let layout = data.layout;
-
-            if (!roomType) {
-                socket.emit('error', 'Room type is missing.');
-                return;
-            }
-            if (!layout) {
-                socket.emit('error', 'Room layout is missing.');
-                return;
-            }
-
-            // Check offensive words
-            if (ENABLE_WORD_FILTER) {
-                const roomNameCheck = wordFilter.checkText(roomName);
-                if (roomNameCheck.hasOffensiveWord) {
-                    socket.emit('error', 'Your chosen room name contains forbidden words. Please pick another.');
-                    return;
-                }
-            }
-
-            lastRoomCreationTimes.set(userId, now);
-
-            let roomId;
-            do {
-                roomId = generateRoomId();
-            } while (rooms.has(roomId));
-
-            const newRoom = {
-                id: roomId,
-                name: roomName,
-                type: roomType,
-                layout: layout,
-                users: [],
-                accessCode: roomType === 'semi-private' ? data.accessCode : null,
-                votes: {},
-                bannedUserIds: new Set(),
-                // NEW: track last active time
-                lastActiveTime: Date.now(),
-            };            
-            rooms.set(roomId, newRoom);
-
-            socket.emit('room created', roomId);
-            updateLobby();
-            saveRooms();
-        } catch (err) {
-            console.error('Error in create room:', err);
-            socket.emit('error', 'Internal server error while creating room.');
-        }
-    });
-
-    socket.on('join room', (data) => {
-        try {
-            if (!data || !data.roomId) {
-                socket.emit('error', 'Invalid or missing data when attempting to join room.');
-                return;
-            }
-            const room = rooms.get(data.roomId);
-            if (!room) {
-                socket.emit('room not found');
-                return;
-            }
-
-            // For semi-private
-            if (room.type === 'semi-private') {
-                if (!data.accessCode) {
-                    socket.emit('access code required');
-                    return;
-                }
-                if (room.accessCode !== data.accessCode) {
-                    socket.emit('error', 'Incorrect access code');
-                    return;
-                }
-            }
-
-            let { username, location, userId } = socket.handshake.session;
-            if (!username || !location || !userId) {
-                userId = socket.handshake.sessionID;
-                username = "Anonymous";
-                location = 'On The Web';
-
-                socket.handshake.session.username = username;
-                socket.handshake.session.location = location;
-                socket.handshake.session.userId = userId;
-            }
-
-            socket.handshake.session.save((err) => {
-                if (!err) {
-                    joinRoom(socket, data.roomId, userId);
-                }
-            });
-        } catch (err) {
-            console.error('Error in join room:', err);
-            socket.emit('error', 'Internal server error while joining room.');
-        }
-    });
-
-    // *****************************
-    // IMPORTANT: "vote" event fix
-    // *****************************
-    socket.on('vote', (data) => {
-        try {
-            // Validate the incoming data
-            if (!data || typeof data !== 'object') {
-                socket.emit('error', 'Invalid data for vote.');
-                return;
-            }
-            const { targetUserId } = data;
-            if (!targetUserId) {
-                socket.emit('error', 'Missing target user ID for vote.');
-                return;
-            }
-
-            const userId = socket.handshake.session.userId;
-            const roomId = socket.roomId;
-            if (!roomId) return;
-
-            const room = rooms.get(roomId);
-            if (!room) return;
-
-            if (!room.users.find(u => u.id === userId)) return;
-
-            // Users cannot vote for themselves
-            if (userId === targetUserId) return;
-
-            // Ensure the room has a votes object
-            if (!room.votes) {
-                room.votes = {};
-            }
-
-            // Remove any previous vote from this user
-            room.votes[userId] = targetUserId;
-
-            // Broadcast the updated votes
-            io.to(roomId).emit('update votes', room.votes);
-
-            // Check if the target user has the majority
-            const votesAgainstTarget = Object.values(room.votes).filter(v => v === targetUserId).length;
-            const totalUsers = room.users.length;
-            if (votesAgainstTarget > Math.floor(totalUsers / 2)) {
-                // Disconnect the target user
-                const targetSocket = [...io.sockets.sockets.values()]
-                    .find(s => s.handshake.session.userId === targetUserId);
-            
-                if (targetSocket) {
-                    // 1) Let them know they got kicked
-                    targetSocket.emit('kicked');
-            
-                    // 2) NEW: Add them to the bannedUserIds set
-                    room.bannedUserIds.add(targetUserId);
-            
-                    // 3) Actually remove them from the room
-                    leaveRoom(targetSocket, targetUserId);
-                }
-            }
-        } catch (err) {
-            console.error('Error in vote handler:', err);
-            socket.emit('error', 'Internal server error during vote.');
-        }
-    });
-
-    socket.on('leave room', async () => {
-        try {
-            const userId = socket.handshake.session.userId;
-            await leaveRoom(socket, userId);
-        } catch (err) {
-            console.error('Error in leave room:', err);
-            socket.emit('error', 'Internal server error while leaving room.');
-        }
-    });
-
-    socket.on('chat update', (data) => {
-        try {
-            if (!socket.roomId) return;
-
-            const userId = socket.handshake.session.userId;
-            const username = socket.handshake.session.username;
-
-            if (!userMessageBuffers.has(userId)) {
-                userMessageBuffers.set(userId, '');
-            }
-            let userMessage = userMessageBuffers.get(userId);
-
-            // Basic validation
-            if (!data || typeof data !== 'object') {
-                socket.emit('error', 'Invalid chat update data.');
-                return;
-            }
-            let diff = data.diff;
-            if (!diff) return;
-
-            // Enforce character limit on the incoming text
-            if (diff.text) {
-                diff.text = enforceCharacterLimit(diff.text);
-            }
-
-            switch (diff.type) {
-                case 'full-replace':
-                    userMessage = diff.text;
-                    break;
-                case 'add':
-                    userMessage = userMessage.slice(0, diff.index) + diff.text + userMessage.slice(diff.index);
-                    break;
-                case 'delete':
-                    userMessage = userMessage.slice(0, diff.index) + userMessage.slice(diff.index + diff.count);
-                    break;
-                case 'replace':
-                    userMessage = userMessage.slice(0, diff.index) + diff.text + userMessage.slice(diff.index + diff.text.length);
-                    break;
-                default:
-                    socket.emit('error', 'Unknown diff type.');
-                    return;
-            }
-
-            userMessageBuffers.set(userId, userMessage);
-
-            if (ENABLE_WORD_FILTER) {
-                const filterResult = wordFilter.checkText(userMessage);
-                if (filterResult.hasOffensiveWord) {
-                    userMessage = wordFilter.filterText(userMessage);
-                    userMessageBuffers.set(userId, userMessage);
-
-                    io.to(socket.roomId).emit('offensive word detected', {
-                        userId,
-                        filteredMessage: userMessage,
-                    });
-                } else {
-                    socket.to(socket.roomId).emit('chat update', {
-                        userId,
-                        username,
-                        diff: diff,
-                    });
-                }
-            } else {
-                socket.to(socket.roomId).emit('chat update', {
-                    userId,
-                    username,
-                    diff: diff,
-                });
-            }
-        } catch (err) {
-            console.error('Error in chat update:', err);
-            socket.emit('error', 'Internal server error during chat update.');
-        }
-    });
-
-    socket.on('typing', (data) => {
-        try {
-            if (!socket.roomId) return;
-            const userId = socket.handshake.session.userId;
-            const username = socket.handshake.session.username;
-            if (!data || typeof data.isTyping !== 'boolean') {
-                // If the data is invalid, just ignore or optionally emit an error
-                return;
-            }
-            handleTyping(socket, userId, username, data.isTyping);
-        } catch (err) {
-            console.error('Error in typing handler:', err);
-        }
-    });
-
-    socket.on('get rooms', () => {
-        socket.emit('initial rooms', Array.from(rooms.values()));
-    });
-
-    socket.on('disconnect', async () => {
-        try {
-            const userId = socket.handshake.session.userId;
-            await leaveRoom(socket, userId);
-            userMessageBuffers.delete(userId);
-            users.delete(userId);
-        } catch (err) {
-            console.error('Error on disconnect:', err);
-        }
-    });
+// GET /api/v1/rooms - list non-private rooms
+app.get('/api/v1/rooms', limiter, apiAuth, (req, res) => {
+  const publicRooms = Array.from(rooms.values())
+    .filter(room => room.type !== 'private')
+    .map(room => ({
+      id: room.id,
+      name: room.name,
+      type: room.type,
+      users: room.users.map(u => ({
+        id: u.id,
+        username: u.username,
+        location: u.location
+      })),
+      isFull: room.users.length >= MAX_ROOM_CAPACITY
+    }));
+  return res.json(publicRooms);
 });
 
-// (NEW) Periodically remove any rooms that have 0 users and stayed empty for >15s
-setInterval(() => {
-    for (const [roomId, room] of rooms.entries()) {
-        if (room.users.length === 0) {
-            // How long has it been empty?
-            const timeSinceLastActive = Date.now() - (room.lastActiveTime || 0);
-            if (timeSinceLastActive > 15000) {
-                // More than 15s empty => remove
-                rooms.delete(roomId);
-                roomDeletionTimers.delete(roomId); // if you wish to ensure no leftover timers
-                updateLobby();
-                saveRooms();
-                console.log(`Periodic cleanup: removed empty room ${roomId}`);
-            }
-        }
-    }
-}, 10_000);
+// GET /api/v1/rooms/:id - detail about a specific room
+app.get('/api/v1/rooms/:id', limiter, apiAuth, (req, res) => {
+  const roomId = req.params.id;
+  const room = rooms.get(roomId);
+  if (!room) {
+    return res.status(404).json({ error: 'Room not found' });
+  }
+  // Hide access code
+  return res.json({
+    id: room.id,
+    name: room.name,
+    type: room.type,
+    users: room.users.map(u => ({ id: u.id, username: u.username, location: u.location })),
+    isFull: room.users.length >= MAX_ROOM_CAPACITY
+  });
+});
 
+// POST /api/v1/rooms - create a new room
+app.post('/api/v1/rooms', limiter, apiAuth, (req, res) => {
+  try {
+    const data = req.body;
+    if (!data || !data.name || !data.type || !data.layout) {
+      return res.status(400).json({
+        error: 'Missing required fields: name, type, layout'
+      });
+    }
+
+    let roomName = enforceRoomNameLimit(data.name);
+    if (ENABLE_WORD_FILTER) {
+      const roomNameCheck = wordFilter.checkText(roomName);
+      if (roomNameCheck.hasOffensiveWord) {
+        return res.status(400).json({ error: 'Room name contains forbidden words.' });
+      }
+    }
+
+    let roomType = data.type;
+    let layout = data.layout;
+
+    let roomId;
+    do {
+      roomId = generateRoomId();
+    } while (rooms.has(roomId));
+
+    const newRoom = {
+      id: roomId,
+      name: roomName,
+      type: roomType,
+      layout: layout,
+      users: [],
+      accessCode: roomType === 'semi-private' ? data.accessCode : null,
+      votes: {},
+      bannedUserIds: new Set(),
+      lastActiveTime: Date.now(),
+    };
+    rooms.set(roomId, newRoom);
+    updateLobby();
+    saveRooms();
+
+    return res.json({ success: true, roomId });
+  } catch (err) {
+    console.error('Error in /api/v1/rooms POST:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/v1/rooms/:id/join - simple check for capacity & access code
+app.post('/api/v1/rooms/:id/join', limiter, apiAuth, (req, res) => {
+  try {
+    const roomId = req.params.id;
+    const room = rooms.get(roomId);
+    if (!room) {
+      return res.status(404).json({ error: 'Room not found' });
+    }
+    if (room.users.length >= MAX_ROOM_CAPACITY) {
+      return res.status(400).json({ error: 'Room is full' });
+    }
+    if (room.type === 'semi-private') {
+      if (room.accessCode !== req.body.accessCode) {
+        return res.status(403).json({ error: 'Invalid access code' });
+      }
+    }
+    // If everything is okay, respond success
+    return res.json({
+      success: true,
+      message: 'You can now connect via Socket.IO to join the room in real time.'
+    });
+  } catch (err) {
+    console.error('Error in /api/v1/rooms/:id/join:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Example test route
+app.get('/api/v1/protected/ping', limiter, apiAuth, (req, res) => {
+  return res.json({ message: 'pong', time: Date.now() });
+});
+
+// Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
