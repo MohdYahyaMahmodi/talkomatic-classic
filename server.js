@@ -181,6 +181,44 @@ const roomDeletionTimers = new Map();
 const typingTimeouts = new Map();
 const userMessageBuffers = new Map();
 
+/**
+ * Convert strings to lower-case for consistent checks
+ */
+function normalize(str) {
+  return (str || '').trim().toLowerCase();
+}
+
+/**
+ * Count how many rooms a given session (by userId) is in
+ */
+function getUserRoomsCount(userId) {
+  let count = 0;
+  for (const [, room] of rooms) {
+    if (room.users.some(u => u.id === userId)) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * Count how many rooms have the same (username, location) *case-insensitive*
+ */
+function getUsernameLocationRoomsCount(username, location) {
+  const userLower = normalize(username);
+  const locLower = normalize(location);
+
+  let count = 0;
+  for (const [, room] of rooms) {
+    for (const u of room.users) {
+      if (normalize(u.username) === userLower && normalize(u.location) === locLower) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
 // Helper functions
 function enforceCharacterLimit(message) {
   return typeof message === 'string' ? message.slice(0, MAX_MESSAGE_LENGTH) : message;
@@ -308,6 +346,12 @@ async function leaveRoom(socket, userId) {
   await saveRooms();
 }
 
+/**
+ * Join room logic:
+ *  - If user is anonymous (case-insensitive 'anonymous'/'on the web'),
+ *    skip the 2-room checks.
+ *  - Otherwise, check userRoomsCount and sameNameLocCount.
+ */
 function joinRoom(socket, roomId, userId) {
   // Validate
   if (!roomId || typeof roomId !== 'string' || roomId.length !== 6) {
@@ -321,10 +365,34 @@ function joinRoom(socket, roomId, userId) {
     return;
   }
 
-  // Banned?
+  // Check if user is banned
   if (room.bannedUserIds && room.bannedUserIds.has(userId)) {
     socket.emit('error', 'You have been banned from rejoining this room.');
     return;
+  }
+
+  let { username, location } = socket.handshake.session;
+  const userLower = normalize(username);
+  const locLower = normalize(location);
+
+  const isAnonymous =
+    userLower === 'anonymous' && locLower === 'on the web';
+
+  // Only enforce checks if not anonymous
+  if (!isAnonymous) {
+    // Check how many rooms this session is in
+    const userRoomsCount = getUserRoomsCount(userId);
+    if (userRoomsCount >= 2) {
+      socket.emit('error', 'unable to join room at the moment please try again later');
+      return;
+    }
+
+    // Check how many rooms exist with same (username, location)
+    const sameNameLocCount = getUsernameLocationRoomsCount(username, location);
+    if (sameNameLocCount >= 2) {
+      socket.emit('error', 'unable to join room at the moment please try again later');
+      return;
+    }
   }
 
   if (!room.users) room.users = [];
@@ -335,14 +403,14 @@ function joinRoom(socket, roomId, userId) {
     return;
   }
 
-  // Remove if they're already in
+  // Remove if they're already in (avoid duplicates)
   room.users = room.users.filter(user => user.id !== userId);
 
   socket.join(roomId);
   room.users.push({
     id: userId,
-    username: socket.handshake.session.username,
-    location: socket.handshake.session.location,
+    username,
+    location,
   });
   room.lastActiveTime = Date.now();
   socket.roomId = roomId;
@@ -350,8 +418,8 @@ function joinRoom(socket, roomId, userId) {
   socket.handshake.session.save(() => {
     io.to(roomId).emit('user joined', {
       id: userId,
-      username: socket.handshake.session.username,
-      location: socket.handshake.session.location,
+      username,
+      location,
       roomName: room.name,
       roomType: room.type
     });
@@ -363,8 +431,8 @@ function joinRoom(socket, roomId, userId) {
     socket.emit('room joined', {
       roomId: roomId,
       userId,
-      username: socket.handshake.session.username,
-      location: socket.handshake.session.location,
+      username,
+      location,
       roomName: room.name,
       roomType: room.type,
       users: room.users,
@@ -425,6 +493,7 @@ io.on('connection', (socket) => {
         socket.emit('error', 'No data provided when joining lobby.');
         return;
       }
+      // Normalize user inputs
       let username = enforceUsernameLimit(data.username || '');
       let location = enforceLocationLimit(data.location || 'On The Web');
 
@@ -477,6 +546,33 @@ io.on('connection', (socket) => {
         return;
       }
 
+      let { username, location } = socket.handshake.session;
+      const userLower = normalize(username);
+      const locLower = normalize(location);
+
+      // 1) If user is anonymous -> cannot create rooms
+      const isAnonymous =
+        userLower === 'anonymous' && locLower === 'on the web';
+      if (isAnonymous) {
+        socket.emit('error', 'Anonymous users cannot create rooms.');
+        return;
+      }
+
+      // 2) If the same user+location is already in >=2 rooms, do not allow creation
+      const sameNameLocCount = getUsernameLocationRoomsCount(username, location);
+      if (sameNameLocCount >= 2) {
+        socket.emit('error', 'unable to create room at the moment please try again later');
+        return;
+      }
+
+      // 3) If the session is already in >=2 rooms, do not allow creation
+      const userRoomsCount = getUserRoomsCount(userId);
+      if (userRoomsCount >= 2) {
+        socket.emit('error', 'You are in too many rooms to create a new one right now.');
+        return;
+      }
+
+      // 4) Rate-limiting creation
       const now = Date.now();
       const lastCreationTime = lastRoomCreationTimes.get(userId) || 0;
       if (now - lastCreationTime < ROOM_CREATION_COOLDOWN) {
@@ -484,6 +580,7 @@ io.on('connection', (socket) => {
         return;
       }
 
+      // 5) Validate provided data
       let roomName = enforceRoomNameLimit(data.name || 'Just Chatting');
       let roomType = data.type;
       let layout = data.layout;
@@ -560,9 +657,10 @@ io.on('connection', (socket) => {
 
       let { username, location, userId } = socket.handshake.session;
       if (!username || !location || !userId) {
+        // fallback if session is missing
         userId = socket.handshake.sessionID;
         username = "Anonymous";
-        location = 'On The Web';
+        location = "On The Web";
         socket.handshake.session.username = username;
         socket.handshake.session.location = location;
         socket.handshake.session.userId = userId;
@@ -580,7 +678,7 @@ io.on('connection', (socket) => {
   });
 
   /************************
-   * "vote" event (FIXED)
+   * "vote" event
    ************************/
   socket.on('vote', (data) => {
     try {
@@ -701,13 +799,17 @@ io.on('connection', (socket) => {
       if (ENABLE_WORD_FILTER) {
         const filterResult = wordFilter.checkText(userMessage);
         if (filterResult.hasOffensiveWord) {
+          // Replace the text in their buffer
           userMessage = wordFilter.filterText(userMessage);
           userMessageBuffers.set(userId, userMessage);
+
+          // Alert the room that we filtered it
           io.to(socket.roomId).emit('offensive word detected', {
             userId,
             filteredMessage: userMessage,
           });
         } else {
+          // If no offensive words, just broadcast the diff
           socket.to(socket.roomId).emit('chat update', {
             userId,
             username,
@@ -715,6 +817,7 @@ io.on('connection', (socket) => {
           });
         }
       } else {
+        // Word filter disabled, send the diff
         socket.to(socket.roomId).emit('chat update', {
           userId,
           username,
@@ -820,7 +923,7 @@ app.get('/api/v1/rooms/:id', limiter, apiAuth, (req, res) => {
   });
 });
 
-// POST /api/v1/rooms - create a new room
+// POST /api/v1/rooms - create a new room (REST API version)
 app.post('/api/v1/rooms', limiter, apiAuth, (req, res) => {
   try {
     const data = req.body;

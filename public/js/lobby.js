@@ -200,7 +200,7 @@ function showDiscordInviteNotification() {
     // Click => open the Discord link in new tab
     button.addEventListener('click', (e) => {
         e.stopPropagation(); // So clicking button won't also trigger toast click
-        window.open('https://discord.gg/NheE6JBr', '_blank');
+        window.open('https://discord.gg/N7tJznESrE', '_blank');
     });
     container.appendChild(button);
 
@@ -216,7 +216,7 @@ function showDiscordInviteNotification() {
         $toast.on('click', function(e) {
             // If user didn't click the close button, open the link
             if (!$(e.target).hasClass('toast-close-button')) {
-                window.open('https://discord.gg/NheE6JBr', '_blank');
+                window.open('https://discord.gg/N7tJznESrE', '_blank');
             }
         });
     }
