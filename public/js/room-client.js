@@ -46,14 +46,12 @@ let locallyMutedUsers = new Set();
 
 // -------------- SOUND & MUTE (Personal) --------------
 function playJoinSound() {
-  // If I'm the leader and I've muted doorbell, skip
   if (currentLeaderId === currentUserId && moderatorDoorbellMuted) return;
   if (soundEnabled) {
     joinSound.play().catch((err) => console.error('Error playing join sound:', err));
   }
 }
 function playLeaveSound() {
-  // If I'm the leader and I've muted doorbell, skip
   if (currentLeaderId === currentUserId && moderatorDoorbellMuted) return;
   if (soundEnabled) {
     leaveSound.play().catch((err) => console.error('Error playing leave sound:', err));
@@ -106,6 +104,16 @@ async function initRoom() {
 function joinRoom(roomId, accessCode = null) {
   socket.emit('join room', { roomId, accessCode });
 }
+
+// -------------- Global Error Handler --------------
+socket.on('error', (errorMsg) => {
+  if (errorMsg === 'This room is locked by the moderator. Cannot join.') {
+    alert(errorMsg + ' Redirecting to lobby.');
+    window.location.href = '/index.html';
+  } else {
+    alert(errorMsg);
+  }
+});
 
 // -------------- Socket Handlers --------------
 socket.on('access code required', () => {
@@ -225,11 +233,9 @@ socket.on('guest detection', (message) => {
 // -------------- adjustNavForLeader --------------
 function adjustNavForLeader() {
   if (currentLeaderId === currentUserId) {
-    // I'm the leader => hide personal mute toggle, show roomSettingsBtn
     muteToggleButton.style.display = 'none';
     roomSettingsBtn.style.display = 'inline-block';
   } else {
-    // normal user => show personal mute toggle, hide roomSettingsBtn
     muteToggleButton.style.display = 'inline-block';
     roomSettingsBtn.style.display = 'none';
   }
@@ -242,7 +248,6 @@ function updateRoomInfo(data) {
   const roomIdEl = document.querySelector('.room-id');
 
   if (roomNameEl) {
-    // Use data.roomName or data.name (if room joined via updateRoom event)
     roomNameEl.textContent = `Room: ${data.roomName || data.name || data.roomId}`;
   }
   if (roomTypeEl) {
@@ -258,7 +263,6 @@ function updateRoomUI(roomData) {
   const chatContainer = document.querySelector('.chat-container');
   if (!chatContainer) return;
 
-  // store existing text states
   const currentTextMap = new Map();
   let focusedUserId = null;
 
@@ -301,17 +305,14 @@ function updateRoomUI(roomData) {
 
 // -------------- addUserToRoom --------------
 function addUserToRoom(user) {
-  // Check if a chat row for this user already exists.
   const existingRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
   if (existingRow) {
-    // Update the user info (username and location)
     const userInfo = existingRow.querySelector('.user-info');
     if (userInfo) {
       userInfo.textContent = `${user.username} / ${user.location}`;
     }
-    return; // no duplicate row
+    return;
   }
-  // Otherwise, create a new chat row.
   const container = document.querySelector('.chat-container');
   if (!container) return;
 
@@ -326,17 +327,15 @@ function addUserToRoom(user) {
   userInfo.classList.add('user-info');
   userInfo.textContent = `${user.username} / ${user.location}`;
 
-  // Create the local mute button for this user (only for other users)
+  // Local mute button (for individual muting)
   const muteBtn = document.createElement('button');
   muteBtn.classList.add('mute-button');
   muteBtn.innerHTML = '🔊';
-  // Initially hide; adjustMuteButtonVisibility will show it if needed.
   muteBtn.style.display = 'none';
   muteBtn.addEventListener('click', () => {
     const rowEl = muteBtn.closest('.chat-row');
     const chatInput = rowEl.querySelector('.chat-input');
     if (locallyMutedUsers.has(user.id)) {
-      // Unmute: remove from set, update button icon, show chat input, remove placeholder if any.
       locallyMutedUsers.delete(user.id);
       muteBtn.innerHTML = '🔊';
       chatInput.style.display = 'block';
@@ -345,7 +344,6 @@ function addUserToRoom(user) {
         placeholder.remove();
       }
     } else {
-      // Mute: add to set, update button icon, hide chat input and show a placeholder.
       locallyMutedUsers.add(user.id);
       muteBtn.innerHTML = '🔇';
       chatInput.style.display = 'none';
@@ -369,7 +367,7 @@ function addUserToRoom(user) {
   });
   userInfo.appendChild(voteBtn);
 
-  // Moderator settings (gear) button (only shown if you are the room leader)
+  // Moderator settings (gear) button
   const modMenuBtn = document.createElement('button');
   modMenuBtn.classList.add('mod-menu-button');
   modMenuBtn.innerText = '⚙️';
@@ -439,10 +437,7 @@ function displayChatMessage(data) {
     default:
       newText = currentText;
   }
-  // Always update the underlying value (even if the user is muted)
   inputEl.value = newText.slice(0, MAX_MESSAGE_LENGTH);
-
-  // If the user is muted locally, update the placeholder text (if present)
   if (locallyMutedUsers.has(data.userId)) {
     const placeholder = row.querySelector('.muted-placeholder');
     if (placeholder) {
@@ -454,14 +449,11 @@ function displayChatMessage(data) {
 // -------------- Modals: User Settings --------------
 function openUserSettingsModal(user) {
   moderatorTargetUserId = user.id;
-
   const modal = document.getElementById('userSettingsModal');
   const targetNameEl = document.getElementById('moderatorTargetName');
   const targetIdEl = document.getElementById('moderatorTargetId');
-
   targetNameEl.textContent = user.username;
   targetIdEl.textContent = user.id;
-
   modal.style.display = 'block';
 }
 function closeUserSettingsModal() {
@@ -472,14 +464,12 @@ function closeUserSettingsModal() {
 
 // -------------- Modals: Room Settings --------------
 function openRoomSettingsModal() {
-  // Show lock/unlock status and update the lock button text based on roomIsLocked state.
   const lockStatusEl = document.getElementById('roomLockStatus');
   lockStatusEl.textContent = roomIsLocked
     ? 'Room is currently LOCKED'
     : 'Room is currently UNLOCKED';
   const toggleLockBtn = document.getElementById('toggleLockBtn');
   toggleLockBtn.textContent = roomIsLocked ? 'Unlock Room' : 'Lock Room';
-
   const modal = document.getElementById('roomSettingsModal');
   modal.style.display = 'block';
 }
@@ -494,11 +484,9 @@ function adjustVoteButtonVisibility() {
     const uid = row.dataset.userId;
     const voteBtn = row.querySelector('.vote-button');
     if (voteBtn) {
-      if (userCount >= 3 && uid !== currentUserId) {
-        voteBtn.style.display = 'inline-block';
-      } else {
-        voteBtn.style.display = 'none';
-      }
+      voteBtn.style.display = (userCount >= 3 && uid !== currentUserId)
+        ? 'inline-block'
+        : 'none';
     }
   });
 }
@@ -508,11 +496,9 @@ function adjustMuteButtonVisibility() {
     const uid = row.dataset.userId;
     const muteBtn = row.querySelector('.mute-button');
     if (muteBtn) {
-      if (uid !== currentUserId) {
-        muteBtn.style.display = 'inline-block';
-      } else {
-        muteBtn.style.display = 'none';
-      }
+      muteBtn.style.display = (uid !== currentUserId)
+        ? 'inline-block'
+        : 'none';
     }
   });
 }
@@ -522,11 +508,9 @@ function adjustModMenuVisibility() {
     const uid = row.dataset.userId;
     const modBtn = row.querySelector('.mod-menu-button');
     if (!modBtn) return;
-    if (currentLeaderId === currentUserId && uid !== currentUserId) {
-      modBtn.style.display = 'inline-block';
-    } else {
-      modBtn.style.display = 'none';
-    }
+    modBtn.style.display = (currentLeaderId === currentUserId && uid !== currentUserId)
+      ? 'inline-block'
+      : 'none';
   });
 }
 
@@ -534,17 +518,14 @@ function adjustLayout() {
   const chatContainer = document.querySelector('.chat-container');
   const chatRows = document.querySelectorAll('.chat-row');
   if (!chatContainer) return;
-
   const isMobile = window.innerWidth <= 768;
   const layout = isMobile ? 'horizontal' : currentRoomLayout;
-
   if (layout === 'horizontal') {
     chatContainer.style.flexDirection = 'column';
     const availableHeight = window.innerHeight - chatContainer.offsetTop;
     const rowGap = 10;
     const totalGap = (chatRows.length - 1) * rowGap;
     const rowHeight = Math.floor((availableHeight - totalGap) / chatRows.length);
-
     chatRows.forEach((r) => {
       r.style.height = `${rowHeight}px`;
       r.style.minHeight = '100px';
@@ -560,7 +541,6 @@ function adjustLayout() {
     const columnGap = 10;
     const totalGap = (chatRows.length - 1) * columnGap;
     const colWidth = Math.floor((availableWidth - totalGap) / chatRows.length);
-
     chatRows.forEach((r) => {
       r.style.width = `${colWidth}px`;
       r.style.height = '100%';
@@ -574,30 +554,21 @@ function adjustLayout() {
 // -------------- onLoad --------------
 window.addEventListener('load', () => {
   initRoom();
-
   setInterval(updateDateTime, 1000);
   updateDateTime();
   updateInviteLink();
-
   const savedMuteState = localStorage.getItem('soundEnabled');
   if (savedMuteState !== null) {
     soundEnabled = JSON.parse(savedMuteState);
     updateMuteIcon();
   }
-
-  // Personal mute toggle
   muteToggleButton.addEventListener('click', toggleMute);
-
-  // Room settings button => open the room settings modal
   roomSettingsBtn.addEventListener('click', () => {
     openRoomSettingsModal();
   });
-
-  // User Settings modal close
   document.getElementById('userSettingsModalClose').addEventListener('click', closeUserSettingsModal);
-  // Room Settings modal close
   document.getElementById('roomSettingsModalClose').addEventListener('click', closeRoomSettingsModal);
-
+  
   // Close modals when clicking outside the modal content
   document.getElementById('roomSettingsModal').addEventListener('click', function(e) {
     if (e.target === this) {
@@ -609,7 +580,7 @@ window.addEventListener('load', () => {
       closeUserSettingsModal();
     }
   });
-
+  
   // Moderator actions (User Settings)
   document.getElementById('modKickBtn').addEventListener('click', () => {
     if (!moderatorTargetUserId) return;
@@ -643,35 +614,31 @@ window.addEventListener('load', () => {
     });
     closeUserSettingsModal();
   });
-
+  
   // Moderator actions (Room Settings)
-  document.getElementById('toggleLockBtn').addEventListener('click', () => {
-    // Toggle room lock status locally for immediate feedback.
+  document.getElementById('toggleLockBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
     roomIsLocked = !roomIsLocked;
     const lockStatusEl = document.getElementById('roomLockStatus');
     lockStatusEl.textContent = roomIsLocked ? 'Room is currently LOCKED' : 'Room is currently UNLOCKED';
     const toggleLockBtn = document.getElementById('toggleLockBtn');
     toggleLockBtn.textContent = roomIsLocked ? 'Unlock Room' : 'Lock Room';
-    socket.emit('moderator action', {
-      action: 'lock-room',
-    });
+    socket.emit('moderator action', { action: 'lock-room' });
   });
-  document.getElementById('toggleDoorbellBtn').addEventListener('click', () => {
+  document.getElementById('toggleDoorbellBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
     moderatorDoorbellMuted = !moderatorDoorbellMuted;
     const btn = document.getElementById('toggleDoorbellBtn');
     btn.textContent = moderatorDoorbellMuted ? 'Unmute Doorbell' : 'Mute Doorbell';
   });
-
-  // copy invite link
+  
   document.getElementById('copyInviteLink').addEventListener('click', copyInviteLink);
-
-  // leave room
+  
   document.querySelector('.leave-room').addEventListener('click', () => {
     socket.emit('leave room');
     window.location.href = '/index.html';
   });
-
-  // chat input
+  
   document.querySelector('.chat-container').addEventListener('input', (e) => {
     if (
       e.target.classList.contains('chat-input') &&
@@ -689,7 +656,7 @@ window.addEventListener('load', () => {
       }
     }
   });
-
+  
   window.addEventListener('resize', adjustLayout);
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', handleViewportChange);
