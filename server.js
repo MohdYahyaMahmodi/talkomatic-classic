@@ -1,7 +1,7 @@
 /****************************
  * server.js
  * ==========================
- * Last updated: 2025
+ * Last updated: 2025 (with updates for multi‐tab and duplicate join handling)
  ****************************/
 
 require('dotenv').config(); // Loads environment vars from .env
@@ -22,7 +22,6 @@ const hpp = require('hpp');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 
-// WordFilter logic is unchanged
 const WordFilter = require('./public/js/word-filter.js');
 const wordFilter = new WordFilter(
   path.join(__dirname, 'public', 'js', 'offensive_words.json')
@@ -34,18 +33,8 @@ const ROOM_CREATION_COOLDOWN = 30000; // 30 seconds
 const app = express();
 const server = http.createServer(app);
 
-/**
- * userStore is a Map<guestId, {
- *   guestId: string,
- *   username: string,
- *   location: string,
- *   userId: string,
- *   createdAt: number
- * }>
- *
- * The userId is used for identifying the user across rooms.
- */
-let userStore = new Map(); 
+// We'll store user data in memory, and also persist to a JSON file
+let userStore = new Map(); // Map<guestId, { guestId, username, location, userId, createdAt }>
 
 // Parse JSON bodies for any REST endpoints
 app.use(express.json());
@@ -377,7 +366,6 @@ async function leaveRoom(socket, userId) {
 /************************************************************
  * JOIN ROOM
  ************************************************************/
-/** NEW: Only add the user to the room if they are not already in it. */
 function joinRoom(socket, roomId, userId) {
   if (!roomId || roomId.length !== 6) {
     socket.emit('room not found');
@@ -389,7 +377,7 @@ function joinRoom(socket, roomId, userId) {
     return;
   }
 
-  // banned?
+  // banned check
   if (rm.bannedUserIds && rm.bannedUserIds.has(userId)) {
     socket.emit('error', 'You have been banned from rejoining this room.');
     return;
@@ -405,12 +393,10 @@ function joinRoom(socket, roomId, userId) {
   const locLower = normalize(location);
   const isAnonymous = (userLower === 'anonymous' && locLower === 'on the web');
   if (!isAnonymous) {
-    // limit user to 2 rooms
     if (getUserRoomsCount(userId) >= 2) {
       socket.emit('error', 'unable to join room at the moment please try again later');
       return;
     }
-    // limit username+location to 2 rooms
     if (getUsernameLocationRoomsCount(username, location) >= 2) {
       socket.emit('error', 'unable to join room at the moment please try again later');
       return;
@@ -419,43 +405,43 @@ function joinRoom(socket, roomId, userId) {
 
   if (!rm.users) rm.users = [];
   if (!rm.votes) rm.votes = {};
+
   if (rm.users.length >= MAX_ROOM_CAPACITY) {
     socket.emit('room full');
     return;
   }
 
-  // Check if already in the room
-  const alreadyInRoom = rm.users.some(u => u.id === userId);
-  if (!alreadyInRoom) {
+  socket.join(roomId);
+  // Check if user is already in the room:
+  let existingUser = rm.users.find(u => u.id === userId);
+  if (existingUser) {
+    // update username/location if needed
+    existingUser.username = username;
+    existingUser.location = location;
+    // Do not emit a duplicate 'user joined' event.
+  } else {
     rm.users.push({
       id: userId,
       username,
       location
     });
-    if (!rm.leaderId) {
-      rm.leaderId = userId;
-    }
+    // Broadcast to others that a new user has joined.
+    io.to(roomId).emit('user joined', {
+      id: userId,
+      username,
+      location,
+      roomName: rm.name,
+      roomType: rm.type
+    });
   }
-
   rm.lastActiveTime = Date.now();
+
   socket.roomId = roomId;
   socket.handshake.session.currentRoom = roomId;
   socket.handshake.session.save(() => {
-    // Let everyone see if it's a new join
-    if (!alreadyInRoom) {
-      io.to(roomId).emit('user joined', {
-        id: userId,
-        username,
-        location,
-        roomName: rm.name,
-        roomType: rm.type
-      });
-    }
-
     updateRoom(roomId);
     updateLobby();
 
-    // Send the "room joined" event to the user who is joining (or re-joining)
     const currentMsgs = getCurrentMessages(rm.users);
     socket.emit('room joined', {
       roomId,
@@ -467,11 +453,9 @@ function joinRoom(socket, roomId, userId) {
       users: rm.users,
       layout: rm.layout,
       votes: rm.votes,
-      leaderId: rm.leaderId,
-      currentMessages: currentMsgs
+      currentMessages: currentMsgs,
+      leaderId: rm.leaderId
     });
-
-    // Move the user from the lobby to the room
     socket.leave('lobby');
     if (roomDeletionTimers.has(roomId)) {
       clearTimeout(roomDeletionTimers.get(roomId));
@@ -510,24 +494,15 @@ io.on('connection', (socket) => {
     socket.emit('error', 'No guestId (fingerprint) provided. Reload the page.');
     return;
   } else {
-    // Browser console log instead of server console:
+    // Instead of logging to server console, emit the message to the client.
     if (userStore.has(guestId)) {
-      socket.emit('dev message', `user detected: ${guestId}`);  /** NEW: Send to browser console **/
-      // Sync session with the stored data so we always have "latest" username/location
-      const rec = userStore.get(guestId);
-      if (rec.username && rec.location && rec.userId) {
-        socket.handshake.session.username = rec.username;
-        socket.handshake.session.location = rec.location;
-        socket.handshake.session.userId = rec.userId;
-        socket.handshake.session.save();
-      }
+      socket.emit('guest detection', `user detected: ${guestId}`);
     } else {
-      socket.emit('dev message', `No account detected making new account: ${guestId}`); /** NEW **/
+      socket.emit('guest detection', `No account detected making new account: ${guestId}`);
       userStore.set(guestId, {
         guestId,
         username: '',
         location: '',
-        userId: '', // will be assigned later on "join lobby"
         createdAt: Date.now()
       });
       saveUsers();
@@ -535,32 +510,21 @@ io.on('connection', (socket) => {
     socket.handshake.session.guestId = guestId;
   }
 
-  // -----------------------------------------------------------------------------------
-  // check signin status – if the session is not yet set, try to restore from userStore
-  // -----------------------------------------------------------------------------------
+  // check signin status – if the session is not yet set, try to restore from the persistent userStore
   socket.on('check signin status', () => {
     let { guestId, username, location, userId } = socket.handshake.session;
-    if (guestId && userStore.has(guestId)) {
-      const rec = userStore.get(guestId);
-      // If our session is missing data, pull from userStore
-      if ((!username || !location || !userId) && rec.username && rec.location && rec.userId) {
-        socket.handshake.session.username = rec.username;
-        socket.handshake.session.location = rec.location;
-        socket.handshake.session.userId = rec.userId;
-        socket.handshake.session.save(() => {
-          socket.emit('signin status', {
-            isSignedIn: true,
-            username: rec.username,
-            location: rec.location,
-            userId: rec.userId
-          });
-          socket.join('lobby');
-        });
-        return;
+    if ((!username || !location || !userId) && guestId && userStore.has(guestId)) {
+      let record = userStore.get(guestId);
+      if (record.username && record.location) {
+        username = record.username;
+        location = record.location;
+        userId = record.userId || (guestId + '-' + uuidv4().slice(0, 6));
+        socket.handshake.session.username = username;
+        socket.handshake.session.location = location;
+        socket.handshake.session.userId = userId;
+        socket.handshake.session.save();
       }
     }
-
-    // If we have session user data => signed in
     if (username && location && userId) {
       socket.emit('signin status', {
         isSignedIn: true,
@@ -602,7 +566,7 @@ io.on('connection', (socket) => {
       socket.handshake.session.location = location;
       socket.handshake.session.userId = userId;
 
-      // update userStore with new name/location
+      // update userStore record as well
       if (userStore.has(guestId)) {
         const rec = userStore.get(guestId);
         rec.username = username;
@@ -739,7 +703,7 @@ io.on('connection', (socket) => {
 
       let { username, location, userId } = socket.handshake.session;
       if (!username || !location || !userId) {
-        // fallback if somehow session is missing
+        // fallback if somehow session is missing – though this should rarely happen
         userId = guestId + '-' + uuidv4().slice(0, 6);
         username = 'Anonymous';
         location = 'On The Web';
@@ -781,7 +745,6 @@ io.on('connection', (socket) => {
       if (userId === targetUserId) return; 
       if (!rm.votes) rm.votes = {};
 
-      // If user votes same target => remove vote
       if (rm.votes[userId] === targetUserId) {
         delete rm.votes[userId];
         io.to(rmId).emit('update votes', rm.votes);
@@ -995,7 +958,7 @@ io.on('connection', (socket) => {
     socket.emit('initial rooms', Array.from(rooms.values()));
   });
 
-  //** BROWSER-SIDE DEVELOPER LOGS **
+  // disconnect
   socket.on('disconnect', async () => {
     try {
       const userId = socket.handshake.session.userId;

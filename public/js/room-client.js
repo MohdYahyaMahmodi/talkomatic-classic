@@ -288,8 +288,24 @@ function updateRoomUI(roomData) {
   updateInviteLink();
 }
 
+// At the top of room-client.js add:
+socket.on('guest detection', (message) => {
+  console.log(message);
+});
+
 // -------------- addUserToRoom --------------
 function addUserToRoom(user) {
+  // Check if a chat row for this user already exists.
+  const existingRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
+  if (existingRow) {
+    // Update the user info (username and location)
+    const userInfo = existingRow.querySelector('.user-info');
+    if (userInfo) {
+      userInfo.textContent = `${user.username} / ${user.location}`;
+    }
+    return; // Do not create a duplicate row
+  }
+  // Otherwise, create a new chat row.
   const container = document.querySelector('.chat-container');
   if (!container) return;
 
@@ -304,19 +320,16 @@ function addUserToRoom(user) {
   userInfo.classList.add('user-info');
   userInfo.textContent = `${user.username} / ${user.location}`;
 
-  // Mute button
+  // Mute button, vote button, and moderator button (as before)
   const muteBtn = document.createElement('button');
   muteBtn.classList.add('mute-button');
   muteBtn.innerHTML = '🔊';
   muteBtn.style.display = 'none';
   muteBtn.addEventListener('click', () => {
-    // personal sound approach or local mute approach
-    // ...
-    alert("In this version, global mute is done by the moderator's 'mute' button in the settings modal.");
+    alert("Global mute is done by the moderator's settings.");
   });
   userInfo.appendChild(muteBtn);
 
-  // Vote button
   const voteBtn = document.createElement('button');
   voteBtn.classList.add('vote-button');
   voteBtn.innerHTML = '👎 0';
@@ -326,7 +339,6 @@ function addUserToRoom(user) {
   });
   userInfo.appendChild(voteBtn);
 
-  // Moderator gear
   const modMenuBtn = document.createElement('button');
   modMenuBtn.classList.add('mod-menu-button');
   modMenuBtn.innerText = '⚙️';
@@ -352,6 +364,7 @@ function addUserToRoom(user) {
   adjustMuteButtonVisibility();
   adjustModMenuVisibility();
 }
+
 
 // -------------- removeUserFromRoom --------------
 function removeUserFromRoom(userId) {
