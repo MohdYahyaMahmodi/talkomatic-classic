@@ -425,6 +425,40 @@
       justify-content: flex-start;
     }
   }
+  .modal {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.6);
+  }
+  
+  .modal-content {
+    background-color: #2e2e2e;
+    color: #fff;
+    margin: 10% auto;
+    padding: 20px;
+    width: 300px;
+    border-radius: 6px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.5);
+    font-family: talkoSS, sans-serif;
+    position: relative;
+  }
+  
+  .close-modal {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    color: #fff;
+    font-size: 24px;
+    cursor: pointer;
+  }
+  
+  /* etc... */
   
   .moderator-modal {
     display: none;

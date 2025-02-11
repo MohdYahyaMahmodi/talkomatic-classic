@@ -1,14 +1,9 @@
-// ============================================================================
 // room-client.js
 // ============================================================================
 // This version supports two modals:
-// - Room Settings (to toggle doorbell and lock the room)
-// - User Settings (to kick, ban, mute, or promote a target user)
-//
-// Moderators (room creator or promoted) see the settings icon and moderator buttons.
-// Non-moderators only see the personal mute toggle and can downvote to kick.
+//   1) Room Settings (doorbell mute / lock room) via the top-right gear icon
+//   2) User Moderation (kick/ban/mute/promote) via a small gear next to each user
 // ============================================================================
-
 const MAX_MESSAGE_LENGTH = 5000;
 
 let currentUsername = '';
@@ -20,9 +15,9 @@ let lastSentMessage = '';
 let currentRoomName = '';
 let chatInput = null;
 let currentLeaderId = null;
-let roomIsLocked = false;      // room lock status
-let doorbellMuted = false;     // doorbell mute status
-let currentModerators = [];    // array of moderator userIds
+let roomIsLocked = false;
+let doorbellMuted = false;
+let currentModerators = []; 
 
 // For user moderation modal actions
 let moderatorTargetUserId = null;
@@ -32,11 +27,11 @@ const joinSound = document.getElementById('joinSound');
 const leaveSound = document.getElementById('leaveSound');
 let soundEnabled = true;
 
+// Buttons
 const muteToggleButton = document.getElementById('muteToggle');
-const roomSettingsBtn = document.getElementById('roomSettingsBtn'); // for moderators
+const roomSettingsBtn = document.getElementById('roomSettingsBtn');
 
-// ---------------- Modal Elements ----------------
-// Room Settings Modal elements
+// Modals: Room Settings
 const roomSettingsModal = document.getElementById('roomSettingsModal');
 const roomSettingsModalClose = document.getElementById('roomSettingsModalClose');
 const doorbellStatusEl = document.getElementById('doorbellStatus');
@@ -44,7 +39,7 @@ const toggleDoorbellBtn = document.getElementById('toggleDoorbellBtn');
 const lockStatusEl = document.getElementById('lockStatus');
 const toggleLockBtn = document.getElementById('toggleLockBtn');
 
-// User Settings Modal elements
+// Modals: User Settings
 const userSettingsModal = document.getElementById('userSettingsModal');
 const userSettingsModalClose = document.getElementById('userSettingsModalClose');
 const userModTargetNameEl = document.getElementById('userModTargetName');
@@ -54,7 +49,7 @@ const modBanBtn = document.getElementById('modBanBtn');
 const modMuteBtn = document.getElementById('modMuteBtn');
 const modPromoteBtn = document.getElementById('modPromoteBtn');
 
-// -------------- SOUND & MUTE (Personal) --------------
+// -------------- Personal Sound & Mute --------------
 function playJoinSound() {
   if (soundEnabled) {
     joinSound.play().catch(err => console.error('Error playing join sound:', err));
@@ -115,7 +110,7 @@ function joinRoom(roomId, accessCode = null) {
 }
 
 // -------------- Modal Functions --------------
-// Room Settings Modal
+// Room Settings
 function openRoomSettingsModal() {
   doorbellStatusEl.textContent = `Doorbell: ${doorbellMuted ? 'Muted' : 'Unmuted'}`;
   toggleDoorbellBtn.textContent = doorbellMuted ? 'Unmute Doorbell' : 'Mute Doorbell';
@@ -136,7 +131,7 @@ toggleLockBtn.addEventListener('click', () => {
 });
 roomSettingsModalClose.addEventListener('click', closeRoomSettingsModal);
 
-// User Settings Modal
+// User Settings
 function openUserSettingsModal(user) {
   moderatorTargetUserId = user.id;
   userModTargetNameEl.textContent = user.username;
@@ -217,6 +212,8 @@ socket.on('room joined', (data) => {
   updateRoomInfo(data);
   updateRoomUI(data);
   if (data.votes) updateVotesUI(data.votes);
+
+  // If there's any existing typed messages, restore them
   if (data.currentMessages) {
     Object.keys(data.currentMessages).forEach(uid => {
       const inp = document.querySelector(`.chat-row[data-user-id="${uid}"] .chat-input`);
@@ -234,18 +231,11 @@ socket.on('room joined', (data) => {
 
 socket.on('room update', (roomData) => {
   currentRoomLayout = roomData.layout || currentRoomLayout;
-  if (roomData.leaderId) {
-    currentLeaderId = roomData.leaderId;
-  }
-  if (typeof roomData.locked === 'boolean') {
-    roomIsLocked = roomData.locked;
-  }
-  if (typeof roomData.doorbellMuted === 'boolean') {
-    doorbellMuted = roomData.doorbellMuted;
-  }
-  if (roomData.moderators) {
-    currentModerators = roomData.moderators;
-  }
+  if (roomData.leaderId) currentLeaderId = roomData.leaderId;
+  if (typeof roomData.locked === 'boolean') roomIsLocked = roomData.locked;
+  if (typeof roomData.doorbellMuted === 'boolean') doorbellMuted = roomData.doorbellMuted;
+  if (roomData.moderators) currentModerators = roomData.moderators;
+
   updateRoomInfo(roomData);
   updateRoomUI(roomData);
   if (roomData.votes) updateVotesUI(roomData.votes);
@@ -266,13 +256,14 @@ socket.on('offensive word detected', (data) => {
   }
 });
 
-// Log guest detection messages in the browser console.
 socket.on('guest detection', (message) => {
   console.log(message);
 });
 
 // -------------- adjustNavForLeader --------------
 function adjustNavForLeader() {
+  // If I'm a moderator, show the gear icon (roomSettingsBtn),
+  // otherwise show the personal mute toggle.
   if (currentModerators.includes(currentUserId)) {
     muteToggleButton.style.display = 'none';
     roomSettingsBtn.style.display = 'inline-block';
@@ -307,6 +298,7 @@ function updateRoomUI(roomData) {
   const currentTextMap = new Map();
   let focusedUserId = null;
 
+  // Save current text so we can restore after rebuild
   document.querySelectorAll('.chat-row').forEach(row => {
     const uid = row.dataset.userId;
     const txt = row.querySelector('.chat-input');
@@ -318,6 +310,7 @@ function updateRoomUI(roomData) {
     }
   });
 
+  // Clear container
   while (chatContainer.firstChild) {
     chatContainer.removeChild(chatContainer.firstChild);
   }
@@ -344,10 +337,11 @@ function updateRoomUI(roomData) {
   updateInviteLink();
 }
 
-// -------------- addUserToRoom --------------
+// Add user row
 function addUserToRoom(user) {
   const existingRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
   if (existingRow) {
+    // Update info if user re-joined
     const userInfo = existingRow.querySelector('.user-info');
     if (userInfo) {
       userInfo.textContent = `${user.username} / ${user.location}`;
@@ -368,6 +362,7 @@ function addUserToRoom(user) {
   userInfo.classList.add('user-info');
   userInfo.textContent = `${user.username} / ${user.location}`;
 
+  // Individual mute button (local mute)
   const muteBtn = document.createElement('button');
   muteBtn.classList.add('mute-button');
   muteBtn.innerHTML = '🔊';
@@ -377,6 +372,7 @@ function addUserToRoom(user) {
   });
   userInfo.appendChild(muteBtn);
 
+  // Vote button
   const voteBtn = document.createElement('button');
   voteBtn.classList.add('vote-button');
   voteBtn.innerHTML = '👎 0';
@@ -386,7 +382,7 @@ function addUserToRoom(user) {
   });
   userInfo.appendChild(voteBtn);
 
-  // If current user is a moderator and this is not the current user, add a mod button.
+  // If current user is a moderator and this is not ME, add a mod button
   if (currentModerators.includes(currentUserId) && user.id !== currentUserId) {
     const modMenuBtn = document.createElement('button');
     modMenuBtn.classList.add('mod-menu-button');
@@ -405,6 +401,7 @@ function addUserToRoom(user) {
   } else {
     textArea.readOnly = true;
   }
+
   row.appendChild(userInfo);
   row.appendChild(textArea);
   container.appendChild(row);
@@ -415,7 +412,7 @@ function addUserToRoom(user) {
   adjustModMenuVisibility();
 }
 
-// -------------- removeUserFromRoom --------------
+// Remove user
 function removeUserFromRoom(userId) {
   const row = document.querySelector(`.chat-row[data-user-id="${userId}"]`);
   if (row) {
@@ -424,7 +421,7 @@ function removeUserFromRoom(userId) {
   adjustLayout();
 }
 
-// -------------- displayChatMessage --------------
+// Display incoming chat message changes
 function displayChatMessage(data) {
   const inputEl = document.querySelector(`.chat-row[data-user-id="${data.userId}"] .chat-input`);
   if (!inputEl) return;
@@ -437,13 +434,21 @@ function displayChatMessage(data) {
         newText = data.diff.text.slice(0, MAX_MESSAGE_LENGTH);
         break;
       case 'add':
-        newText = currentText.slice(0, data.diff.index) + data.diff.text + currentText.slice(data.diff.index);
+        newText =
+          currentText.slice(0, data.diff.index) +
+          data.diff.text +
+          currentText.slice(data.diff.index);
         break;
       case 'delete':
-        newText = currentText.slice(0, data.diff.index) + currentText.slice(data.diff.index + data.diff.count);
+        newText =
+          currentText.slice(0, data.diff.index) +
+          currentText.slice(data.diff.index + data.diff.count);
         break;
       case 'replace':
-        newText = currentText.slice(0, data.diff.index) + data.diff.text + currentText.slice(data.diff.index + data.diff.text.length);
+        newText =
+          currentText.slice(0, data.diff.index) +
+          data.diff.text +
+          currentText.slice(data.diff.index + data.diff.text.length);
         break;
       default:
         newText = currentText;
@@ -483,7 +488,9 @@ function adjustModMenuVisibility() {
     const uid = row.dataset.userId;
     const modBtn = row.querySelector('.mod-menu-button');
     if (!modBtn) return;
-    modBtn.style.display = (currentModerators.includes(currentUserId) && uid !== currentUserId) ? 'inline-block' : 'none';
+    modBtn.style.display = (currentModerators.includes(currentUserId) && uid !== currentUserId)
+      ? 'inline-block'
+      : 'none';
   });
 }
 
@@ -534,9 +541,12 @@ document.querySelector('.leave-room').addEventListener('click', () => {
   window.location.href = '/index.html';
 });
 
+// Capture local changes to your text and emit diffs
 document.querySelector('.chat-container').addEventListener('input', (e) => {
-  if (e.target.classList.contains('chat-input') &&
-      e.target.closest('.chat-row').dataset.userId === currentUserId) {
+  if (
+    e.target.classList.contains('chat-input') &&
+    e.target.closest('.chat-row').dataset.userId === currentUserId
+  ) {
     const curVal = e.target.value;
     if (curVal.length > MAX_MESSAGE_LENGTH) {
       e.target.value = curVal.slice(0, MAX_MESSAGE_LENGTH);

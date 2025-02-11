@@ -1,10 +1,7 @@
 /****************************
  * server.js
  * ==========================
- * Last updated: 2025 (with updates for multi‐tab, duplicate join handling,
- * and room moderation with separate moderator actions)
  ****************************/
-
 require('dotenv').config();
 
 const express = require('express');
@@ -55,7 +52,7 @@ const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) === -1) {
-      return callback(new Error('The CORS policy does not allow access from this origin.'), false);
+      return callback(new Error('CORS policy does not allow access from this origin.'), false);
     }
     return callback(null, true);
   },
@@ -66,31 +63,57 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(cookieParser());
 
+// Generate a nonce (hex-encoded) so that it doesn't contain + or =
 app.use((req, res, next) => {
-  res.locals.nonce = crypto.randomBytes(16).toString('base64');
+  res.locals.nonce = crypto.randomBytes(16).toString('hex'); 
   next();
 });
 
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdnjs.cloudflare.com", (req, res) => `nonce-${res.locals.nonce}`],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
-      imgSrc: ["'self'", "data:", "https:", "blob:"],
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'"],
-      frameSrc: ["'none'"],
-      styleSrcElem: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
-      scriptSrcElem: ["'self'", "https://cdnjs.cloudflare.com", "https://classic.talkomatic.co", (req, res) => `nonce-${res.locals.nonce}`]
-    }
-  },
-  crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: "cross-origin" },
-  crossOriginOpenerPolicy: false
-}));
+// Helmet with CSP referencing our nonce
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        // NOTE: Return `'nonce-xxxxxxxx'` in quotes so browsers see it as a valid source.
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'", // remove if you do not want inline scripts
+          "'unsafe-eval'",   // remove if not needed
+          'https://cdnjs.cloudflare.com',
+          (req, res) => `'nonce-${res.locals.nonce}'`
+        ],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          'https://cdnjs.cloudflare.com',
+          'https://fonts.googleapis.com'
+        ],
+        fontSrc: [
+          "'self'",
+          'https://fonts.gstatic.com',
+          'https://cdnjs.cloudflare.com'
+        ],
+        imgSrc: ["'self'", "data:", "https:", "blob:"],
+        connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'"],
+        frameSrc: ["'none'"],
+        // For script/style elements specifically:
+        styleSrcElem: ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com', 'https://fonts.googleapis.com'],
+        scriptSrcElem: [
+          "'self'",
+          'https://cdnjs.cloudflare.com',
+          // If you serve scripts from your own domain or a CDN, list them here...
+          (req, res) => `'nonce-${res.locals.nonce}'`
+        ]
+      }
+    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginOpenerPolicy: false
+  })
+);
 
 app.use(xss());
 app.use(hpp());
@@ -102,7 +125,11 @@ const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || '723698977cc31aaf8e84...',
   resave: false,
   saveUninitialized: true,
-  cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 14 * 24 * 60 * 60 * 1000 }
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 14 * 24 * 60 * 60 * 1000
+  }
 });
 app.use(sessionMiddleware);
 
@@ -133,12 +160,14 @@ async function saveRooms() {
     console.error('Error saving rooms:', err);
   }
 }
+
 async function loadRooms() {
   try {
     const data = await fs.readFile(path.join(__dirname, 'rooms.json'), 'utf8');
     const loaded = JSON.parse(data);
     rooms = new Map(loaded);
-    rooms.clear();
+    // For this example, we clear them or keep them. Up to you.
+    // rooms.clear();
   } catch (err) {
     if (err.code !== 'ENOENT') console.error('Error loading rooms:', err);
   }
@@ -195,7 +224,9 @@ function getUsernameLocationRoomsCount(username, location) {
   let count = 0;
   for (const [, rm] of rooms) {
     for (const mem of rm.users) {
-      if (normalize(mem.username) === uLow && normalize(mem.location) === lLow) count++;
+      if (normalize(mem.username) === uLow && normalize(mem.location) === lLow) {
+        count++;
+      }
     }
   }
   return count;
@@ -217,8 +248,9 @@ function updateRoom(roomId) {
   if (rm) {
     io.to(roomId).emit('room update', {
       id: rm.id,
-      name: rm.name,
-      type: rm.type,
+      roomId: rm.id,
+      roomName: rm.name,
+      roomType: rm.type,
       layout: rm.layout,
       users: rm.users,
       votes: rm.votes,
@@ -233,7 +265,9 @@ function updateRoom(roomId) {
 
 function getCurrentMessages(users) {
   const messages = {};
-  users.forEach(u => { messages[u.id] = userMessageBuffers.get(u.id) || ''; });
+  users.forEach(u => {
+    messages[u.id] = userMessageBuffers.get(u.id) || '';
+  });
   return messages;
 }
 
@@ -254,16 +288,30 @@ async function leaveRoom(socket, userId) {
   if (!socket.roomId) return;
   const rm = rooms.get(socket.roomId);
   if (rm) {
+    // Remove user from the room
     rm.users = rm.users.filter(u => u.id !== userId);
+
+    // If they were the "leader", set a new leader if any users remain
     if (rm.leaderId === userId && rm.users.length > 0) {
       rm.leaderId = rm.users[0].id;
     }
+
+    // Remove them from moderators
+    rm.moderators = rm.moderators.filter(m => m !== userId);
+    // If no moderators left, promote the oldest user
+    if (rm.moderators.length === 0 && rm.users.length > 0) {
+      rm.moderators.push(rm.users[0].id);
+    }
+
     rm.lastActiveTime = Date.now();
 
+    // Remove votes cast by or against that user
     if (rm.votes) {
       delete rm.votes[userId];
       for (let voterId in rm.votes) {
-        if (rm.votes[voterId] === userId) delete rm.votes[voterId];
+        if (rm.votes[voterId] === userId) {
+          delete rm.votes[voterId];
+        }
       }
       io.to(socket.roomId).emit('update votes', rm.votes);
     }
@@ -272,6 +320,7 @@ async function leaveRoom(socket, userId) {
     io.to(socket.roomId).emit('user left', userId);
     updateRoom(socket.roomId);
 
+    // If room is now empty, schedule deletion
     if (rm.users.length === 0) {
       startRoomDeletionTimer(socket.roomId);
     }
@@ -294,10 +343,12 @@ function joinRoom(socket, roomId, userId) {
     socket.emit('room not found');
     return;
   }
+  // Check ban
   if (rm.bannedUserIds && rm.bannedUserIds.has(userId)) {
     socket.emit('error', 'You have been banned from rejoining this room.');
     return;
   }
+  // Check lock
   if (rm.locked) {
     socket.emit('error', 'This room is locked by the moderator. Cannot join.');
     return;
@@ -306,6 +357,8 @@ function joinRoom(socket, roomId, userId) {
   const userLower = normalize(username);
   const locLower = normalize(location);
   const isAnonymous = (userLower === 'anonymous' && locLower === 'on the web');
+
+  // For demonstration, we limit anons or repeating name+location combos
   if (!isAnonymous) {
     if (getUserRoomsCount(userId) >= 2) {
       socket.emit('error', 'unable to join room at the moment please try again later');
@@ -316,8 +369,6 @@ function joinRoom(socket, roomId, userId) {
       return;
     }
   }
-  if (!rm.users) rm.users = [];
-  if (!rm.votes) rm.votes = {};
 
   if (rm.users.length >= MAX_ROOM_CAPACITY) {
     socket.emit('room full');
@@ -364,6 +415,7 @@ function joinRoom(socket, roomId, userId) {
       locked: rm.locked
     });
     socket.leave('lobby');
+    // If a deletion timer was pending, cancel it
     if (roomDeletionTimers.has(roomId)) {
       clearTimeout(roomDeletionTimers.get(roomId));
       roomDeletionTimers.delete(roomId);
@@ -379,16 +431,20 @@ function handleTyping(socket, userId, username, isTyping) {
   }
   if (isTyping) {
     socket.to(socket.roomId).emit('user typing', { userId, username, isTyping: true });
-    typingTimeouts.set(userId, setTimeout(() => {
-      socket.to(socket.roomId).emit('user typing', { userId, username, isTyping: false });
-      typingTimeouts.delete(userId);
-    }, 2000));
+    typingTimeouts.set(
+      userId,
+      setTimeout(() => {
+        socket.to(socket.roomId).emit('user typing', { userId, username, isTyping: false });
+        typingTimeouts.delete(userId);
+      }, 2000)
+    );
   } else {
     socket.to(socket.roomId).emit('user typing', { userId, username, isTyping: false });
     typingTimeouts.delete(userId);
   }
 }
 
+// ===================== SOCKET HANDLERS =====================
 io.on('connection', (socket) => {
   const { guestId } = socket.handshake.query;
   if (!guestId) {
@@ -535,11 +591,11 @@ io.on('connection', (socket) => {
         type: roomType,
         layout,
         users: [],
-        accessCode: (roomType === 'semi-private') ? data.accessCode : null,
+        accessCode: roomType === 'semi-private' ? data.accessCode : null,
         votes: {},
         bannedUserIds: new Set(),
         leaderId: userId,
-        moderators: [userId],
+        moderators: [userId], // Room creator is automatically a moderator
         doorbellMuted: false,
         locked: false,
         lastActiveTime: Date.now()
@@ -612,18 +668,24 @@ io.on('connection', (socket) => {
       const rm = rooms.get(rmId);
       if (!rm) return;
       if (!rm.users.find(u => u.id === userId)) return;
-      if (userId === targetUserId) return;
+      if (userId === targetUserId) return; // can't vote for self
       if (!rm.votes) rm.votes = {};
+
+      // Toggle vote
       if (rm.votes[userId] === targetUserId) {
         delete rm.votes[userId];
         io.to(rmId).emit('update votes', rm.votes);
       } else {
         rm.votes[userId] = targetUserId;
         io.to(rmId).emit('update votes', rm.votes);
+
+        // Check if majority
         const votesAgainst = Object.values(rm.votes).filter(v => v === targetUserId).length;
         const totalUsers = rm.users.length;
         if (votesAgainst > Math.floor(totalUsers / 2)) {
-          const targetSocket = [...io.sockets.sockets.values()].find(s => s.handshake.session.userId === targetUserId);
+          const targetSocket = [...io.sockets.sockets.values()].find(
+            s => s.handshake.session.userId === targetUserId
+          );
           if (targetSocket) {
             targetSocket.emit('kicked');
             rm.bannedUserIds.add(targetUserId);
@@ -654,7 +716,7 @@ io.on('connection', (socket) => {
       if (!rm) return;
       const userId = socket.handshake.session.userId;
       const username = socket.handshake.session.username;
-      if (rm.mutedUserIds && rm.mutedUserIds.has(userId)) return;
+      if (rm.mutedUserIds && rm.mutedUserIds.has(userId)) return; // user is globally muted
       if (!userMessageBuffers.has(userId)) {
         userMessageBuffers.set(userId, '');
       }
@@ -666,6 +728,7 @@ io.on('connection', (socket) => {
       const diff = data.diff;
       if (!diff) return;
       if (diff.text) diff.text = enforceCharacterLimit(diff.text);
+
       switch (diff.type) {
         case 'full-replace':
           userMessage = diff.text;
@@ -677,19 +740,27 @@ io.on('connection', (socket) => {
           userMessage = userMessage.slice(0, diff.index) + userMessage.slice(diff.index + diff.count);
           break;
         case 'replace':
-          userMessage = userMessage.slice(0, diff.index) + diff.text + userMessage.slice(diff.index + diff.text.length);
+          userMessage =
+            userMessage.slice(0, diff.index) +
+            diff.text +
+            userMessage.slice(diff.index + diff.text.length);
           break;
         default:
           socket.emit('error', 'Unknown diff type.');
           return;
       }
+
       userMessageBuffers.set(userId, userMessage);
+
       if (ENABLE_WORD_FILTER) {
         const filterResult = wordFilter.checkText(userMessage);
         if (filterResult.hasOffensiveWord) {
           userMessage = wordFilter.filterText(userMessage);
           userMessageBuffers.set(userId, userMessage);
-          io.to(socket.roomId).emit('offensive word detected', { userId, filteredMessage: userMessage });
+          io.to(socket.roomId).emit('offensive word detected', {
+            userId,
+            filteredMessage: userMessage
+          });
         } else {
           socket.to(socket.roomId).emit('chat update', { userId, username, diff });
         }
@@ -729,7 +800,9 @@ io.on('connection', (socket) => {
       switch (action) {
         case 'kick':
           if (targetUserId) {
-            const tSock = [...io.sockets.sockets.values()].find(s => s.handshake.session.userId === targetUserId);
+            const tSock = [...io.sockets.sockets.values()].find(
+              s => s.handshake.session.userId === targetUserId
+            );
             if (tSock) {
               tSock.emit('kicked', { reason: 'Moderator kicked you out' });
               rm.bannedUserIds.add(targetUserId);
@@ -740,7 +813,9 @@ io.on('connection', (socket) => {
         case 'ban':
           if (targetUserId) {
             rm.bannedUserIds.add(targetUserId);
-            const tSock = [...io.sockets.sockets.values()].find(s => s.handshake.session.userId === targetUserId);
+            const tSock = [...io.sockets.sockets.values()].find(
+              s => s.handshake.session.userId === targetUserId
+            );
             if (tSock) {
               tSock.emit('kicked', { reason: 'Banned by Moderator' });
               leaveRoom(tSock, targetUserId);
@@ -804,6 +879,7 @@ io.on('connection', (socket) => {
   });
 });
 
+// Periodically clean up empty rooms
 setInterval(() => {
   for (const [rmId, rm] of rooms.entries()) {
     if (rm.users.length === 0) {
@@ -821,7 +897,7 @@ setInterval(() => {
 
 function apiAuth(req, res, next) {
   const apiKey = req.header('x-api-key');
-  const validApiKey = 'tK_public_key_4f8a9b2c7d6e3f1a5g8h9i0j4k5l6m7n8o9p';
+  const validApiKey = 'tK_public_key_4f8a9b2c...'; // example
   if (!apiKey || apiKey !== validApiKey) {
     return res.status(403).json({ error: 'Forbidden: invalid or missing x-api-key.' });
   }
@@ -835,7 +911,11 @@ app.get('/api/v1/rooms', limiter, apiAuth, (req, res) => {
       id: r.id,
       name: r.name,
       type: r.type,
-      users: r.users.map(u => ({ id: u.id, username: u.username, location: u.location })),
+      users: r.users.map(u => ({
+        id: u.id,
+        username: u.username,
+        location: u.location
+      })),
       isFull: r.users.length >= MAX_ROOM_CAPACITY
     }));
   res.json(pubRooms);
@@ -850,7 +930,11 @@ app.get('/api/v1/rooms/:id', limiter, apiAuth, (req, res) => {
     id: rm.id,
     name: rm.name,
     type: rm.type,
-    users: rm.users.map(u => ({ id: u.id, username: u.username, location: u.location })),
+    users: rm.users.map(u => ({
+      id: u.id,
+      username: u.username,
+      location: u.location
+    })),
     isFull: rm.users.length >= MAX_ROOM_CAPACITY
   });
 });
@@ -880,7 +964,7 @@ app.post('/api/v1/rooms', limiter, apiAuth, (req, res) => {
       type: roomType,
       layout,
       users: [],
-      accessCode: (roomType === 'semi-private') ? data.accessCode : null,
+      accessCode: roomType === 'semi-private' ? data.accessCode : null,
       votes: {},
       bannedUserIds: new Set(),
       leaderId: null,
@@ -927,6 +1011,7 @@ app.get('/api/v1/protected/ping', limiter, apiAuth, (req, res) => {
   return res.json({ message: 'pong', time: Date.now() });
 });
 
+// Start Server
 const PORT = process.env.PORT || 7842;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
