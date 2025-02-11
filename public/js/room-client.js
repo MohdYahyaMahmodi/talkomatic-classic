@@ -48,7 +48,6 @@ let locallyMutedUsers = new Set();
 function playJoinSound() {
   // If I'm the leader and I've muted doorbell, skip
   if (currentLeaderId === currentUserId && moderatorDoorbellMuted) return;
-
   if (soundEnabled) {
     joinSound.play().catch((err) => console.error('Error playing join sound:', err));
   }
@@ -56,7 +55,6 @@ function playJoinSound() {
 function playLeaveSound() {
   // If I'm the leader and I've muted doorbell, skip
   if (currentLeaderId === currentUserId && moderatorDoorbellMuted) return;
-
   if (soundEnabled) {
     leaveSound.play().catch((err) => console.error('Error playing leave sound:', err));
   }
@@ -148,9 +146,10 @@ socket.on('room joined', (data) => {
   currentUsername = data.username;
   currentLocation = data.location;
   currentRoomLayout = data.layout || currentRoomLayout;
-  currentRoomName = data.roomName;
+  // Use either roomName or name property from the data.
+  currentRoomName = data.roomName || data.name || '';
   currentLeaderId = data.leaderId || null;
-  roomIsLocked = data.locked || false; // if server sends a locked flag
+  roomIsLocked = data.locked || false;
 
   updateRoomInfo(data);
   updateRoomUI(data);
@@ -196,6 +195,7 @@ socket.on('room update', (roomData) => {
   if (typeof roomData.locked === 'boolean') {
     roomIsLocked = roomData.locked;
   }
+  // Use roomData.roomName or roomData.name for the room title.
   updateRoomInfo(roomData);
   updateRoomUI(roomData);
   if (roomData.votes) {
@@ -242,7 +242,8 @@ function updateRoomInfo(data) {
   const roomIdEl = document.querySelector('.room-id');
 
   if (roomNameEl) {
-    roomNameEl.textContent = `Room: ${data.roomName || data.roomId}`;
+    // Use data.roomName or data.name (if room joined via updateRoom event)
+    roomNameEl.textContent = `Room: ${data.roomName || data.name || data.roomId}`;
   }
   if (roomTypeEl) {
     roomTypeEl.textContent = `${data.roomType || 'Public'} Room`;
@@ -594,9 +595,20 @@ window.addEventListener('load', () => {
 
   // User Settings modal close
   document.getElementById('userSettingsModalClose').addEventListener('click', closeUserSettingsModal);
-
   // Room Settings modal close
   document.getElementById('roomSettingsModalClose').addEventListener('click', closeRoomSettingsModal);
+
+  // Close modals when clicking outside the modal content
+  document.getElementById('roomSettingsModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+      closeRoomSettingsModal();
+    }
+  });
+  document.getElementById('userSettingsModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+      closeUserSettingsModal();
+    }
+  });
 
   // Moderator actions (User Settings)
   document.getElementById('modKickBtn').addEventListener('click', () => {
