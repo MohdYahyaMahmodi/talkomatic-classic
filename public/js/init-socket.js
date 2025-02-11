@@ -1,6 +1,6 @@
 // init-socket.js
 //
-// 1) We assume `generateGuestId()` is already available from fingerprint.js
+// 1) We assume `generateGuestId()` is already available from users.js
 // 2) We connect to the server with the "guestId" query
 const guestId = generateGuestId();
 const socket = io({
