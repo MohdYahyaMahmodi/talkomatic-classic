@@ -471,11 +471,13 @@ function closeUserSettingsModal() {
 
 // -------------- Modals: Room Settings --------------
 function openRoomSettingsModal() {
-  // Show lock/unlock status
+  // Show lock/unlock status and update the lock button text based on roomIsLocked state.
   const lockStatusEl = document.getElementById('roomLockStatus');
   lockStatusEl.textContent = roomIsLocked
     ? 'Room is currently LOCKED'
     : 'Room is currently UNLOCKED';
+  const toggleLockBtn = document.getElementById('toggleLockBtn');
+  toggleLockBtn.textContent = roomIsLocked ? 'Unlock Room' : 'Lock Room';
 
   const modal = document.getElementById('roomSettingsModal');
   modal.style.display = 'block';
@@ -632,10 +634,15 @@ window.addEventListener('load', () => {
 
   // Moderator actions (Room Settings)
   document.getElementById('toggleLockBtn').addEventListener('click', () => {
+    // Toggle room lock status locally for immediate feedback.
+    roomIsLocked = !roomIsLocked;
+    const lockStatusEl = document.getElementById('roomLockStatus');
+    lockStatusEl.textContent = roomIsLocked ? 'Room is currently LOCKED' : 'Room is currently UNLOCKED';
+    const toggleLockBtn = document.getElementById('toggleLockBtn');
+    toggleLockBtn.textContent = roomIsLocked ? 'Unlock Room' : 'Lock Room';
     socket.emit('moderator action', {
       action: 'lock-room',
     });
-    closeRoomSettingsModal();
   });
   document.getElementById('toggleDoorbellBtn').addEventListener('click', () => {
     moderatorDoorbellMuted = !moderatorDoorbellMuted;
