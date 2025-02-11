@@ -1,10 +1,11 @@
 /****************************
  * server.js
  * ==========================
- * Last updated: 2025 (with updates for multi‐tab and duplicate join handling)
+ * Last updated: 2025 (with updates for multi‐tab, duplicate join handling,
+ * and room moderation with separate moderator actions)
  ****************************/
 
-require('dotenv').config(); // Loads environment vars from .env
+require('dotenv').config();
 
 const express = require('express');
 const http = require('http');
@@ -23,20 +24,16 @@ const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 
 const WordFilter = require('./public/js/word-filter.js');
-const wordFilter = new WordFilter(
-  path.join(__dirname, 'public', 'js', 'offensive_words.json')
-);
+const wordFilter = new WordFilter(path.join(__dirname, 'public', 'js', 'offensive_words.json'));
 
 const lastRoomCreationTimes = new Map();
-const ROOM_CREATION_COOLDOWN = 30000; // 30 seconds
+const ROOM_CREATION_COOLDOWN = 30000;
 
 const app = express();
 const server = http.createServer(app);
 
-// We'll store user data in memory, and also persist to a JSON file
-let userStore = new Map(); // Map<guestId, { guestId, username, location, userId, createdAt }>
+let userStore = new Map();
 
-// Parse JSON bodies for any REST endpoints
 app.use(express.json());
 
 const MAX_USERNAME_LENGTH = 12;
@@ -47,7 +44,6 @@ const MAX_ROOM_CAPACITY = 5;
 
 const ENABLE_WORD_FILTER = true;
 
-// Allowed CORS origins
 const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
@@ -55,15 +51,11 @@ const allowedOrigins = [
   'https://dev.talkomatic.co'
 ];
 
-// CORS config
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) === -1) {
-      return callback(
-        new Error('The CORS policy does not allow access from this origin.'),
-        false
-      );
+      return callback(new Error('The CORS policy does not allow access from this origin.'), false);
     }
     return callback(null, true);
   },
@@ -74,91 +66,51 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(cookieParser());
 
-// Setup a nonce for each request for CSP
 app.use((req, res, next) => {
   res.locals.nonce = crypto.randomBytes(16).toString('base64');
   next();
 });
 
-// Helmet security headers
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: [
-          "'self'",
-          "'unsafe-inline'",
-          "'unsafe-eval'",
-          "https://cdnjs.cloudflare.com",
-          (req, res) => `nonce-${res.locals.nonce}`
-        ],
-        styleSrc: [
-          "'self'",
-          "'unsafe-inline'",
-          "https://cdnjs.cloudflare.com",
-          "https://fonts.googleapis.com"
-        ],
-        imgSrc: ["'self'", "data:", "https:", "blob:"],
-        connectSrc: ["'self'"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
-        objectSrc: ["'none'"],
-        mediaSrc: ["'self'"],
-        frameSrc: ["'none'"],
-        styleSrcElem: [
-          "'self'",
-          "'unsafe-inline'",
-          "https://cdnjs.cloudflare.com",
-          "https://fonts.googleapis.com"
-        ],
-        scriptSrcElem: [
-          "'self'",
-          "https://cdnjs.cloudflare.com",
-          "https://classic.talkomatic.co",
-          (req, res) => `nonce-${res.locals.nonce}`
-        ]
-      },
-    },
-    crossOriginEmbedderPolicy: false,
-    crossOriginResourcePolicy: { policy: "cross-origin" },
-    crossOriginOpenerPolicy: false
-  })
-);
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdnjs.cloudflare.com", (req, res) => `nonce-${res.locals.nonce}`],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      styleSrcElem: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
+      scriptSrcElem: ["'self'", "https://cdnjs.cloudflare.com", "https://classic.talkomatic.co", (req, res) => `nonce-${res.locals.nonce}`]
+    }
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: false
+}));
 
 app.use(xss());
 app.use(hpp());
 
-// Rate limit
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-});
+const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000 });
 app.use(limiter);
 
-// Session
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || '723698977cc31aaf8e84...',
   resave: false,
   saveUninitialized: true,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    httpOnly: true,
-    maxAge: 14 * 24 * 60 * 60 * 1000, 
-  }
+  cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 14 * 24 * 60 * 60 * 1000 }
 });
 app.use(sessionMiddleware);
 
-// Socket.io
 const io = socketIo(server, {
-  cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"],
-    credentials: true
-  }
+  cors: { origin: allowedOrigins, methods: ["GET", "POST"], credentials: true }
 });
 io.use(sharedsession(sessionMiddleware, { autoSave: true }));
 
-// Serve static
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.js')) {
@@ -168,15 +120,11 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
-// In-memory for rooms
 let rooms = new Map();
 const roomDeletionTimers = new Map();
 const typingTimeouts = new Map();
 const userMessageBuffers = new Map();
 
-/************************************************************
- * Save/Load Rooms (rooms.json)
- ************************************************************/
 async function saveRooms() {
   try {
     const data = JSON.stringify(Array.from(rooms.entries()));
@@ -185,25 +133,18 @@ async function saveRooms() {
     console.error('Error saving rooms:', err);
   }
 }
-
 async function loadRooms() {
   try {
     const data = await fs.readFile(path.join(__dirname, 'rooms.json'), 'utf8');
     const loaded = JSON.parse(data);
     rooms = new Map(loaded);
-    // optional: clear all on restart
     rooms.clear();
   } catch (err) {
-    if (err.code !== 'ENOENT') {
-      console.error('Error loading rooms:', err);
-    }
+    if (err.code !== 'ENOENT') console.error('Error loading rooms:', err);
   }
 }
 loadRooms();
 
-/************************************************************
- * Save/Load Users (users.json)
- ************************************************************/
 async function saveUsers() {
   try {
     const data = JSON.stringify(Array.from(userStore.entries()));
@@ -212,23 +153,17 @@ async function saveUsers() {
     console.error('Error saving users:', err);
   }
 }
-
 async function loadUsers() {
   try {
     const data = await fs.readFile(path.join(__dirname, 'users.json'), 'utf8');
     const loaded = JSON.parse(data);
     userStore = new Map(loaded);
   } catch (err) {
-    if (err.code !== 'ENOENT') {
-      console.error('Error loading users:', err);
-    }
+    if (err.code !== 'ENOENT') console.error('Error loading users:', err);
   }
 }
 loadUsers();
 
-/************************************************************
- * Helpers
- ************************************************************/
 function normalize(str) {
   return (str || '').trim().toLowerCase();
 }
@@ -244,17 +179,13 @@ function enforceLocationLimit(l) {
 function enforceRoomNameLimit(n) {
   return n.slice(0, MAX_ROOM_NAME_LENGTH);
 }
-
 function generateRoomId() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
-
 function getUserRoomsCount(userId) {
   let count = 0;
   for (const [, rm] of rooms) {
-    if (rm.users.some(u => u.id === userId)) {
-      count++;
-    }
+    if (rm.users.some(u => u.id === userId)) count++;
   }
   return count;
 }
@@ -264,15 +195,12 @@ function getUsernameLocationRoomsCount(username, location) {
   let count = 0;
   for (const [, rm] of rooms) {
     for (const mem of rm.users) {
-      if (normalize(mem.username) === uLow && normalize(mem.location) === lLow) {
-        count++;
-      }
+      if (normalize(mem.username) === uLow && normalize(mem.location) === lLow) count++;
     }
   }
   return count;
 }
 
-/** Produce a shallow copy of each public room for the lobby. */
 function updateLobby() {
   const publicRooms = Array.from(rooms.values())
     .filter(r => r.type !== 'private')
@@ -295,17 +223,17 @@ function updateRoom(roomId) {
       users: rm.users,
       votes: rm.votes,
       leaderId: rm.leaderId,
-      accessCode: undefined 
+      moderators: rm.moderators,
+      doorbellMuted: rm.doorbellMuted,
+      locked: rm.locked,
+      accessCode: undefined
     });
   }
 }
 
-/** For re-sending each user's text buffer if needed */
 function getCurrentMessages(users) {
   const messages = {};
-  users.forEach(u => {
-    messages[u.id] = userMessageBuffers.get(u.id) || '';
-  });
+  users.forEach(u => { messages[u.id] = userMessageBuffers.get(u.id) || ''; });
   return messages;
 }
 
@@ -322,28 +250,20 @@ function startRoomDeletionTimer(roomId) {
   roomDeletionTimers.set(roomId, timer);
 }
 
-/************************************************************
- * LEAVE ROOM
- ************************************************************/
 async function leaveRoom(socket, userId) {
   if (!socket.roomId) return;
   const rm = rooms.get(socket.roomId);
   if (rm) {
-    // remove user
     rm.users = rm.users.filter(u => u.id !== userId);
-    // if leader => pass to next
     if (rm.leaderId === userId && rm.users.length > 0) {
       rm.leaderId = rm.users[0].id;
     }
     rm.lastActiveTime = Date.now();
 
-    // remove votes
     if (rm.votes) {
       delete rm.votes[userId];
       for (let voterId in rm.votes) {
-        if (rm.votes[voterId] === userId) {
-          delete rm.votes[voterId];
-        }
+        if (rm.votes[voterId] === userId) delete rm.votes[voterId];
       }
       io.to(socket.roomId).emit('update votes', rm.votes);
     }
@@ -364,9 +284,6 @@ async function leaveRoom(socket, userId) {
   await saveRooms();
 }
 
-/************************************************************
- * JOIN ROOM
- ************************************************************/
 function joinRoom(socket, roomId, userId) {
   if (!roomId || roomId.length !== 6) {
     socket.emit('room not found');
@@ -377,18 +294,14 @@ function joinRoom(socket, roomId, userId) {
     socket.emit('room not found');
     return;
   }
-
-  // banned check
   if (rm.bannedUserIds && rm.bannedUserIds.has(userId)) {
     socket.emit('error', 'You have been banned from rejoining this room.');
     return;
   }
-
   if (rm.locked) {
     socket.emit('error', 'This room is locked by the moderator. Cannot join.');
     return;
   }
-
   const { username, location } = socket.handshake.session;
   const userLower = normalize(username);
   const locLower = normalize(location);
@@ -403,7 +316,6 @@ function joinRoom(socket, roomId, userId) {
       return;
     }
   }
-
   if (!rm.users) rm.users = [];
   if (!rm.votes) rm.votes = {};
 
@@ -413,20 +325,12 @@ function joinRoom(socket, roomId, userId) {
   }
 
   socket.join(roomId);
-  // Check if user is already in the room:
   let existingUser = rm.users.find(u => u.id === userId);
   if (existingUser) {
-    // update username/location if needed
     existingUser.username = username;
     existingUser.location = location;
-    // Do not emit a duplicate 'user joined' event.
   } else {
-    rm.users.push({
-      id: userId,
-      username,
-      location
-    });
-    // Broadcast to others that a new user has joined.
+    rm.users.push({ id: userId, username, location });
     io.to(roomId).emit('user joined', {
       id: userId,
       username,
@@ -442,7 +346,6 @@ function joinRoom(socket, roomId, userId) {
   socket.handshake.session.save(() => {
     updateRoom(roomId);
     updateLobby();
-
     const currentMsgs = getCurrentMessages(rm.users);
     socket.emit('room joined', {
       roomId,
@@ -455,7 +358,10 @@ function joinRoom(socket, roomId, userId) {
       layout: rm.layout,
       votes: rm.votes,
       currentMessages: currentMsgs,
-      leaderId: rm.leaderId
+      leaderId: rm.leaderId,
+      moderators: rm.moderators,
+      doorbellMuted: rm.doorbellMuted,
+      locked: rm.locked
     });
     socket.leave('lobby');
     if (roomDeletionTimers.has(roomId)) {
@@ -466,9 +372,6 @@ function joinRoom(socket, roomId, userId) {
   saveRooms();
 }
 
-/************************************************************
- * TYPING
- ************************************************************/
 function handleTyping(socket, userId, username, isTyping) {
   if (!socket.roomId) return;
   if (typingTimeouts.has(userId)) {
@@ -486,32 +389,22 @@ function handleTyping(socket, userId, username, isTyping) {
   }
 }
 
-/************************************************************
- * SOCKET.IO CONNECTION
- ************************************************************/
 io.on('connection', (socket) => {
   const { guestId } = socket.handshake.query;
   if (!guestId) {
     socket.emit('error', 'No guestId (fingerprint) provided. Reload the page.');
     return;
   } else {
-    // Instead of logging to server console, emit the message to the client.
     if (userStore.has(guestId)) {
       socket.emit('guest detection', `user detected: ${guestId}`);
     } else {
       socket.emit('guest detection', `No account detected making new account: ${guestId}`);
-      userStore.set(guestId, {
-        guestId,
-        username: '',
-        location: '',
-        createdAt: Date.now()
-      });
+      userStore.set(guestId, { guestId, username: '', location: '', createdAt: Date.now() });
       saveUsers();
     }
     socket.handshake.session.guestId = guestId;
   }
 
-  // check signin status – if the session is not yet set, try to restore from the persistent userStore
   socket.on('check signin status', () => {
     let { guestId, username, location, userId } = socket.handshake.session;
     if ((!username || !location || !userId) && guestId && userStore.has(guestId)) {
@@ -527,19 +420,13 @@ io.on('connection', (socket) => {
       }
     }
     if (username && location && userId) {
-      socket.emit('signin status', {
-        isSignedIn: true,
-        username,
-        location,
-        userId
-      });
+      socket.emit('signin status', { isSignedIn: true, username, location, userId });
       socket.join('lobby');
     } else {
       socket.emit('signin status', { isSignedIn: false });
     }
   });
 
-  // join lobby
   socket.on('join lobby', async (data) => {
     try {
       if (!data) {
@@ -567,7 +454,6 @@ io.on('connection', (socket) => {
       socket.handshake.session.location = location;
       socket.handshake.session.userId = userId;
 
-      // update userStore record as well
       if (userStore.has(guestId)) {
         const rec = userStore.get(guestId);
         rec.username = username;
@@ -580,12 +466,7 @@ io.on('connection', (socket) => {
       socket.handshake.session.save((err) => {
         if (!err) {
           socket.join('lobby');
-          socket.emit('signin status', {
-            isSignedIn: true,
-            username,
-            location,
-            userId
-          });
+          socket.emit('signin status', { isSignedIn: true, username, location, userId });
           updateLobby();
         }
       });
@@ -595,7 +476,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // create room
   socket.on('create room', (data) => {
     try {
       if (!data) {
@@ -612,12 +492,10 @@ io.on('connection', (socket) => {
       const userLower = normalize(username);
       const locLower = normalize(location);
       const isAnon = (userLower === 'anonymous' && locLower === 'on the web');
-
       if (isAnon) {
         socket.emit('error', 'Anonymous users cannot create rooms.');
         return;
       }
-
       if (getUsernameLocationRoomsCount(username, location) >= 2) {
         socket.emit('error', 'unable to create room at the moment please try again later');
         return;
@@ -626,14 +504,12 @@ io.on('connection', (socket) => {
         socket.emit('error', 'You are in too many rooms to create a new one right now.');
         return;
       }
-
       const now = Date.now();
       const lastCreation = lastRoomCreationTimes.get(userId) || 0;
       if (now - lastCreation < ROOM_CREATION_COOLDOWN) {
         socket.emit('error', 'You are creating rooms too frequently. Please wait a bit.');
         return;
       }
-
       let roomName = enforceRoomNameLimit(data.name || 'Just Chatting');
       if (ENABLE_WORD_FILTER) {
         const nmCheck = wordFilter.checkText(roomName);
@@ -648,14 +524,11 @@ io.on('connection', (socket) => {
         socket.emit('error', 'Room type or layout missing.');
         return;
       }
-
       lastRoomCreationTimes.set(userId, now);
-
       let roomId;
       do {
         roomId = generateRoomId();
       } while (rooms.has(roomId));
-
       const newRoom = {
         id: roomId,
         name: roomName,
@@ -665,11 +538,13 @@ io.on('connection', (socket) => {
         accessCode: (roomType === 'semi-private') ? data.accessCode : null,
         votes: {},
         bannedUserIds: new Set(),
-        leaderId: null,
+        leaderId: userId,
+        moderators: [userId],
+        doorbellMuted: false,
+        locked: false,
         lastActiveTime: Date.now()
       };
       rooms.set(roomId, newRoom);
-
       socket.emit('room created', roomId);
       updateLobby();
       saveRooms();
@@ -679,7 +554,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // join room
   socket.on('join room', (data) => {
     try {
       if (!data || !data.roomId) {
@@ -701,10 +575,8 @@ io.on('connection', (socket) => {
           return;
         }
       }
-
       let { username, location, userId } = socket.handshake.session;
       if (!username || !location || !userId) {
-        // fallback if somehow session is missing – though this should rarely happen
         userId = guestId + '-' + uuidv4().slice(0, 6);
         username = 'Anonymous';
         location = 'On The Web';
@@ -712,7 +584,6 @@ io.on('connection', (socket) => {
         socket.handshake.session.location = location;
         socket.handshake.session.userId = userId;
       }
-
       socket.handshake.session.save((err) => {
         if (!err) {
           joinRoom(socket, data.roomId, userId);
@@ -724,7 +595,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // vote
   socket.on('vote', (data) => {
     try {
       if (!data || typeof data !== 'object') {
@@ -741,25 +611,19 @@ io.on('connection', (socket) => {
       if (!rmId) return;
       const rm = rooms.get(rmId);
       if (!rm) return;
-
-      if (!rm.users.find(u => u.id === userId)) return; 
-      if (userId === targetUserId) return; 
+      if (!rm.users.find(u => u.id === userId)) return;
+      if (userId === targetUserId) return;
       if (!rm.votes) rm.votes = {};
-
       if (rm.votes[userId] === targetUserId) {
         delete rm.votes[userId];
         io.to(rmId).emit('update votes', rm.votes);
       } else {
         rm.votes[userId] = targetUserId;
         io.to(rmId).emit('update votes', rm.votes);
-
-        // majority check
         const votesAgainst = Object.values(rm.votes).filter(v => v === targetUserId).length;
         const totalUsers = rm.users.length;
         if (votesAgainst > Math.floor(totalUsers / 2)) {
-          // Kick
-          const targetSocket = [...io.sockets.sockets.values()]
-            .find(s => s.handshake.session.userId === targetUserId);
+          const targetSocket = [...io.sockets.sockets.values()].find(s => s.handshake.session.userId === targetUserId);
           if (targetSocket) {
             targetSocket.emit('kicked');
             rm.bannedUserIds.add(targetUserId);
@@ -773,7 +637,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // leave room
   socket.on('leave room', async () => {
     try {
       const userId = socket.handshake.session.userId;
@@ -784,88 +647,54 @@ io.on('connection', (socket) => {
     }
   });
 
-  // chat update
   socket.on('chat update', (data) => {
     try {
       if (!socket.roomId) return;
       const rm = rooms.get(socket.roomId);
       if (!rm) return;
-
       const userId = socket.handshake.session.userId;
       const username = socket.handshake.session.username;
-
-      // check mute
-      if (rm.mutedUserIds && rm.mutedUserIds.has(userId)) {
-        return; // do not broadcast
-      }
-
+      if (rm.mutedUserIds && rm.mutedUserIds.has(userId)) return;
       if (!userMessageBuffers.has(userId)) {
         userMessageBuffers.set(userId, '');
       }
       let userMessage = userMessageBuffers.get(userId);
-
       if (!data || typeof data !== 'object') {
         socket.emit('error', 'Invalid chat update data.');
         return;
       }
-
       const diff = data.diff;
       if (!diff) return;
-
-      if (diff.text) {
-        diff.text = enforceCharacterLimit(diff.text);
-      }
-
+      if (diff.text) diff.text = enforceCharacterLimit(diff.text);
       switch (diff.type) {
         case 'full-replace':
           userMessage = diff.text;
           break;
         case 'add':
-          userMessage =
-            userMessage.slice(0, diff.index) + diff.text + userMessage.slice(diff.index);
+          userMessage = userMessage.slice(0, diff.index) + diff.text + userMessage.slice(diff.index);
           break;
         case 'delete':
-          userMessage =
-            userMessage.slice(0, diff.index) + userMessage.slice(diff.index + diff.count);
+          userMessage = userMessage.slice(0, diff.index) + userMessage.slice(diff.index + diff.count);
           break;
         case 'replace':
-          userMessage =
-            userMessage.slice(0, diff.index) +
-            diff.text +
-            userMessage.slice(diff.index + diff.text.length);
+          userMessage = userMessage.slice(0, diff.index) + diff.text + userMessage.slice(diff.index + diff.text.length);
           break;
         default:
           socket.emit('error', 'Unknown diff type.');
           return;
       }
-
       userMessageBuffers.set(userId, userMessage);
-
       if (ENABLE_WORD_FILTER) {
         const filterResult = wordFilter.checkText(userMessage);
         if (filterResult.hasOffensiveWord) {
-          // Replace in buffer
           userMessage = wordFilter.filterText(userMessage);
           userMessageBuffers.set(userId, userMessage);
-          // Let entire room know
-          io.to(socket.roomId).emit('offensive word detected', {
-            userId,
-            filteredMessage: userMessage,
-          });
+          io.to(socket.roomId).emit('offensive word detected', { userId, filteredMessage: userMessage });
         } else {
-          // broadcast diff
-          socket.to(socket.roomId).emit('chat update', {
-            userId,
-            username,
-            diff
-          });
+          socket.to(socket.roomId).emit('chat update', { userId, username, diff });
         }
       } else {
-        socket.to(socket.roomId).emit('chat update', {
-          userId,
-          username,
-          diff
-        });
+        socket.to(socket.roomId).emit('chat update', { userId, username, diff });
       }
     } catch (err) {
       console.error('Error in chat update:', err);
@@ -873,22 +702,18 @@ io.on('connection', (socket) => {
     }
   });
 
-  // typing
   socket.on('typing', (data) => {
     try {
       if (!socket.roomId) return;
       const userId = socket.handshake.session.userId;
       const username = socket.handshake.session.username;
-      if (!data || typeof data.isTyping !== 'boolean') {
-        return;
-      }
+      if (!data || typeof data.isTyping !== 'boolean') return;
       handleTyping(socket, userId, username, data.isTyping);
     } catch (err) {
       console.error('Error in typing handler:', err);
     }
   });
 
-  // moderator action
   socket.on('moderator action', (data) => {
     try {
       const userId = socket.handshake.session.userId;
@@ -896,16 +721,15 @@ io.on('connection', (socket) => {
       if (!rmId || !data) return;
       const rm = rooms.get(rmId);
       if (!rm) return;
-      if (rm.leaderId !== userId) {
-        socket.emit('error', 'Only the room leader can do that');
+      if (!rm.moderators || !rm.moderators.includes(userId)) {
+        socket.emit('error', 'Only moderators can do that');
         return;
       }
       const { action, targetUserId } = data;
       switch (action) {
         case 'kick':
           if (targetUserId) {
-            const tSock = [...io.sockets.sockets.values()]
-              .find(s => s.handshake.session.userId === targetUserId);
+            const tSock = [...io.sockets.sockets.values()].find(s => s.handshake.session.userId === targetUserId);
             if (tSock) {
               tSock.emit('kicked', { reason: 'Moderator kicked you out' });
               rm.bannedUserIds.add(targetUserId);
@@ -916,34 +740,45 @@ io.on('connection', (socket) => {
         case 'ban':
           if (targetUserId) {
             rm.bannedUserIds.add(targetUserId);
-            const tSock = [...io.sockets.sockets.values()]
-              .find(s => s.handshake.session.userId === targetUserId);
+            const tSock = [...io.sockets.sockets.values()].find(s => s.handshake.session.userId === targetUserId);
             if (tSock) {
               tSock.emit('kicked', { reason: 'Banned by Moderator' });
               leaveRoom(tSock, targetUserId);
             }
           }
           break;
-        case 'transfer-leader':
-          if (targetUserId && rm.users.some(u => u.id === targetUserId)) {
-            rm.leaderId = targetUserId;
-            updateRoom(rmId);
-          }
-          break;
-        case 'lock-room':
-          rm.locked = !rm.locked;
-          updateRoom(rmId);
-          break;
         case 'mute':
-          if (!rm.mutedUserIds) {
-            rm.mutedUserIds = new Set();
-          }
+          if (!rm.mutedUserIds) rm.mutedUserIds = new Set();
           if (rm.mutedUserIds.has(targetUserId)) {
             rm.mutedUserIds.delete(targetUserId);
           } else {
             rm.mutedUserIds.add(targetUserId);
           }
           updateRoom(rmId);
+          break;
+        case 'promote':
+          if (targetUserId) {
+            if (!rm.moderators.includes(targetUserId)) {
+              rm.moderators.push(targetUserId);
+              updateRoom(rmId);
+            }
+          } else {
+            socket.emit('error', 'Missing target user ID for promote');
+          }
+          break;
+        case 'toggle-doorbell':
+          rm.doorbellMuted = !rm.doorbellMuted;
+          updateRoom(rmId);
+          break;
+        case 'lock-room':
+          rm.locked = !rm.locked;
+          updateRoom(rmId);
+          break;
+        case 'transfer-leader':
+          if (targetUserId && rm.users.some(u => u.id === targetUserId)) {
+            rm.leaderId = targetUserId;
+            updateRoom(rmId);
+          }
           break;
         default:
           socket.emit('error', 'Unknown mod action');
@@ -954,12 +789,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  // get rooms
   socket.on('get rooms', () => {
     socket.emit('initial rooms', Array.from(rooms.values()));
   });
 
-  // disconnect
   socket.on('disconnect', async () => {
     try {
       const userId = socket.handshake.session.userId;
@@ -971,9 +804,6 @@ io.on('connection', (socket) => {
   });
 });
 
-/************************************************************
- * Periodic cleanup for empty rooms
- ************************************************************/
 setInterval(() => {
   for (const [rmId, rm] of rooms.entries()) {
     if (rm.users.length === 0) {
@@ -989,9 +819,6 @@ setInterval(() => {
   }
 }, 10000);
 
-/***************************************************
- * OPTIONAL: Additional REST API (with API key)
- ***************************************************/
 function apiAuth(req, res, next) {
   const apiKey = req.header('x-api-key');
   const validApiKey = 'tK_public_key_4f8a9b2c7d6e3f1a5g8h9i0j4k5l6m7n8o9p';
@@ -1001,7 +828,6 @@ function apiAuth(req, res, next) {
   next();
 }
 
-// example GET /api/v1/rooms
 app.get('/api/v1/rooms', limiter, apiAuth, (req, res) => {
   const pubRooms = Array.from(rooms.values())
     .filter(r => r.type !== 'private')
@@ -1009,17 +835,12 @@ app.get('/api/v1/rooms', limiter, apiAuth, (req, res) => {
       id: r.id,
       name: r.name,
       type: r.type,
-      users: r.users.map(u => ({
-        id: u.id,
-        username: u.username,
-        location: u.location
-      })),
+      users: r.users.map(u => ({ id: u.id, username: u.username, location: u.location })),
       isFull: r.users.length >= MAX_ROOM_CAPACITY
     }));
   res.json(pubRooms);
 });
 
-// GET /api/v1/rooms/:id
 app.get('/api/v1/rooms/:id', limiter, apiAuth, (req, res) => {
   const rm = rooms.get(req.params.id);
   if (!rm) {
@@ -1029,16 +850,11 @@ app.get('/api/v1/rooms/:id', limiter, apiAuth, (req, res) => {
     id: rm.id,
     name: rm.name,
     type: rm.type,
-    users: rm.users.map(u => ({
-      id: u.id,
-      username: u.username,
-      location: u.location
-    })),
+    users: rm.users.map(u => ({ id: u.id, username: u.username, location: u.location })),
     isFull: rm.users.length >= MAX_ROOM_CAPACITY
   });
 });
 
-// POST /api/v1/rooms
 app.post('/api/v1/rooms', limiter, apiAuth, (req, res) => {
   try {
     const data = req.body;
@@ -1068,6 +884,9 @@ app.post('/api/v1/rooms', limiter, apiAuth, (req, res) => {
       votes: {},
       bannedUserIds: new Set(),
       leaderId: null,
+      moderators: [],
+      doorbellMuted: false,
+      locked: false,
       lastActiveTime: Date.now()
     };
     rooms.set(roomId, newRoom);
@@ -1080,7 +899,6 @@ app.post('/api/v1/rooms', limiter, apiAuth, (req, res) => {
   }
 });
 
-// POST /api/v1/rooms/:id/join
 app.post('/api/v1/rooms/:id/join', limiter, apiAuth, (req, res) => {
   try {
     const rm = rooms.get(req.params.id);
@@ -1105,12 +923,10 @@ app.post('/api/v1/rooms/:id/join', limiter, apiAuth, (req, res) => {
   }
 });
 
-// example test route
 app.get('/api/v1/protected/ping', limiter, apiAuth, (req, res) => {
   return res.json({ message: 'pong', time: Date.now() });
 });
 
-// start
 const PORT = process.env.PORT || 7842;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

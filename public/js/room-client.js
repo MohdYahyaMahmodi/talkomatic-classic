@@ -1,24 +1,13 @@
 // ============================================================================
 // room-client.js
 // ============================================================================
+// This version supports two modals:
+// - Room Settings (to toggle doorbell and lock the room)
+// - User Settings (to kick, ban, mute, or promote a target user)
 //
-// Changes:
-// 1) If I'm the leader, show #roomSettingsBtn instead of #muteToggle in the top nav.
-// 2) "Mute" from the moderator modal calls `socket.emit('moderator action', { action:'mute', targetUserId })`
-//    which globally mutes that user server-side.
-// 3) On 'room update', we get a list of 'locked' plus any 'mutedUserIds' if we want to highlight them.
-// 4) The moderator modal also displays "Room is currently locked/unlocked" in #roomLockStatus.
-//
-// We'll assume we get 'locked' in the 'room update' event. If you want to keep track
-// of the globally muted users in the client, you can have the server also send something like
-// 'mutedUserIds': [...room.mutedUserIds].
-//
-// Let's implement that.
-//
-// We'll also have a separate "settings" modal if you'd like for the entire room, but
-// your request said you want the same modal to show Lock/Unlock status. We'll store it
-// in #roomLockStatus for now.
-//
+// Moderators (room creator or promoted) see the settings icon and moderator buttons.
+// Non-moderators only see the personal mute toggle and can downvote to kick.
+// ============================================================================
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -31,9 +20,11 @@ let lastSentMessage = '';
 let currentRoomName = '';
 let chatInput = null;
 let currentLeaderId = null;
-let roomIsLocked = false; // track if locked
+let roomIsLocked = false;      // room lock status
+let doorbellMuted = false;     // doorbell mute status
+let currentModerators = [];    // array of moderator userIds
 
-// For moderator modal actions
+// For user moderation modal actions
 let moderatorTargetUserId = null;
 
 // Basic sounds
@@ -42,8 +33,26 @@ const leaveSound = document.getElementById('leaveSound');
 let soundEnabled = true;
 
 const muteToggleButton = document.getElementById('muteToggle');
-const roomSettingsBtn = document.getElementById('roomSettingsBtn'); // new button for leaders
-const muteIcon = document.getElementById('muteIcon');
+const roomSettingsBtn = document.getElementById('roomSettingsBtn'); // for moderators
+
+// ---------------- Modal Elements ----------------
+// Room Settings Modal elements
+const roomSettingsModal = document.getElementById('roomSettingsModal');
+const roomSettingsModalClose = document.getElementById('roomSettingsModalClose');
+const doorbellStatusEl = document.getElementById('doorbellStatus');
+const toggleDoorbellBtn = document.getElementById('toggleDoorbellBtn');
+const lockStatusEl = document.getElementById('lockStatus');
+const toggleLockBtn = document.getElementById('toggleLockBtn');
+
+// User Settings Modal elements
+const userSettingsModal = document.getElementById('userSettingsModal');
+const userSettingsModalClose = document.getElementById('userSettingsModalClose');
+const userModTargetNameEl = document.getElementById('userModTargetName');
+const userModTargetIdEl = document.getElementById('userModTargetId');
+const modKickBtn = document.getElementById('modKickBtn');
+const modBanBtn = document.getElementById('modBanBtn');
+const modMuteBtn = document.getElementById('modMuteBtn');
+const modPromoteBtn = document.getElementById('modPromoteBtn');
 
 // -------------- SOUND & MUTE (Personal) --------------
 function playJoinSound() {
@@ -62,6 +71,7 @@ function toggleMute() {
   updateMuteIcon();
 }
 function updateMuteIcon() {
+  const muteIcon = document.getElementById('muteIcon');
   if (soundEnabled) {
     muteIcon.src = 'images/icons/sound-on.svg';
     muteIcon.alt = 'Sound On';
@@ -103,6 +113,61 @@ async function initRoom() {
 function joinRoom(roomId, accessCode = null) {
   socket.emit('join room', { roomId, accessCode });
 }
+
+// -------------- Modal Functions --------------
+// Room Settings Modal
+function openRoomSettingsModal() {
+  doorbellStatusEl.textContent = `Doorbell: ${doorbellMuted ? 'Muted' : 'Unmuted'}`;
+  toggleDoorbellBtn.textContent = doorbellMuted ? 'Unmute Doorbell' : 'Mute Doorbell';
+  lockStatusEl.textContent = `Room is currently ${roomIsLocked ? 'LOCKED' : 'UNLOCKED'}`;
+  toggleLockBtn.textContent = roomIsLocked ? 'Unlock Room' : 'Lock Room';
+  roomSettingsModal.style.display = 'block';
+}
+function closeRoomSettingsModal() {
+  roomSettingsModal.style.display = 'none';
+}
+toggleDoorbellBtn.addEventListener('click', () => {
+  socket.emit('moderator action', { action: 'toggle-doorbell' });
+  closeRoomSettingsModal();
+});
+toggleLockBtn.addEventListener('click', () => {
+  socket.emit('moderator action', { action: 'lock-room' });
+  closeRoomSettingsModal();
+});
+roomSettingsModalClose.addEventListener('click', closeRoomSettingsModal);
+
+// User Settings Modal
+function openUserSettingsModal(user) {
+  moderatorTargetUserId = user.id;
+  userModTargetNameEl.textContent = user.username;
+  userModTargetIdEl.textContent = user.id;
+  userSettingsModal.style.display = 'block';
+}
+function closeUserSettingsModal() {
+  userSettingsModal.style.display = 'none';
+  moderatorTargetUserId = null;
+}
+modKickBtn.addEventListener('click', () => {
+  if (!moderatorTargetUserId) return;
+  socket.emit('moderator action', { action: 'kick', targetUserId: moderatorTargetUserId });
+  closeUserSettingsModal();
+});
+modBanBtn.addEventListener('click', () => {
+  if (!moderatorTargetUserId) return;
+  socket.emit('moderator action', { action: 'ban', targetUserId: moderatorTargetUserId });
+  closeUserSettingsModal();
+});
+modMuteBtn.addEventListener('click', () => {
+  if (!moderatorTargetUserId) return;
+  socket.emit('moderator action', { action: 'mute', targetUserId: moderatorTargetUserId });
+  closeUserSettingsModal();
+});
+modPromoteBtn.addEventListener('click', () => {
+  if (!moderatorTargetUserId) return;
+  socket.emit('moderator action', { action: 'promote', targetUserId: moderatorTargetUserId });
+  closeUserSettingsModal();
+});
+userSettingsModalClose.addEventListener('click', closeUserSettingsModal);
 
 // -------------- Socket Handlers --------------
 socket.on('access code required', () => {
@@ -146,10 +211,11 @@ socket.on('room joined', (data) => {
   currentRoomName = data.roomName;
   currentLeaderId = data.leaderId || null;
   roomIsLocked = data.locked || false;
-
+  doorbellMuted = data.doorbellMuted || false;
+  currentModerators = data.moderators || [];
+  
   updateRoomInfo(data);
   updateRoomUI(data);
-
   if (data.votes) updateVotesUI(data.votes);
   if (data.currentMessages) {
     Object.keys(data.currentMessages).forEach(uid => {
@@ -166,22 +232,6 @@ socket.on('room joined', (data) => {
   adjustNavForLeader();
 });
 
-socket.on('room not found', () => {
-  alert('Room not found or deleted. Redirecting...');
-  window.location.href = '/index.html';
-});
-
-socket.on('user joined', (data) => {
-  addUserToRoom(data);
-  updateRoomInfo(data);
-  playJoinSound();
-});
-
-socket.on('user left', (userId) => {
-  removeUserFromRoom(userId);
-  playLeaveSound();
-});
-
 socket.on('room update', (roomData) => {
   currentRoomLayout = roomData.layout || currentRoomLayout;
   if (roomData.leaderId) {
@@ -190,11 +240,15 @@ socket.on('room update', (roomData) => {
   if (typeof roomData.locked === 'boolean') {
     roomIsLocked = roomData.locked;
   }
+  if (typeof roomData.doorbellMuted === 'boolean') {
+    doorbellMuted = roomData.doorbellMuted;
+  }
+  if (roomData.moderators) {
+    currentModerators = roomData.moderators;
+  }
   updateRoomInfo(roomData);
   updateRoomUI(roomData);
-  if (roomData.votes) {
-    updateVotesUI(roomData.votes);
-  }
+  if (roomData.votes) updateVotesUI(roomData.votes);
   adjustNavForLeader();
 });
 
@@ -212,14 +266,17 @@ socket.on('offensive word detected', (data) => {
   }
 });
 
+// Log guest detection messages in the browser console.
+socket.on('guest detection', (message) => {
+  console.log(message);
+});
+
 // -------------- adjustNavForLeader --------------
 function adjustNavForLeader() {
-  if (currentLeaderId === currentUserId) {
-    // I'm the leader => hide personal mute toggle, show roomSettingsBtn
+  if (currentModerators.includes(currentUserId)) {
     muteToggleButton.style.display = 'none';
     roomSettingsBtn.style.display = 'inline-block';
   } else {
-    // normal user => show personal mute toggle, hide roomSettingsBtn
     muteToggleButton.style.display = 'inline-block';
     roomSettingsBtn.style.display = 'none';
   }
@@ -247,7 +304,6 @@ function updateRoomUI(roomData) {
   const chatContainer = document.querySelector('.chat-container');
   if (!chatContainer) return;
 
-  // store existing text states
   const currentTextMap = new Map();
   let focusedUserId = null;
 
@@ -288,24 +344,16 @@ function updateRoomUI(roomData) {
   updateInviteLink();
 }
 
-// At the top of room-client.js add:
-socket.on('guest detection', (message) => {
-  console.log(message);
-});
-
 // -------------- addUserToRoom --------------
 function addUserToRoom(user) {
-  // Check if a chat row for this user already exists.
   const existingRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
   if (existingRow) {
-    // Update the user info (username and location)
     const userInfo = existingRow.querySelector('.user-info');
     if (userInfo) {
       userInfo.textContent = `${user.username} / ${user.location}`;
     }
-    return; // Do not create a duplicate row
+    return;
   }
-  // Otherwise, create a new chat row.
   const container = document.querySelector('.chat-container');
   if (!container) return;
 
@@ -320,13 +368,12 @@ function addUserToRoom(user) {
   userInfo.classList.add('user-info');
   userInfo.textContent = `${user.username} / ${user.location}`;
 
-  // Mute button, vote button, and moderator button (as before)
   const muteBtn = document.createElement('button');
   muteBtn.classList.add('mute-button');
   muteBtn.innerHTML = '🔊';
   muteBtn.style.display = 'none';
   muteBtn.addEventListener('click', () => {
-    alert("Global mute is done by the moderator's settings.");
+    alert("Individual mute: this will only mute the user for you.");
   });
   userInfo.appendChild(muteBtn);
 
@@ -339,14 +386,17 @@ function addUserToRoom(user) {
   });
   userInfo.appendChild(voteBtn);
 
-  const modMenuBtn = document.createElement('button');
-  modMenuBtn.classList.add('mod-menu-button');
-  modMenuBtn.innerText = '⚙️';
-  modMenuBtn.style.display = 'none';
-  modMenuBtn.addEventListener('click', () => {
-    openModeratorModal(user);
-  });
-  userInfo.appendChild(modMenuBtn);
+  // If current user is a moderator and this is not the current user, add a mod button.
+  if (currentModerators.includes(currentUserId) && user.id !== currentUserId) {
+    const modMenuBtn = document.createElement('button');
+    modMenuBtn.classList.add('mod-menu-button');
+    modMenuBtn.innerText = '⚙️';
+    modMenuBtn.style.display = 'inline-block';
+    modMenuBtn.addEventListener('click', () => {
+      openUserSettingsModal(user);
+    });
+    userInfo.appendChild(modMenuBtn);
+  }
 
   const textArea = document.createElement('textarea');
   textArea.classList.add('chat-input');
@@ -364,7 +414,6 @@ function addUserToRoom(user) {
   adjustMuteButtonVisibility();
   adjustModMenuVisibility();
 }
-
 
 // -------------- removeUserFromRoom --------------
 function removeUserFromRoom(userId) {
@@ -394,43 +443,13 @@ function displayChatMessage(data) {
         newText = currentText.slice(0, data.diff.index) + currentText.slice(data.diff.index + data.diff.count);
         break;
       case 'replace':
-        newText = currentText.slice(0, data.diff.index) 
-                  + data.diff.text 
-                  + currentText.slice(data.diff.index + data.diff.text.length);
+        newText = currentText.slice(0, data.diff.index) + data.diff.text + currentText.slice(data.diff.index + data.diff.text.length);
         break;
       default:
         newText = currentText;
     }
     inputEl.value = newText.slice(0, MAX_MESSAGE_LENGTH);
   }
-}
-
-// -------------- Modals: open/close --------------
-function openModeratorModal(user) {
-  moderatorTargetUserId = user.id;
-
-  const modal = document.getElementById('moderatorModal');
-  const targetNameEl = document.getElementById('moderatorTargetName');
-  const targetIdEl   = document.getElementById('moderatorTargetId');
-  const lockStatusEl = document.getElementById('roomLockStatus');
-
-  targetNameEl.textContent = user.username;
-  targetIdEl.textContent   = user.id;
-
-  // show locked/unlocked
-  if (roomIsLocked) {
-    lockStatusEl.textContent = 'Room is currently LOCKED';
-  } else {
-    lockStatusEl.textContent = 'Room is currently UNLOCKED';
-  }
-
-  modal.style.display = 'block';
-}
-
-function closeModeratorModal() {
-  const modal = document.getElementById('moderatorModal');
-  modal.style.display = 'none';
-  moderatorTargetUserId = null;
 }
 
 // -------------- Layout & UI Adjustments --------------
@@ -454,11 +473,7 @@ function adjustMuteButtonVisibility() {
     const uid = row.dataset.userId;
     const muteBtn = row.querySelector('.mute-button');
     if (muteBtn) {
-      if (uid !== currentUserId) {
-        muteBtn.style.display = 'inline-block';
-      } else {
-        muteBtn.style.display = 'none';
-      }
+      muteBtn.style.display = uid !== currentUserId ? 'inline-block' : 'none';
     }
   });
 }
@@ -468,11 +483,7 @@ function adjustModMenuVisibility() {
     const uid = row.dataset.userId;
     const modBtn = row.querySelector('.mod-menu-button');
     if (!modBtn) return;
-    if (currentLeaderId === currentUserId && uid !== currentUserId) {
-      modBtn.style.display = 'inline-block';
-    } else {
-      modBtn.style.display = 'none';
-    }
+    modBtn.style.display = (currentModerators.includes(currentUserId) && uid !== currentUserId) ? 'inline-block' : 'none';
   });
 }
 
@@ -524,8 +535,8 @@ document.querySelector('.leave-room').addEventListener('click', () => {
 });
 
 document.querySelector('.chat-container').addEventListener('input', (e) => {
-  if (e.target.classList.contains('chat-input')
-   && e.target.closest('.chat-row').dataset.userId === currentUserId) {
+  if (e.target.classList.contains('chat-input') &&
+      e.target.closest('.chat-row').dataset.userId === currentUserId) {
     const curVal = e.target.value;
     if (curVal.length > MAX_MESSAGE_LENGTH) {
       e.target.value = curVal.slice(0, MAX_MESSAGE_LENGTH);
@@ -553,7 +564,6 @@ function getDiff(oldStr, newStr) {
 // -------------- onLoad --------------
 window.addEventListener('load', () => {
   initRoom();
-
   setInterval(updateDateTime, 1000);
   updateDateTime();
   updateInviteLink();
@@ -564,58 +574,8 @@ window.addEventListener('load', () => {
     updateMuteIcon();
   }
 
-  // Show/hide nav items
   muteToggleButton.addEventListener('click', toggleMute);
-  roomSettingsBtn.addEventListener('click', () => {
-    // We could open a separate "Room Settings" modal or re-use the moderator modal
-    // for overall "Lock/Unlock" state. But your request merges them, so let's just
-    // open the modal with no user selected => show lock status
-    openModeratorModal({ id: '', username: 'No specific user' });
-  });
-
-  // Moderator modal
-  const modalClose = document.getElementById('moderatorModalClose');
-  modalClose.addEventListener('click', closeModeratorModal);
-
-  document.getElementById('modKickBtn').addEventListener('click', () => {
-    if (!moderatorTargetUserId) return;
-    socket.emit('moderator action', {
-      action: 'kick',
-      targetUserId: moderatorTargetUserId
-    });
-    closeModeratorModal();
-  });
-  document.getElementById('modBanBtn').addEventListener('click', () => {
-    if (!moderatorTargetUserId) return;
-    socket.emit('moderator action', {
-      action: 'ban',
-      targetUserId: moderatorTargetUserId
-    });
-    closeModeratorModal();
-  });
-  document.getElementById('modMuteBtn').addEventListener('click', () => {
-    if (!moderatorTargetUserId) return;
-    socket.emit('moderator action', {
-      action: 'mute',
-      targetUserId: moderatorTargetUserId
-    });
-    closeModeratorModal();
-  });
-  document.getElementById('modTransferBtn').addEventListener('click', () => {
-    if (!moderatorTargetUserId) return;
-    socket.emit('moderator action', {
-      action: 'transfer-leader',
-      targetUserId: moderatorTargetUserId
-    });
-    closeModeratorModal();
-  });
-  document.getElementById('modLockRoomBtn').addEventListener('click', () => {
-    socket.emit('moderator action', {
-      action: 'lock-room'
-    });
-    closeModeratorModal();
-  });
-
+  roomSettingsBtn.addEventListener('click', openRoomSettingsModal);
   document.getElementById('copyInviteLink').addEventListener('click', copyInviteLink);
 
   window.addEventListener('resize', adjustLayout);
