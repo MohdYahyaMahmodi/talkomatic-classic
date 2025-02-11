@@ -2,6 +2,7 @@
  * server.js
  * ==========================
  ****************************/
+
 require('dotenv').config();
 
 const express = require('express');
@@ -21,16 +22,19 @@ const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 
 const WordFilter = require('./public/js/word-filter.js');
-const wordFilter = new WordFilter(path.join(__dirname, 'public', 'js', 'offensive_words.json'));
+const wordFilter = new WordFilter(
+  path.join(__dirname, 'public', 'js', 'offensive_words.json')
+);
 
 const lastRoomCreationTimes = new Map();
-const ROOM_CREATION_COOLDOWN = 30000;
+const ROOM_CREATION_COOLDOWN = 30000; // 30 seconds
 
 const app = express();
 const server = http.createServer(app);
 
-let userStore = new Map();
+let userStore = new Map(); // Map<guestId, { guestId, username, location, userId, createdAt }>
 
+// Parse JSON bodies
 app.use(express.json());
 
 const MAX_USERNAME_LENGTH = 12;
@@ -38,9 +42,9 @@ const MAX_LOCATION_LENGTH = 12;
 const MAX_ROOM_NAME_LENGTH = 20;
 const MAX_MESSAGE_LENGTH = 5000;
 const MAX_ROOM_CAPACITY = 5;
-
 const ENABLE_WORD_FILTER = true;
 
+// Allowed CORS origins
 const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
@@ -52,7 +56,10 @@ const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) === -1) {
-      return callback(new Error('CORS policy does not allow access from this origin.'), false);
+      return callback(
+        new Error('CORS policy does not allow access from this origin.'),
+        false
+      );
     }
     return callback(null, true);
   },
@@ -63,51 +70,43 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(cookieParser());
 
-// Generate a nonce (hex-encoded) so that it doesn't contain + or =
-app.use((req, res, next) => {
-  res.locals.nonce = crypto.randomBytes(16).toString('hex'); 
-  next();
-});
-
-// Helmet with CSP referencing our nonce
+// Helmet security headers
+// We REMOVE the dynamic nonce for scriptSrc to avoid console warnings.
 app.use(
   helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        // NOTE: Return `'nonce-xxxxxxxx'` in quotes so browsers see it as a valid source.
         scriptSrc: [
           "'self'",
-          "'unsafe-inline'", // remove if you do not want inline scripts
-          "'unsafe-eval'",   // remove if not needed
-          'https://cdnjs.cloudflare.com',
-          (req, res) => `'nonce-${res.locals.nonce}'`
+          "'unsafe-inline'",
+          "'unsafe-eval'",
+          "https://cdnjs.cloudflare.com"
         ],
         styleSrc: [
           "'self'",
           "'unsafe-inline'",
-          'https://cdnjs.cloudflare.com',
-          'https://fonts.googleapis.com'
-        ],
-        fontSrc: [
-          "'self'",
-          'https://fonts.gstatic.com',
-          'https://cdnjs.cloudflare.com'
+          "https://cdnjs.cloudflare.com",
+          "https://fonts.googleapis.com"
         ],
         imgSrc: ["'self'", "data:", "https:", "blob:"],
         connectSrc: ["'self'"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
         objectSrc: ["'none'"],
         mediaSrc: ["'self'"],
         frameSrc: ["'none'"],
-        // For script/style elements specifically:
-        styleSrcElem: ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com', 'https://fonts.googleapis.com'],
+        styleSrcElem: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://cdnjs.cloudflare.com",
+          "https://fonts.googleapis.com"
+        ],
         scriptSrcElem: [
           "'self'",
-          'https://cdnjs.cloudflare.com',
-          // If you serve scripts from your own domain or a CDN, list them here...
-          (req, res) => `'nonce-${res.locals.nonce}'`
+          "https://cdnjs.cloudflare.com",
+          "https://classic.talkomatic.co"
         ]
-      }
+      },
     },
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -118,9 +117,14 @@ app.use(
 app.use(xss());
 app.use(hpp());
 
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000 });
+// Rate limit
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+});
 app.use(limiter);
 
+// Session
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || '723698977cc31aaf8e84...',
   resave: false,
@@ -128,30 +132,40 @@ const sessionMiddleware = session({
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    maxAge: 14 * 24 * 60 * 60 * 1000
-  }
+    maxAge: 14 * 24 * 60 * 60 * 1000,
+  },
 });
 app.use(sessionMiddleware);
 
+// Socket.io
 const io = socketIo(server, {
-  cors: { origin: allowedOrigins, methods: ["GET", "POST"], credentials: true }
+  cors: {
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
 });
 io.use(sharedsession(sessionMiddleware, { autoSave: true }));
 
-app.use(express.static(path.join(__dirname, 'public'), {
-  setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.js')) {
-      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-      res.setHeader('Cache-Control', 'public, max-age=31536000');
-    }
-  }
-}));
+// Serve static
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.js')) {
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=31536000');
+      }
+    },
+  })
+);
 
+// In-memory for rooms
 let rooms = new Map();
 const roomDeletionTimers = new Map();
 const typingTimeouts = new Map();
 const userMessageBuffers = new Map();
 
+// Load/save rooms
 async function saveRooms() {
   try {
     const data = JSON.stringify(Array.from(rooms.entries()));
@@ -160,20 +174,22 @@ async function saveRooms() {
     console.error('Error saving rooms:', err);
   }
 }
-
 async function loadRooms() {
   try {
     const data = await fs.readFile(path.join(__dirname, 'rooms.json'), 'utf8');
     const loaded = JSON.parse(data);
     rooms = new Map(loaded);
-    // For this example, we clear them or keep them. Up to you.
-    // rooms.clear();
+    // optionally clear on restart:
+    rooms.clear();
   } catch (err) {
-    if (err.code !== 'ENOENT') console.error('Error loading rooms:', err);
+    if (err.code !== 'ENOENT') {
+      console.error('Error loading rooms:', err);
+    }
   }
 }
 loadRooms();
 
+// Load/save users
 async function saveUsers() {
   try {
     const data = JSON.stringify(Array.from(userStore.entries()));
@@ -188,11 +204,14 @@ async function loadUsers() {
     const loaded = JSON.parse(data);
     userStore = new Map(loaded);
   } catch (err) {
-    if (err.code !== 'ENOENT') console.error('Error loading users:', err);
+    if (err.code !== 'ENOENT') {
+      console.error('Error loading users:', err);
+    }
   }
 }
 loadUsers();
 
+// Helpers
 function normalize(str) {
   return (str || '').trim().toLowerCase();
 }
@@ -214,7 +233,9 @@ function generateRoomId() {
 function getUserRoomsCount(userId) {
   let count = 0;
   for (const [, rm] of rooms) {
-    if (rm.users.some(u => u.id === userId)) count++;
+    if (rm.users.some((u) => u.id === userId)) {
+      count++;
+    }
   }
   return count;
 }
@@ -231,46 +252,39 @@ function getUsernameLocationRoomsCount(username, location) {
   }
   return count;
 }
-
 function updateLobby() {
   const publicRooms = Array.from(rooms.values())
-    .filter(r => r.type !== 'private')
-    .map(r => ({
+    .filter((r) => r.type !== 'private')
+    .map((r) => ({
       ...r,
       accessCode: undefined,
-      isFull: r.users.length >= MAX_ROOM_CAPACITY
+      isFull: r.users.length >= MAX_ROOM_CAPACITY,
     }));
   io.to('lobby').emit('lobby update', publicRooms);
 }
-
 function updateRoom(roomId) {
   const rm = rooms.get(roomId);
   if (rm) {
     io.to(roomId).emit('room update', {
       id: rm.id,
-      roomId: rm.id,
-      roomName: rm.name,
-      roomType: rm.type,
+      name: rm.name,
+      type: rm.type,
       layout: rm.layout,
       users: rm.users,
       votes: rm.votes,
       leaderId: rm.leaderId,
-      moderators: rm.moderators,
-      doorbellMuted: rm.doorbellMuted,
-      locked: rm.locked,
+      locked: rm.locked || false,
       accessCode: undefined
     });
   }
 }
-
 function getCurrentMessages(users) {
   const messages = {};
-  users.forEach(u => {
+  users.forEach((u) => {
     messages[u.id] = userMessageBuffers.get(u.id) || '';
   });
   return messages;
 }
-
 function startRoomDeletionTimer(roomId) {
   if (roomDeletionTimers.has(roomId)) {
     clearTimeout(roomDeletionTimers.get(roomId));
@@ -284,28 +298,20 @@ function startRoomDeletionTimer(roomId) {
   roomDeletionTimers.set(roomId, timer);
 }
 
+// leaving room
 async function leaveRoom(socket, userId) {
   if (!socket.roomId) return;
   const rm = rooms.get(socket.roomId);
   if (rm) {
-    // Remove user from the room
-    rm.users = rm.users.filter(u => u.id !== userId);
-
-    // If they were the "leader", set a new leader if any users remain
+    // remove user
+    rm.users = rm.users.filter((u) => u.id !== userId);
+    // if leader => pass to next
     if (rm.leaderId === userId && rm.users.length > 0) {
-      rm.leaderId = rm.users[0].id;
+      rm.leaderId = rm.users[0].id; // next oldest
     }
-
-    // Remove them from moderators
-    rm.moderators = rm.moderators.filter(m => m !== userId);
-    // If no moderators left, promote the oldest user
-    if (rm.moderators.length === 0 && rm.users.length > 0) {
-      rm.moderators.push(rm.users[0].id);
-    }
-
     rm.lastActiveTime = Date.now();
 
-    // Remove votes cast by or against that user
+    // remove votes
     if (rm.votes) {
       delete rm.votes[userId];
       for (let voterId in rm.votes) {
@@ -320,19 +326,19 @@ async function leaveRoom(socket, userId) {
     io.to(socket.roomId).emit('user left', userId);
     updateRoom(socket.roomId);
 
-    // If room is now empty, schedule deletion
     if (rm.users.length === 0) {
       startRoomDeletionTimer(socket.roomId);
     }
   }
   socket.roomId = null;
   socket.handshake.session.currentRoom = null;
-  await new Promise(resolve => socket.handshake.session.save(resolve));
+  await new Promise((resolve) => socket.handshake.session.save(resolve));
   socket.join('lobby');
   updateLobby();
   await saveRooms();
 }
 
+// joining room
 function joinRoom(socket, roomId, userId) {
   if (!roomId || roomId.length !== 6) {
     socket.emit('room not found');
@@ -343,22 +349,36 @@ function joinRoom(socket, roomId, userId) {
     socket.emit('room not found');
     return;
   }
-  // Check ban
+
+  // Check permanent ban
   if (rm.bannedUserIds && rm.bannedUserIds.has(userId)) {
     socket.emit('error', 'You have been banned from rejoining this room.');
     return;
   }
-  // Check lock
+
+  // Check 5-minute kick
+  if (rm.tempBans && rm.tempBans.has(userId)) {
+    const banExpiry = rm.tempBans.get(userId);
+    if (Date.now() < banExpiry) {
+      socket.emit('error', 'You have been kicked for 5 minutes. Please try again later.');
+      return;
+    } else {
+      // ban is expired
+      rm.tempBans.delete(userId);
+    }
+  }
+
+  // if locked, cannot join
   if (rm.locked) {
     socket.emit('error', 'This room is locked by the moderator. Cannot join.');
     return;
   }
+
   const { username, location } = socket.handshake.session;
   const userLower = normalize(username);
   const locLower = normalize(location);
-  const isAnonymous = (userLower === 'anonymous' && locLower === 'on the web');
+  const isAnonymous = userLower === 'anonymous' && locLower === 'on the web';
 
-  // For demonstration, we limit anons or repeating name+location combos
   if (!isAnonymous) {
     if (getUserRoomsCount(userId) >= 2) {
       socket.emit('error', 'unable to join room at the moment please try again later');
@@ -370,24 +390,34 @@ function joinRoom(socket, roomId, userId) {
     }
   }
 
+  if (!rm.users) rm.users = [];
+  if (!rm.votes) rm.votes = {};
+
   if (rm.users.length >= MAX_ROOM_CAPACITY) {
     socket.emit('room full');
     return;
   }
 
   socket.join(roomId);
-  let existingUser = rm.users.find(u => u.id === userId);
+
+  // see if user is already in the room
+  let existingUser = rm.users.find((u) => u.id === userId);
   if (existingUser) {
     existingUser.username = username;
     existingUser.location = location;
+    // do not emit "user joined" again
   } else {
-    rm.users.push({ id: userId, username, location });
+    rm.users.push({
+      id: userId,
+      username,
+      location,
+    });
     io.to(roomId).emit('user joined', {
       id: userId,
       username,
       location,
       roomName: rm.name,
-      roomType: rm.type
+      roomType: rm.type,
     });
   }
   rm.lastActiveTime = Date.now();
@@ -397,6 +427,7 @@ function joinRoom(socket, roomId, userId) {
   socket.handshake.session.save(() => {
     updateRoom(roomId);
     updateLobby();
+
     const currentMsgs = getCurrentMessages(rm.users);
     socket.emit('room joined', {
       roomId,
@@ -410,12 +441,9 @@ function joinRoom(socket, roomId, userId) {
       votes: rm.votes,
       currentMessages: currentMsgs,
       leaderId: rm.leaderId,
-      moderators: rm.moderators,
-      doorbellMuted: rm.doorbellMuted,
-      locked: rm.locked
+      locked: rm.locked || false
     });
     socket.leave('lobby');
-    // If a deletion timer was pending, cancel it
     if (roomDeletionTimers.has(roomId)) {
       clearTimeout(roomDeletionTimers.get(roomId));
       roomDeletionTimers.delete(roomId);
@@ -444,7 +472,6 @@ function handleTyping(socket, userId, username, isTyping) {
   }
 }
 
-// ===================== SOCKET HANDLERS =====================
 io.on('connection', (socket) => {
   const { guestId } = socket.handshake.query;
   if (!guestId) {
@@ -455,12 +482,18 @@ io.on('connection', (socket) => {
       socket.emit('guest detection', `user detected: ${guestId}`);
     } else {
       socket.emit('guest detection', `No account detected making new account: ${guestId}`);
-      userStore.set(guestId, { guestId, username: '', location: '', createdAt: Date.now() });
+      userStore.set(guestId, {
+        guestId,
+        username: '',
+        location: '',
+        createdAt: Date.now(),
+      });
       saveUsers();
     }
     socket.handshake.session.guestId = guestId;
   }
 
+  // check sign-in status
   socket.on('check signin status', () => {
     let { guestId, username, location, userId } = socket.handshake.session;
     if ((!username || !location || !userId) && guestId && userStore.has(guestId)) {
@@ -468,7 +501,7 @@ io.on('connection', (socket) => {
       if (record.username && record.location) {
         username = record.username;
         location = record.location;
-        userId = record.userId || (guestId + '-' + uuidv4().slice(0, 6));
+        userId = record.userId || guestId + '-' + uuidv4().slice(0, 6);
         socket.handshake.session.username = username;
         socket.handshake.session.location = location;
         socket.handshake.session.userId = userId;
@@ -476,13 +509,19 @@ io.on('connection', (socket) => {
       }
     }
     if (username && location && userId) {
-      socket.emit('signin status', { isSignedIn: true, username, location, userId });
+      socket.emit('signin status', {
+        isSignedIn: true,
+        username,
+        location,
+        userId,
+      });
       socket.join('lobby');
     } else {
       socket.emit('signin status', { isSignedIn: false });
     }
   });
 
+  // join lobby
   socket.on('join lobby', async (data) => {
     try {
       if (!data) {
@@ -522,7 +561,12 @@ io.on('connection', (socket) => {
       socket.handshake.session.save((err) => {
         if (!err) {
           socket.join('lobby');
-          socket.emit('signin status', { isSignedIn: true, username, location, userId });
+          socket.emit('signin status', {
+            isSignedIn: true,
+            username,
+            location,
+            userId,
+          });
           updateLobby();
         }
       });
@@ -532,6 +576,7 @@ io.on('connection', (socket) => {
     }
   });
 
+  // create room
   socket.on('create room', (data) => {
     try {
       if (!data) {
@@ -543,15 +588,16 @@ io.on('connection', (socket) => {
         socket.emit('error', 'You must be signed in to create a room.');
         return;
       }
-
       const { username, location } = socket.handshake.session;
       const userLower = normalize(username);
       const locLower = normalize(location);
-      const isAnon = (userLower === 'anonymous' && locLower === 'on the web');
+      const isAnon = userLower === 'anonymous' && locLower === 'on the web';
+
       if (isAnon) {
         socket.emit('error', 'Anonymous users cannot create rooms.');
         return;
       }
+
       if (getUsernameLocationRoomsCount(username, location) >= 2) {
         socket.emit('error', 'unable to create room at the moment please try again later');
         return;
@@ -560,12 +606,14 @@ io.on('connection', (socket) => {
         socket.emit('error', 'You are in too many rooms to create a new one right now.');
         return;
       }
+
       const now = Date.now();
       const lastCreation = lastRoomCreationTimes.get(userId) || 0;
       if (now - lastCreation < ROOM_CREATION_COOLDOWN) {
         socket.emit('error', 'You are creating rooms too frequently. Please wait a bit.');
         return;
       }
+
       let roomName = enforceRoomNameLimit(data.name || 'Just Chatting');
       if (ENABLE_WORD_FILTER) {
         const nmCheck = wordFilter.checkText(roomName);
@@ -580,11 +628,14 @@ io.on('connection', (socket) => {
         socket.emit('error', 'Room type or layout missing.');
         return;
       }
+
       lastRoomCreationTimes.set(userId, now);
+
       let roomId;
       do {
         roomId = generateRoomId();
       } while (rooms.has(roomId));
+
       const newRoom = {
         id: roomId,
         name: roomName,
@@ -594,13 +645,13 @@ io.on('connection', (socket) => {
         accessCode: roomType === 'semi-private' ? data.accessCode : null,
         votes: {},
         bannedUserIds: new Set(),
-        leaderId: userId,
-        moderators: [userId], // Room creator is automatically a moderator
-        doorbellMuted: false,
+        tempBans: new Map(), // for 5-min kicks
+        leaderId: null,
         locked: false,
-        lastActiveTime: Date.now()
+        lastActiveTime: Date.now(),
       };
       rooms.set(roomId, newRoom);
+
       socket.emit('room created', roomId);
       updateLobby();
       saveRooms();
@@ -610,6 +661,7 @@ io.on('connection', (socket) => {
     }
   });
 
+  // join room
   socket.on('join room', (data) => {
     try {
       if (!data || !data.roomId) {
@@ -633,6 +685,7 @@ io.on('connection', (socket) => {
       }
       let { username, location, userId } = socket.handshake.session;
       if (!username || !location || !userId) {
+        // fallback
         userId = guestId + '-' + uuidv4().slice(0, 6);
         username = 'Anonymous';
         location = 'On The Web';
@@ -640,6 +693,7 @@ io.on('connection', (socket) => {
         socket.handshake.session.location = location;
         socket.handshake.session.userId = userId;
       }
+
       socket.handshake.session.save((err) => {
         if (!err) {
           joinRoom(socket, data.roomId, userId);
@@ -651,6 +705,7 @@ io.on('connection', (socket) => {
     }
   });
 
+  // vote
   socket.on('vote', (data) => {
     try {
       if (!data || typeof data !== 'object') {
@@ -667,28 +722,34 @@ io.on('connection', (socket) => {
       if (!rmId) return;
       const rm = rooms.get(rmId);
       if (!rm) return;
-      if (!rm.users.find(u => u.id === userId)) return;
-      if (userId === targetUserId) return; // can't vote for self
+
+      if (!rm.users.find((u) => u.id === userId)) return; // not in room
+      if (userId === targetUserId) return; // can't vote self
       if (!rm.votes) rm.votes = {};
 
-      // Toggle vote
       if (rm.votes[userId] === targetUserId) {
+        // unvote
         delete rm.votes[userId];
         io.to(rmId).emit('update votes', rm.votes);
       } else {
         rm.votes[userId] = targetUserId;
         io.to(rmId).emit('update votes', rm.votes);
 
-        // Check if majority
-        const votesAgainst = Object.values(rm.votes).filter(v => v === targetUserId).length;
+        // majority check
+        const votesAgainst = Object.values(rm.votes).filter((v) => v === targetUserId).length;
         const totalUsers = rm.users.length;
         if (votesAgainst > Math.floor(totalUsers / 2)) {
+          // Kick for majority
           const targetSocket = [...io.sockets.sockets.values()].find(
-            s => s.handshake.session.userId === targetUserId
+            (s) => s.handshake.session.userId === targetUserId
           );
           if (targetSocket) {
             targetSocket.emit('kicked');
-            rm.bannedUserIds.add(targetUserId);
+            // With majority vote, we do a permanent ban or temp ban?
+            // Typically talkomatic did a forced remove. Let’s do 5-min:
+            if (!rm.tempBans) rm.tempBans = new Map();
+            rm.tempBans.set(targetUserId, Date.now() + 5 * 60 * 1000);
+
             leaveRoom(targetSocket, targetUserId);
           }
         }
@@ -699,6 +760,7 @@ io.on('connection', (socket) => {
     }
   });
 
+  // leave room
   socket.on('leave room', async () => {
     try {
       const userId = socket.handshake.session.userId;
@@ -709,35 +771,50 @@ io.on('connection', (socket) => {
     }
   });
 
+  // chat update
   socket.on('chat update', (data) => {
     try {
       if (!socket.roomId) return;
       const rm = rooms.get(socket.roomId);
       if (!rm) return;
+
       const userId = socket.handshake.session.userId;
       const username = socket.handshake.session.username;
-      if (rm.mutedUserIds && rm.mutedUserIds.has(userId)) return; // user is globally muted
+
+      // check global mute
+      if (rm.mutedUserIds && rm.mutedUserIds.has(userId)) {
+        return; // do not broadcast
+      }
+
       if (!userMessageBuffers.has(userId)) {
         userMessageBuffers.set(userId, '');
       }
       let userMessage = userMessageBuffers.get(userId);
+
       if (!data || typeof data !== 'object') {
         socket.emit('error', 'Invalid chat update data.');
         return;
       }
+
       const diff = data.diff;
       if (!diff) return;
-      if (diff.text) diff.text = enforceCharacterLimit(diff.text);
+
+      if (diff.text) {
+        diff.text = enforceCharacterLimit(diff.text);
+      }
 
       switch (diff.type) {
         case 'full-replace':
           userMessage = diff.text;
           break;
         case 'add':
-          userMessage = userMessage.slice(0, diff.index) + diff.text + userMessage.slice(diff.index);
+          userMessage =
+            userMessage.slice(0, diff.index) + diff.text + userMessage.slice(diff.index);
           break;
         case 'delete':
-          userMessage = userMessage.slice(0, diff.index) + userMessage.slice(diff.index + diff.count);
+          userMessage =
+            userMessage.slice(0, diff.index) +
+            userMessage.slice(diff.index + diff.count);
           break;
         case 'replace':
           userMessage =
@@ -755,17 +832,28 @@ io.on('connection', (socket) => {
       if (ENABLE_WORD_FILTER) {
         const filterResult = wordFilter.checkText(userMessage);
         if (filterResult.hasOffensiveWord) {
+          // Replace in buffer
           userMessage = wordFilter.filterText(userMessage);
           userMessageBuffers.set(userId, userMessage);
+          // Let entire room know
           io.to(socket.roomId).emit('offensive word detected', {
             userId,
-            filteredMessage: userMessage
+            filteredMessage: userMessage,
           });
         } else {
-          socket.to(socket.roomId).emit('chat update', { userId, username, diff });
+          // broadcast diff
+          socket.to(socket.roomId).emit('chat update', {
+            userId,
+            username,
+            diff,
+          });
         }
       } else {
-        socket.to(socket.roomId).emit('chat update', { userId, username, diff });
+        socket.to(socket.roomId).emit('chat update', {
+          userId,
+          username,
+          diff,
+        });
       }
     } catch (err) {
       console.error('Error in chat update:', err);
@@ -773,18 +861,22 @@ io.on('connection', (socket) => {
     }
   });
 
+  // typing
   socket.on('typing', (data) => {
     try {
       if (!socket.roomId) return;
       const userId = socket.handshake.session.userId;
       const username = socket.handshake.session.username;
-      if (!data || typeof data.isTyping !== 'boolean') return;
+      if (!data || typeof data.isTyping !== 'boolean') {
+        return;
+      }
       handleTyping(socket, userId, username, data.isTyping);
     } catch (err) {
       console.error('Error in typing handler:', err);
     }
   });
 
+  // moderator action
   socket.on('moderator action', (data) => {
     try {
       const userId = socket.handshake.session.userId;
@@ -792,29 +884,36 @@ io.on('connection', (socket) => {
       if (!rmId || !data) return;
       const rm = rooms.get(rmId);
       if (!rm) return;
-      if (!rm.moderators || !rm.moderators.includes(userId)) {
-        socket.emit('error', 'Only moderators can do that');
+      if (rm.leaderId !== userId) {
+        socket.emit('error', 'Only the room leader can do that');
         return;
       }
       const { action, targetUserId } = data;
       switch (action) {
-        case 'kick':
+        case 'kick': {
           if (targetUserId) {
+            // Kick for 5 min
+            if (!rm.tempBans) rm.tempBans = new Map();
+            rm.tempBans.set(targetUserId, Date.now() + 5 * 60 * 1000);
+
             const tSock = [...io.sockets.sockets.values()].find(
-              s => s.handshake.session.userId === targetUserId
+              (s) => s.handshake.session.userId === targetUserId
             );
             if (tSock) {
-              tSock.emit('kicked', { reason: 'Moderator kicked you out' });
-              rm.bannedUserIds.add(targetUserId);
+              tSock.emit('kicked', { reason: 'Moderator kicked you out (5 min)' });
               leaveRoom(tSock, targetUserId);
             }
           }
           break;
-        case 'ban':
+        }
+        case 'ban': {
           if (targetUserId) {
+            if (!rm.bannedUserIds) {
+              rm.bannedUserIds = new Set();
+            }
             rm.bannedUserIds.add(targetUserId);
             const tSock = [...io.sockets.sockets.values()].find(
-              s => s.handshake.session.userId === targetUserId
+              (s) => s.handshake.session.userId === targetUserId
             );
             if (tSock) {
               tSock.emit('kicked', { reason: 'Banned by Moderator' });
@@ -822,8 +921,24 @@ io.on('connection', (socket) => {
             }
           }
           break;
-        case 'mute':
-          if (!rm.mutedUserIds) rm.mutedUserIds = new Set();
+        }
+        case 'transfer-leader': {
+          if (targetUserId && rm.users.some((u) => u.id === targetUserId)) {
+            rm.leaderId = targetUserId;
+            updateRoom(rmId);
+          }
+          break;
+        }
+        case 'lock-room': {
+          rm.locked = !rm.locked;
+          updateRoom(rmId);
+          break;
+        }
+        case 'mute': {
+          if (!targetUserId) break;
+          if (!rm.mutedUserIds) {
+            rm.mutedUserIds = new Set();
+          }
           if (rm.mutedUserIds.has(targetUserId)) {
             rm.mutedUserIds.delete(targetUserId);
           } else {
@@ -831,30 +946,7 @@ io.on('connection', (socket) => {
           }
           updateRoom(rmId);
           break;
-        case 'promote':
-          if (targetUserId) {
-            if (!rm.moderators.includes(targetUserId)) {
-              rm.moderators.push(targetUserId);
-              updateRoom(rmId);
-            }
-          } else {
-            socket.emit('error', 'Missing target user ID for promote');
-          }
-          break;
-        case 'toggle-doorbell':
-          rm.doorbellMuted = !rm.doorbellMuted;
-          updateRoom(rmId);
-          break;
-        case 'lock-room':
-          rm.locked = !rm.locked;
-          updateRoom(rmId);
-          break;
-        case 'transfer-leader':
-          if (targetUserId && rm.users.some(u => u.id === targetUserId)) {
-            rm.leaderId = targetUserId;
-            updateRoom(rmId);
-          }
-          break;
+        }
         default:
           socket.emit('error', 'Unknown mod action');
           break;
@@ -864,10 +956,12 @@ io.on('connection', (socket) => {
     }
   });
 
+  // get rooms
   socket.on('get rooms', () => {
     socket.emit('initial rooms', Array.from(rooms.values()));
   });
 
+  // disconnect
   socket.on('disconnect', async () => {
     try {
       const userId = socket.handshake.session.userId;
@@ -879,7 +973,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Periodically clean up empty rooms
+// Periodic cleanup
 setInterval(() => {
   for (const [rmId, rm] of rooms.entries()) {
     if (rm.users.length === 0) {
@@ -895,32 +989,37 @@ setInterval(() => {
   }
 }, 10000);
 
+/***************************************************
+ * OPTIONAL: Additional REST API
+ ***************************************************/
 function apiAuth(req, res, next) {
   const apiKey = req.header('x-api-key');
-  const validApiKey = 'tK_public_key_4f8a9b2c...'; // example
+  const validApiKey = 'tK_public_key_4f8a9b2c7d6e3f1a5g8h9i0j4k5l6m7n8o9p';
   if (!apiKey || apiKey !== validApiKey) {
     return res.status(403).json({ error: 'Forbidden: invalid or missing x-api-key.' });
   }
   next();
 }
 
+// example: GET /api/v1/rooms
 app.get('/api/v1/rooms', limiter, apiAuth, (req, res) => {
   const pubRooms = Array.from(rooms.values())
-    .filter(r => r.type !== 'private')
-    .map(r => ({
+    .filter((r) => r.type !== 'private')
+    .map((r) => ({
       id: r.id,
       name: r.name,
       type: r.type,
-      users: r.users.map(u => ({
+      users: r.users.map((u) => ({
         id: u.id,
         username: u.username,
-        location: u.location
+        location: u.location,
       })),
-      isFull: r.users.length >= MAX_ROOM_CAPACITY
+      isFull: r.users.length >= MAX_ROOM_CAPACITY,
     }));
   res.json(pubRooms);
 });
 
+// GET /api/v1/rooms/:id
 app.get('/api/v1/rooms/:id', limiter, apiAuth, (req, res) => {
   const rm = rooms.get(req.params.id);
   if (!rm) {
@@ -930,15 +1029,16 @@ app.get('/api/v1/rooms/:id', limiter, apiAuth, (req, res) => {
     id: rm.id,
     name: rm.name,
     type: rm.type,
-    users: rm.users.map(u => ({
+    users: rm.users.map((u) => ({
       id: u.id,
       username: u.username,
-      location: u.location
+      location: u.location,
     })),
-    isFull: rm.users.length >= MAX_ROOM_CAPACITY
+    isFull: rm.users.length >= MAX_ROOM_CAPACITY,
   });
 });
 
+// POST /api/v1/rooms
 app.post('/api/v1/rooms', limiter, apiAuth, (req, res) => {
   try {
     const data = req.body;
@@ -967,11 +1067,10 @@ app.post('/api/v1/rooms', limiter, apiAuth, (req, res) => {
       accessCode: roomType === 'semi-private' ? data.accessCode : null,
       votes: {},
       bannedUserIds: new Set(),
+      tempBans: new Map(),
       leaderId: null,
-      moderators: [],
-      doorbellMuted: false,
       locked: false,
-      lastActiveTime: Date.now()
+      lastActiveTime: Date.now(),
     };
     rooms.set(roomId, newRoom);
     updateLobby();
@@ -983,6 +1082,7 @@ app.post('/api/v1/rooms', limiter, apiAuth, (req, res) => {
   }
 });
 
+// POST /api/v1/rooms/:id/join
 app.post('/api/v1/rooms/:id/join', limiter, apiAuth, (req, res) => {
   try {
     const rm = rooms.get(req.params.id);
@@ -999,7 +1099,7 @@ app.post('/api/v1/rooms/:id/join', limiter, apiAuth, (req, res) => {
     }
     return res.json({
       success: true,
-      message: 'You can now connect via Socket.IO to join the room in real time.'
+      message: 'You can now connect via Socket.IO to join the room in real time.',
     });
   } catch (err) {
     console.error('Error in /api/v1/rooms/:id/join:', err);
@@ -1007,11 +1107,11 @@ app.post('/api/v1/rooms/:id/join', limiter, apiAuth, (req, res) => {
   }
 });
 
+// example test route
 app.get('/api/v1/protected/ping', limiter, apiAuth, (req, res) => {
   return res.json({ message: 'pong', time: Date.now() });
 });
 
-// Start Server
 const PORT = process.env.PORT || 7842;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

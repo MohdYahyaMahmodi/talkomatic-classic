@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Talkomatic Room</title>
   <link rel="stylesheet" href="stylesheets/room.css">
   <link rel="icon" type="image/png" href="images/icons/favicon.png">
@@ -20,13 +20,15 @@
         <div class="brand">Talkomatic™</div>
       </div>
       <div class="navbar-section navbar-right">
-        <!-- Normal users see Mute Toggle; moderators see Settings icon -->
+        <!-- Normal users see Mute Toggle; leaders see Settings icon -->
         <button id="muteToggle" class="mute-toggle" aria-label="Toggle Sound">
           <img src="images/icons/sound-on.svg" alt="Sound On" id="muteIcon">
         </button>
+
         <button id="roomSettingsBtn" class="room-settings" style="display:none;">
-          <img src="images/icons/settings.svg" alt="Settings">
+          <img src="images/icons/settings.svg" alt="Settings" />
         </button>
+
         <div class="leave-room">Leave Room</div>
       </div>
     </nav>
@@ -50,36 +52,45 @@
     </div>
   </div>
 
-  <!-- Room Settings Modal (for overall room controls: doorbell mute and room lock) -->
-  <div id="roomSettingsModal" class="modal">
-    <div class="modal-content">
-      <span id="roomSettingsModalClose" class="close-modal">&times;</span>
-      <h2>Room Settings</h2>
-      <div class="room-setting-item">
-        <p id="doorbellStatus">Doorbell: Unmuted</p>
-        <button id="toggleDoorbellBtn" class="modal-btn">Mute Doorbell</button>
-      </div>
-      <div class="room-setting-item">
-        <p id="lockStatus">Room is currently Unlocked</p>
-        <button id="toggleLockBtn" class="modal-btn">Lock Room</button>
+  <!-- ============================
+       ROOM SETTINGS MODAL
+       (Moderator Only)
+  ============================= -->
+  <div id="roomSettingsModal" class="moderator-modal">
+    <div class="moderator-modal-content">
+      <span id="roomSettingsModalClose" class="moderator-close">&times;</span>
+      <h2 style="margin-top:0;margin-bottom:10px;font-size:20px;color:#FF9800;">Room Settings</h2>
+
+      <!-- Lock/Unlock status text -->
+      <p id="roomLockStatus" style="color:#FF9800; font-weight:bold;"></p>
+
+      <div class="moderator-actions">
+        <!-- Lock/Unlock button -->
+        <button id="toggleLockBtn" class="mod-action-btn">Lock Room</button>
+        <!-- Doorbell Mute for moderator only -->
+        <button id="toggleDoorbellBtn" class="mod-action-btn">Mute Doorbell</button>
       </div>
     </div>
   </div>
 
-  <!-- User Settings Modal (for moderator actions on a target user) -->
-  <div id="userSettingsModal" class="modal">
-    <div class="modal-content">
-      <span id="userSettingsModalClose" class="close-modal">&times;</span>
-      <h2>User Moderation</h2>
-      <div class="user-setting-item">
-        <p>User: <span id="userModTargetName"></span></p>
-        <p>Guest ID: <span id="userModTargetId"></span></p>
+  <!-- ============================
+       USER SETTINGS MODAL
+  ============================= -->
+  <div id="userSettingsModal" class="moderator-modal">
+    <div class="moderator-modal-content">
+      <span id="userSettingsModalClose" class="moderator-close">&times;</span>
+      <h2 id="moderatorModalTitle">User Settings</h2>
+
+      <div class="moderator-target-info">
+        <p>User: <span id="moderatorTargetName"></span></p>
+        <p>Guest ID: <span id="moderatorTargetId"></span></p>
       </div>
-      <div class="user-setting-actions">
-        <button id="modKickBtn" class="modal-btn">Kick</button>
-        <button id="modBanBtn" class="modal-btn">Ban</button>
-        <button id="modMuteBtn" class="modal-btn">Mute (Global)</button>
-        <button id="modPromoteBtn" class="modal-btn">Promote</button>
+
+      <div class="moderator-actions">
+        <button id="modKickBtn" class="mod-action-btn">Kick (5 min)</button>
+        <button id="modBanBtn" class="mod-action-btn">Ban (Permanent)</button>
+        <button id="modMuteBtn" class="mod-action-btn">Mute (Global)</button>
+        <button id="modTransferBtn" class="mod-action-btn">Grant Leadership</button>
       </div>
     </div>
   </div>
@@ -87,11 +98,16 @@
   <audio id="joinSound" src="audio/ding.mp3"></audio>
   <audio id="leaveSound" src="audio/ding.mp3"></audio>
 
-  <!-- Scripts -->
-  <script nonce="<%= nonce %>" src="/socket.io/socket.io.js"></script>
-  <!-- Renamed fingerprint.js is now users.js -->
-  <script nonce="<%= nonce %>" src="js/users.js?v=1.0.3"></script>
-  <script nonce="<%= nonce %>" src="js/init-socket-room.js?v=1.0.3"></script>
-  <script nonce="<%= nonce %>" src="js/room-client.js?v=1.0.4"></script>
+  <!-- 1) Load socket.io -->
+  <script src="/socket.io/socket.io.js"></script>
+
+  <!-- 2) users.js (formerly fingerprint.js) -->
+  <script src="js/users.js?v=1.0.3"></script>
+
+  <!-- 3) init-socket-room.js to define socket for the room page -->
+  <script src="js/init-socket-room.js?v=1.0.3"></script>
+
+  <!-- 4) Then room-client that references socket -->
+  <script src="js/room-client.js?v=1.0.5"></script>
 </body>
 </html>

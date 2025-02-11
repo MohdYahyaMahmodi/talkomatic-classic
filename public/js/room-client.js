@@ -1,63 +1,60 @@
+// ============================================================================
 // room-client.js
 // ============================================================================
-// This version supports two modals:
-//   1) Room Settings (doorbell mute / lock room) via the top-right gear icon
-//   2) User Moderation (kick/ban/mute/promote) via a small gear next to each user
-// ============================================================================
+//
+// Implements two separate modals:
+//  1) Room Settings Modal (#roomSettingsModal) for the moderator
+//     - lock/unlock room
+//     - mute/unmute doorbell (only affects moderator's ding sounds)
+//  2) User Settings Modal (#userSettingsModal) for per-user moderator actions
+//     - kick (temp 5 min), ban (perm), mute (global), promote (transfer leader)
+//
+
 const MAX_MESSAGE_LENGTH = 5000;
 
+// Basic user info
 let currentUsername = '';
 let currentLocation = '';
 let currentRoomId = '';
 let currentUserId = '';
-let currentRoomLayout = 'horizontal'; 
-let lastSentMessage = '';
+let currentRoomLayout = 'horizontal';
 let currentRoomName = '';
-let chatInput = null;
 let currentLeaderId = null;
-let roomIsLocked = false;
-let doorbellMuted = false;
-let currentModerators = []; 
+let roomIsLocked = false; // track whether the room is locked
 
-// For user moderation modal actions
+// For tracking local text
+let lastSentMessage = '';
+let chatInput = null;
+
+// Doorbell sound handling
+let moderatorDoorbellMuted = false; // toggled by the room settings if I'm the moderator
+
+// For moderator user settings modal
 let moderatorTargetUserId = null;
 
 // Basic sounds
 const joinSound = document.getElementById('joinSound');
 const leaveSound = document.getElementById('leaveSound');
-let soundEnabled = true;
-
-// Buttons
+let soundEnabled = true;  // personal mute toggle
 const muteToggleButton = document.getElementById('muteToggle');
 const roomSettingsBtn = document.getElementById('roomSettingsBtn');
+const muteIcon = document.getElementById('muteIcon');
 
-// Modals: Room Settings
-const roomSettingsModal = document.getElementById('roomSettingsModal');
-const roomSettingsModalClose = document.getElementById('roomSettingsModalClose');
-const doorbellStatusEl = document.getElementById('doorbellStatus');
-const toggleDoorbellBtn = document.getElementById('toggleDoorbellBtn');
-const lockStatusEl = document.getElementById('lockStatus');
-const toggleLockBtn = document.getElementById('toggleLockBtn');
-
-// Modals: User Settings
-const userSettingsModal = document.getElementById('userSettingsModal');
-const userSettingsModalClose = document.getElementById('userSettingsModalClose');
-const userModTargetNameEl = document.getElementById('userModTargetName');
-const userModTargetIdEl = document.getElementById('userModTargetId');
-const modKickBtn = document.getElementById('modKickBtn');
-const modBanBtn = document.getElementById('modBanBtn');
-const modMuteBtn = document.getElementById('modMuteBtn');
-const modPromoteBtn = document.getElementById('modPromoteBtn');
-
-// -------------- Personal Sound & Mute --------------
+// -------------- SOUND & MUTE (Personal) --------------
 function playJoinSound() {
+  // If I'm the leader and I've muted doorbell, skip
+  if (currentLeaderId === currentUserId && moderatorDoorbellMuted) return;
+
   if (soundEnabled) {
-    joinSound.play().catch(err => console.error('Error playing join sound:', err));
+    joinSound.play().catch((err) => console.error('Error playing join sound:', err));
   }
 }
 function playLeaveSound() {
+  // If I'm the leader and I've muted doorbell, skip
+  if (currentLeaderId === currentUserId && moderatorDoorbellMuted) return;
+
   if (soundEnabled) {
-    leaveSound.play().catch(err => console.error('Error playing leave sound:', err));
+    leaveSound.play().catch((err) => console.error('Error playing leave sound:', err));
   }
 }
 function toggleMute() {
@@ -66,7 +63,6 @@ function toggleMute() {
   updateMuteIcon();
 }
 function updateMuteIcon() {
-  const muteIcon = document.getElementById('muteIcon');
   if (soundEnabled) {
     muteIcon.src = 'images/icons/sound-on.svg';
     muteIcon.alt = 'Sound On';
@@ -78,11 +74,11 @@ function updateMuteIcon() {
 
 // -------------- Voting --------------
 function updateVotesUI(votes) {
-  document.querySelectorAll('.chat-row').forEach(row => {
+  document.querySelectorAll('.chat-row').forEach((row) => {
     const userId = row.dataset.userId;
     const voteButton = row.querySelector('.vote-button');
     if (voteButton) {
-      const votesAgainstUser = Object.values(votes).filter(v => v === userId).length;
+      const votesAgainstUser = Object.values(votes).filter((v) => v === userId).length;
       voteButton.innerHTML = `👎 ${votesAgainstUser}`;
       if (votes[currentUserId] === userId) {
         voteButton.classList.add('voted');
@@ -108,61 +104,6 @@ async function initRoom() {
 function joinRoom(roomId, accessCode = null) {
   socket.emit('join room', { roomId, accessCode });
 }
-
-// -------------- Modal Functions --------------
-// Room Settings
-function openRoomSettingsModal() {
-  doorbellStatusEl.textContent = `Doorbell: ${doorbellMuted ? 'Muted' : 'Unmuted'}`;
-  toggleDoorbellBtn.textContent = doorbellMuted ? 'Unmute Doorbell' : 'Mute Doorbell';
-  lockStatusEl.textContent = `Room is currently ${roomIsLocked ? 'LOCKED' : 'UNLOCKED'}`;
-  toggleLockBtn.textContent = roomIsLocked ? 'Unlock Room' : 'Lock Room';
-  roomSettingsModal.style.display = 'block';
-}
-function closeRoomSettingsModal() {
-  roomSettingsModal.style.display = 'none';
-}
-toggleDoorbellBtn.addEventListener('click', () => {
-  socket.emit('moderator action', { action: 'toggle-doorbell' });
-  closeRoomSettingsModal();
-});
-toggleLockBtn.addEventListener('click', () => {
-  socket.emit('moderator action', { action: 'lock-room' });
-  closeRoomSettingsModal();
-});
-roomSettingsModalClose.addEventListener('click', closeRoomSettingsModal);
-
-// User Settings
-function openUserSettingsModal(user) {
-  moderatorTargetUserId = user.id;
-  userModTargetNameEl.textContent = user.username;
-  userModTargetIdEl.textContent = user.id;
-  userSettingsModal.style.display = 'block';
-}
-function closeUserSettingsModal() {
-  userSettingsModal.style.display = 'none';
-  moderatorTargetUserId = null;
-}
-modKickBtn.addEventListener('click', () => {
-  if (!moderatorTargetUserId) return;
-  socket.emit('moderator action', { action: 'kick', targetUserId: moderatorTargetUserId });
-  closeUserSettingsModal();
-});
-modBanBtn.addEventListener('click', () => {
-  if (!moderatorTargetUserId) return;
-  socket.emit('moderator action', { action: 'ban', targetUserId: moderatorTargetUserId });
-  closeUserSettingsModal();
-});
-modMuteBtn.addEventListener('click', () => {
-  if (!moderatorTargetUserId) return;
-  socket.emit('moderator action', { action: 'mute', targetUserId: moderatorTargetUserId });
-  closeUserSettingsModal();
-});
-modPromoteBtn.addEventListener('click', () => {
-  if (!moderatorTargetUserId) return;
-  socket.emit('moderator action', { action: 'promote', targetUserId: moderatorTargetUserId });
-  closeUserSettingsModal();
-});
-userSettingsModalClose.addEventListener('click', closeUserSettingsModal);
 
 // -------------- Socket Handlers --------------
 socket.on('access code required', () => {
@@ -205,17 +146,14 @@ socket.on('room joined', (data) => {
   currentRoomLayout = data.layout || currentRoomLayout;
   currentRoomName = data.roomName;
   currentLeaderId = data.leaderId || null;
-  roomIsLocked = data.locked || false;
-  doorbellMuted = data.doorbellMuted || false;
-  currentModerators = data.moderators || [];
-  
+  roomIsLocked = data.locked || false; // if server sends a locked flag
+
   updateRoomInfo(data);
   updateRoomUI(data);
-  if (data.votes) updateVotesUI(data.votes);
 
-  // If there's any existing typed messages, restore them
+  if (data.votes) updateVotesUI(data.votes);
   if (data.currentMessages) {
-    Object.keys(data.currentMessages).forEach(uid => {
+    Object.keys(data.currentMessages).forEach((uid) => {
       const inp = document.querySelector(`.chat-row[data-user-id="${uid}"] .chat-input`);
       if (inp) {
         inp.value = data.currentMessages[uid].slice(0, MAX_MESSAGE_LENGTH);
@@ -229,16 +167,36 @@ socket.on('room joined', (data) => {
   adjustNavForLeader();
 });
 
+socket.on('room not found', () => {
+  alert('Room not found or deleted. Redirecting...');
+  window.location.href = '/index.html';
+});
+
+socket.on('user joined', (data) => {
+  addUserToRoom(data);
+  updateRoomInfo(data);
+  playJoinSound();
+});
+
+socket.on('user left', (userId) => {
+  removeUserFromRoom(userId);
+  playLeaveSound();
+});
+
+// This is sent whenever something about the room changes:
 socket.on('room update', (roomData) => {
   currentRoomLayout = roomData.layout || currentRoomLayout;
-  if (roomData.leaderId) currentLeaderId = roomData.leaderId;
-  if (typeof roomData.locked === 'boolean') roomIsLocked = roomData.locked;
-  if (typeof roomData.doorbellMuted === 'boolean') doorbellMuted = roomData.doorbellMuted;
-  if (roomData.moderators) currentModerators = roomData.moderators;
-
+  if (roomData.leaderId) {
+    currentLeaderId = roomData.leaderId;
+  }
+  if (typeof roomData.locked === 'boolean') {
+    roomIsLocked = roomData.locked;
+  }
   updateRoomInfo(roomData);
   updateRoomUI(roomData);
-  if (roomData.votes) updateVotesUI(roomData.votes);
+  if (roomData.votes) {
+    updateVotesUI(roomData.votes);
+  }
   adjustNavForLeader();
 });
 
@@ -262,12 +220,12 @@ socket.on('guest detection', (message) => {
 
 // -------------- adjustNavForLeader --------------
 function adjustNavForLeader() {
-  // If I'm a moderator, show the gear icon (roomSettingsBtn),
-  // otherwise show the personal mute toggle.
-  if (currentModerators.includes(currentUserId)) {
+  if (currentLeaderId === currentUserId) {
+    // I'm the leader => hide personal mute toggle, show roomSettingsBtn
     muteToggleButton.style.display = 'none';
     roomSettingsBtn.style.display = 'inline-block';
   } else {
+    // normal user => show personal mute toggle, hide roomSettingsBtn
     muteToggleButton.style.display = 'inline-block';
     roomSettingsBtn.style.display = 'none';
   }
@@ -277,7 +235,7 @@ function adjustNavForLeader() {
 function updateRoomInfo(data) {
   const roomNameEl = document.querySelector('.room-name');
   const roomTypeEl = document.querySelector('.room-type');
-  const roomIdEl   = document.querySelector('.room-id');
+  const roomIdEl = document.querySelector('.room-id');
 
   if (roomNameEl) {
     roomNameEl.textContent = `Room: ${data.roomName || data.roomId}`;
@@ -295,11 +253,11 @@ function updateRoomUI(roomData) {
   const chatContainer = document.querySelector('.chat-container');
   if (!chatContainer) return;
 
+  // store existing text states
   const currentTextMap = new Map();
   let focusedUserId = null;
 
-  // Save current text so we can restore after rebuild
-  document.querySelectorAll('.chat-row').forEach(row => {
+  document.querySelectorAll('.chat-row').forEach((row) => {
     const uid = row.dataset.userId;
     const txt = row.querySelector('.chat-input');
     if (txt) {
@@ -310,14 +268,13 @@ function updateRoomUI(roomData) {
     }
   });
 
-  // Clear container
   while (chatContainer.firstChild) {
     chatContainer.removeChild(chatContainer.firstChild);
   }
   chatInput = null;
 
   if (Array.isArray(roomData.users)) {
-    roomData.users.forEach(u => {
+    roomData.users.forEach((u) => {
       addUserToRoom(u);
       if (currentTextMap.has(u.id)) {
         const inputEl = document.querySelector(`.chat-row[data-user-id="${u.id}"] .chat-input`);
@@ -337,17 +294,19 @@ function updateRoomUI(roomData) {
   updateInviteLink();
 }
 
-// Add user row
+// -------------- addUserToRoom --------------
 function addUserToRoom(user) {
+  // Check if a chat row for this user already exists.
   const existingRow = document.querySelector(`.chat-row[data-user-id="${user.id}"]`);
   if (existingRow) {
-    // Update info if user re-joined
+    // Update the user info (username and location)
     const userInfo = existingRow.querySelector('.user-info');
     if (userInfo) {
       userInfo.textContent = `${user.username} / ${user.location}`;
     }
-    return;
+    return; // no duplicate row
   }
+  // Otherwise, create a new chat row.
   const container = document.querySelector('.chat-container');
   if (!container) return;
 
@@ -362,17 +321,16 @@ function addUserToRoom(user) {
   userInfo.classList.add('user-info');
   userInfo.textContent = `${user.username} / ${user.location}`;
 
-  // Individual mute button (local mute)
+  // Mute button, vote button, and moderator button
   const muteBtn = document.createElement('button');
   muteBtn.classList.add('mute-button');
   muteBtn.innerHTML = '🔊';
   muteBtn.style.display = 'none';
   muteBtn.addEventListener('click', () => {
-    alert("Individual mute: this will only mute the user for you.");
+    alert("Global mute is done by the moderator's settings.");
   });
   userInfo.appendChild(muteBtn);
 
-  // Vote button
   const voteBtn = document.createElement('button');
   voteBtn.classList.add('vote-button');
   voteBtn.innerHTML = '👎 0';
@@ -382,17 +340,14 @@ function addUserToRoom(user) {
   });
   userInfo.appendChild(voteBtn);
 
-  // If current user is a moderator and this is not ME, add a mod button
-  if (currentModerators.includes(currentUserId) && user.id !== currentUserId) {
-    const modMenuBtn = document.createElement('button');
-    modMenuBtn.classList.add('mod-menu-button');
-    modMenuBtn.innerText = '⚙️';
-    modMenuBtn.style.display = 'inline-block';
-    modMenuBtn.addEventListener('click', () => {
-      openUserSettingsModal(user);
-    });
-    userInfo.appendChild(modMenuBtn);
-  }
+  const modMenuBtn = document.createElement('button');
+  modMenuBtn.classList.add('mod-menu-button');
+  modMenuBtn.innerText = '⚙️';
+  modMenuBtn.style.display = 'none';
+  modMenuBtn.addEventListener('click', () => {
+    openUserSettingsModal(user);
+  });
+  userInfo.appendChild(modMenuBtn);
 
   const textArea = document.createElement('textarea');
   textArea.classList.add('chat-input');
@@ -412,7 +367,7 @@ function addUserToRoom(user) {
   adjustModMenuVisibility();
 }
 
-// Remove user
+// -------------- removeUserFromRoom --------------
 function removeUserFromRoom(userId) {
   const row = document.querySelector(`.chat-row[data-user-id="${userId}"]`);
   if (row) {
@@ -421,7 +376,7 @@ function removeUserFromRoom(userId) {
   adjustLayout();
 }
 
-// Display incoming chat message changes
+// -------------- displayChatMessage --------------
 function displayChatMessage(data) {
   const inputEl = document.querySelector(`.chat-row[data-user-id="${data.userId}"] .chat-input`);
   if (!inputEl) return;
@@ -457,10 +412,44 @@ function displayChatMessage(data) {
   }
 }
 
+// -------------- Modals: User Settings --------------
+function openUserSettingsModal(user) {
+  moderatorTargetUserId = user.id;
+
+  const modal = document.getElementById('userSettingsModal');
+  const targetNameEl = document.getElementById('moderatorTargetName');
+  const targetIdEl = document.getElementById('moderatorTargetId');
+
+  targetNameEl.textContent = user.username;
+  targetIdEl.textContent = user.id;
+
+  modal.style.display = 'block';
+}
+function closeUserSettingsModal() {
+  const modal = document.getElementById('userSettingsModal');
+  modal.style.display = 'none';
+  moderatorTargetUserId = null;
+}
+
+// -------------- Modals: Room Settings --------------
+function openRoomSettingsModal() {
+  // Show lock/unlock status
+  const lockStatusEl = document.getElementById('roomLockStatus');
+  lockStatusEl.textContent = roomIsLocked
+    ? 'Room is currently LOCKED'
+    : 'Room is currently UNLOCKED';
+
+  const modal = document.getElementById('roomSettingsModal');
+  modal.style.display = 'block';
+}
+function closeRoomSettingsModal() {
+  document.getElementById('roomSettingsModal').style.display = 'none';
+}
+
 // -------------- Layout & UI Adjustments --------------
 function adjustVoteButtonVisibility() {
   const userCount = document.querySelectorAll('.chat-row').length;
-  document.querySelectorAll('.chat-row').forEach(row => {
+  document.querySelectorAll('.chat-row').forEach((row) => {
     const uid = row.dataset.userId;
     const voteBtn = row.querySelector('.vote-button');
     if (voteBtn) {
@@ -474,23 +463,29 @@ function adjustVoteButtonVisibility() {
 }
 
 function adjustMuteButtonVisibility() {
-  document.querySelectorAll('.chat-row').forEach(row => {
+  document.querySelectorAll('.chat-row').forEach((row) => {
     const uid = row.dataset.userId;
     const muteBtn = row.querySelector('.mute-button');
     if (muteBtn) {
-      muteBtn.style.display = uid !== currentUserId ? 'inline-block' : 'none';
+      if (uid !== currentUserId) {
+        muteBtn.style.display = 'inline-block';
+      } else {
+        muteBtn.style.display = 'none';
+      }
     }
   });
 }
 
 function adjustModMenuVisibility() {
-  document.querySelectorAll('.chat-row').forEach(row => {
+  document.querySelectorAll('.chat-row').forEach((row) => {
     const uid = row.dataset.userId;
     const modBtn = row.querySelector('.mod-menu-button');
     if (!modBtn) return;
-    modBtn.style.display = (currentModerators.includes(currentUserId) && uid !== currentUserId)
-      ? 'inline-block'
-      : 'none';
+    if (currentLeaderId === currentUserId && uid !== currentUserId) {
+      modBtn.style.display = 'inline-block';
+    } else {
+      modBtn.style.display = 'none';
+    }
   });
 }
 
@@ -509,7 +504,7 @@ function adjustLayout() {
     const totalGap = (chatRows.length - 1) * rowGap;
     const rowHeight = Math.floor((availableHeight - totalGap) / chatRows.length);
 
-    chatRows.forEach(r => {
+    chatRows.forEach((r) => {
       r.style.height = `${rowHeight}px`;
       r.style.minHeight = '100px';
       r.style.width = '100%';
@@ -525,7 +520,7 @@ function adjustLayout() {
     const totalGap = (chatRows.length - 1) * columnGap;
     const colWidth = Math.floor((availableWidth - totalGap) / chatRows.length);
 
-    chatRows.forEach(r => {
+    chatRows.forEach((r) => {
       r.style.width = `${colWidth}px`;
       r.style.height = '100%';
       const userInfo = r.querySelector('.user-info');
@@ -535,28 +530,112 @@ function adjustLayout() {
   }
 }
 
-// -------------- Events --------------
-document.querySelector('.leave-room').addEventListener('click', () => {
-  socket.emit('leave room');
-  window.location.href = '/index.html';
-});
+// -------------- onLoad --------------
+window.addEventListener('load', () => {
+  initRoom();
 
-// Capture local changes to your text and emit diffs
-document.querySelector('.chat-container').addEventListener('input', (e) => {
-  if (
-    e.target.classList.contains('chat-input') &&
-    e.target.closest('.chat-row').dataset.userId === currentUserId
-  ) {
-    const curVal = e.target.value;
-    if (curVal.length > MAX_MESSAGE_LENGTH) {
-      e.target.value = curVal.slice(0, MAX_MESSAGE_LENGTH);
-      return;
+  setInterval(updateDateTime, 1000);
+  updateDateTime();
+  updateInviteLink();
+
+  const savedMuteState = localStorage.getItem('soundEnabled');
+  if (savedMuteState !== null) {
+    soundEnabled = JSON.parse(savedMuteState);
+    updateMuteIcon();
+  }
+
+  // Personal mute toggle
+  muteToggleButton.addEventListener('click', toggleMute);
+
+  // Room settings button => open the room settings modal
+  roomSettingsBtn.addEventListener('click', () => {
+    openRoomSettingsModal();
+  });
+
+  // User Settings modal close
+  document.getElementById('userSettingsModalClose').addEventListener('click', closeUserSettingsModal);
+
+  // Room Settings modal close
+  document.getElementById('roomSettingsModalClose').addEventListener('click', closeRoomSettingsModal);
+
+  // Moderator actions (User Settings)
+  document.getElementById('modKickBtn').addEventListener('click', () => {
+    if (!moderatorTargetUserId) return;
+    socket.emit('moderator action', {
+      action: 'kick',
+      targetUserId: moderatorTargetUserId,
+    });
+    closeUserSettingsModal();
+  });
+  document.getElementById('modBanBtn').addEventListener('click', () => {
+    if (!moderatorTargetUserId) return;
+    socket.emit('moderator action', {
+      action: 'ban',
+      targetUserId: moderatorTargetUserId,
+    });
+    closeUserSettingsModal();
+  });
+  document.getElementById('modMuteBtn').addEventListener('click', () => {
+    if (!moderatorTargetUserId) return;
+    socket.emit('moderator action', {
+      action: 'mute',
+      targetUserId: moderatorTargetUserId,
+    });
+    closeUserSettingsModal();
+  });
+  document.getElementById('modTransferBtn').addEventListener('click', () => {
+    if (!moderatorTargetUserId) return;
+    socket.emit('moderator action', {
+      action: 'transfer-leader',
+      targetUserId: moderatorTargetUserId,
+    });
+    closeUserSettingsModal();
+  });
+
+  // Moderator actions (Room Settings)
+  document.getElementById('toggleLockBtn').addEventListener('click', () => {
+    socket.emit('moderator action', {
+      action: 'lock-room',
+    });
+    closeRoomSettingsModal();
+  });
+  document.getElementById('toggleDoorbellBtn').addEventListener('click', () => {
+    moderatorDoorbellMuted = !moderatorDoorbellMuted;
+    const btn = document.getElementById('toggleDoorbellBtn');
+    btn.textContent = moderatorDoorbellMuted ? 'Unmute Doorbell' : 'Mute Doorbell';
+  });
+
+  // copy invite link
+  document.getElementById('copyInviteLink').addEventListener('click', copyInviteLink);
+
+  // leave room
+  document.querySelector('.leave-room').addEventListener('click', () => {
+    socket.emit('leave room');
+    window.location.href = '/index.html';
+  });
+
+  // chat input
+  document.querySelector('.chat-container').addEventListener('input', (e) => {
+    if (
+      e.target.classList.contains('chat-input') &&
+      e.target.closest('.chat-row').dataset.userId === currentUserId
+    ) {
+      const curVal = e.target.value;
+      if (curVal.length > MAX_MESSAGE_LENGTH) {
+        e.target.value = curVal.slice(0, MAX_MESSAGE_LENGTH);
+        return;
+      }
+      const diff = getDiff(lastSentMessage, curVal);
+      if (diff) {
+        socket.emit('chat update', { diff, index: diff.index });
+        lastSentMessage = curVal;
+      }
     }
-    const diff = getDiff(lastSentMessage, curVal);
-    if (diff) {
-      socket.emit('chat update', { diff, index: diff.index });
-      lastSentMessage = curVal;
-    }
+  });
+
+  window.addEventListener('resize', adjustLayout);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', handleViewportChange);
   }
 });
 
@@ -570,29 +649,6 @@ function getDiff(oldStr, newStr) {
   }
   return { type: 'full-replace', text: newStr };
 }
-
-// -------------- onLoad --------------
-window.addEventListener('load', () => {
-  initRoom();
-  setInterval(updateDateTime, 1000);
-  updateDateTime();
-  updateInviteLink();
-
-  const savedMuteState = localStorage.getItem('soundEnabled');
-  if (savedMuteState !== null) {
-    soundEnabled = JSON.parse(savedMuteState);
-    updateMuteIcon();
-  }
-
-  muteToggleButton.addEventListener('click', toggleMute);
-  roomSettingsBtn.addEventListener('click', openRoomSettingsModal);
-  document.getElementById('copyInviteLink').addEventListener('click', copyInviteLink);
-
-  window.addEventListener('resize', adjustLayout);
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', handleViewportChange);
-  }
-});
 
 function updateDateTime() {
   const now = new Date();
@@ -624,11 +680,14 @@ function updateInviteLink() {
 function copyInviteLink() {
   const linkEl = document.getElementById('inviteLink');
   if (!linkEl) return;
-  navigator.clipboard.writeText(linkEl.textContent).then(() => {
-    alert('Invite link copied to clipboard!');
-  }).catch(err => {
-    console.error('Copy failed:', err);
-  });
+  navigator.clipboard
+    .writeText(linkEl.textContent)
+    .then(() => {
+      alert('Invite link copied to clipboard!');
+    })
+    .catch((err) => {
+      console.error('Copy failed:', err);
+    });
 }
 
 function handleViewportChange() {
