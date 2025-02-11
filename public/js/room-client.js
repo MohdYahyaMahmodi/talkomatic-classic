@@ -33,6 +33,9 @@ let moderatorDoorbellMuted = false; // toggled by the room settings if I'm the m
 // For moderator user settings modal
 let moderatorTargetUserId = null;
 
+// Global object for storing moderator’s global mute status for target users
+let moderatorGlobalMuteStatus = {};
+
 // Basic sounds
 const joinSound = document.getElementById('joinSound');
 const leaveSound = document.getElementById('leaveSound');
@@ -367,11 +370,16 @@ function addUserToRoom(user) {
   });
   userInfo.appendChild(voteBtn);
 
-  // Moderator settings (gear) button
+  // Moderator settings button (using an image icon instead of gear emoji)
   const modMenuBtn = document.createElement('button');
   modMenuBtn.classList.add('mod-menu-button');
-  modMenuBtn.innerText = '⚙️';
   modMenuBtn.style.display = 'none';
+  const modMenuImg = document.createElement('img');
+  modMenuImg.src = '/images/icons/menu-icon.png';
+  modMenuImg.alt = 'Settings';
+  modMenuImg.style.width = '24px';
+  modMenuImg.style.height = '24px';
+  modMenuBtn.appendChild(modMenuImg);
   modMenuBtn.addEventListener('click', () => {
     openUserSettingsModal(user);
   });
@@ -410,7 +418,6 @@ function displayChatMessage(data) {
   if (!row) return;
   const inputEl = row.querySelector('.chat-input');
   if (!inputEl) return;
-
   const currentText = inputEl.value;
   let newText;
   switch (data.diff.type) {
@@ -454,6 +461,13 @@ function openUserSettingsModal(user) {
   const targetIdEl = document.getElementById('moderatorTargetId');
   targetNameEl.textContent = user.username;
   targetIdEl.textContent = user.id;
+  // Set the global mute button text based on our stored status
+  const modMuteBtn = document.getElementById('modMuteBtn');
+  if (moderatorGlobalMuteStatus[moderatorTargetUserId]) {
+    modMuteBtn.textContent = 'Unmute (Global)';
+  } else {
+    modMuteBtn.textContent = 'Mute (Global)';
+  }
   modal.style.display = 'block';
 }
 function closeUserSettingsModal() {
@@ -600,6 +614,15 @@ window.addEventListener('load', () => {
   });
   document.getElementById('modMuteBtn').addEventListener('click', () => {
     if (!moderatorTargetUserId) return;
+    // Toggle our stored global mute status and update button text accordingly.
+    const modMuteBtn = document.getElementById('modMuteBtn');
+    if (moderatorGlobalMuteStatus[moderatorTargetUserId]) {
+      moderatorGlobalMuteStatus[moderatorTargetUserId] = false;
+      modMuteBtn.textContent = 'Mute (Global)';
+    } else {
+      moderatorGlobalMuteStatus[moderatorTargetUserId] = true;
+      modMuteBtn.textContent = 'Unmute (Global)';
+    }
     socket.emit('moderator action', {
       action: 'mute',
       targetUserId: moderatorTargetUserId,
