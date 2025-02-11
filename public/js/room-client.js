@@ -375,7 +375,7 @@ function addUserToRoom(user) {
   modMenuBtn.classList.add('mod-menu-button');
   modMenuBtn.style.display = 'none';
   const modMenuImg = document.createElement('img');
-  modMenuImg.src = '/images/icons/menu-icon.png';
+  modMenuImg.src = 'images/icons/menu-icon.png';
   modMenuImg.alt = 'Settings';
   modMenuImg.style.width = '24px';
   modMenuImg.style.height = '24px';
