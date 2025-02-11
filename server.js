@@ -51,7 +51,8 @@ const ENABLE_WORD_FILTER = true;
 const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
-  'https://classic.talkomatic.co'
+  'https://classic.talkomatic.co',
+  'https://dev.talkomatic.co/'
 ];
 
 // CORS config
