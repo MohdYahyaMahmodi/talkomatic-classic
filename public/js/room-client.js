@@ -10,6 +10,7 @@
 //     - kick (temp 5 min), ban (perm), mute (global), promote (transfer leader)
 //
 
+// Maximum length for messages
 const MAX_MESSAGE_LENGTH = 5000;
 
 // Basic user info
@@ -39,6 +40,9 @@ let soundEnabled = true;  // personal mute toggle
 const muteToggleButton = document.getElementById('muteToggle');
 const roomSettingsBtn = document.getElementById('roomSettingsBtn');
 const muteIcon = document.getElementById('muteIcon');
+
+// Global variable for local (per-client) mutes:
+let locallyMutedUsers = new Set();
 
 // -------------- SOUND & MUTE (Personal) --------------
 function playJoinSound() {
@@ -321,16 +325,40 @@ function addUserToRoom(user) {
   userInfo.classList.add('user-info');
   userInfo.textContent = `${user.username} / ${user.location}`;
 
-  // Mute button, vote button, and moderator button
+  // Create the local mute button for this user (only for other users)
   const muteBtn = document.createElement('button');
   muteBtn.classList.add('mute-button');
   muteBtn.innerHTML = '🔊';
+  // Initially hide; adjustMuteButtonVisibility will show it if needed.
   muteBtn.style.display = 'none';
   muteBtn.addEventListener('click', () => {
-    alert("Global mute is done by the moderator's settings.");
+    const rowEl = muteBtn.closest('.chat-row');
+    const chatInput = rowEl.querySelector('.chat-input');
+    if (locallyMutedUsers.has(user.id)) {
+      // Unmute: remove from set, update button icon, show chat input, remove placeholder if any.
+      locallyMutedUsers.delete(user.id);
+      muteBtn.innerHTML = '🔊';
+      chatInput.style.display = 'block';
+      const placeholder = rowEl.querySelector('.muted-placeholder');
+      if (placeholder) {
+        placeholder.remove();
+      }
+    } else {
+      // Mute: add to set, update button icon, hide chat input and show a placeholder.
+      locallyMutedUsers.add(user.id);
+      muteBtn.innerHTML = '🔇';
+      chatInput.style.display = 'none';
+      if (!rowEl.querySelector('.muted-placeholder')) {
+        const placeholder = document.createElement('span');
+        placeholder.classList.add('muted-placeholder');
+        placeholder.textContent = '[Muted]';
+        rowEl.appendChild(placeholder);
+      }
+    }
   });
   userInfo.appendChild(muteBtn);
 
+  // Vote button for downvoting
   const voteBtn = document.createElement('button');
   voteBtn.classList.add('vote-button');
   voteBtn.innerHTML = '👎 0';
@@ -340,6 +368,7 @@ function addUserToRoom(user) {
   });
   userInfo.appendChild(voteBtn);
 
+  // Moderator settings (gear) button (only shown if you are the room leader)
   const modMenuBtn = document.createElement('button');
   modMenuBtn.classList.add('mod-menu-button');
   modMenuBtn.innerText = '⚙️';
@@ -378,37 +407,46 @@ function removeUserFromRoom(userId) {
 
 // -------------- displayChatMessage --------------
 function displayChatMessage(data) {
-  const inputEl = document.querySelector(`.chat-row[data-user-id="${data.userId}"] .chat-input`);
+  const row = document.querySelector(`.chat-row[data-user-id="${data.userId}"]`);
+  if (!row) return;
+  const inputEl = row.querySelector('.chat-input');
   if (!inputEl) return;
 
-  if (data.diff) {
-    const currentText = inputEl.value;
-    let newText;
-    switch (data.diff.type) {
-      case 'full-replace':
-        newText = data.diff.text.slice(0, MAX_MESSAGE_LENGTH);
-        break;
-      case 'add':
-        newText =
-          currentText.slice(0, data.diff.index) +
-          data.diff.text +
-          currentText.slice(data.diff.index);
-        break;
-      case 'delete':
-        newText =
-          currentText.slice(0, data.diff.index) +
-          currentText.slice(data.diff.index + data.diff.count);
-        break;
-      case 'replace':
-        newText =
-          currentText.slice(0, data.diff.index) +
-          data.diff.text +
-          currentText.slice(data.diff.index + data.diff.text.length);
-        break;
-      default:
-        newText = currentText;
+  const currentText = inputEl.value;
+  let newText;
+  switch (data.diff.type) {
+    case 'full-replace':
+      newText = data.diff.text.slice(0, MAX_MESSAGE_LENGTH);
+      break;
+    case 'add':
+      newText =
+        currentText.slice(0, data.diff.index) +
+        data.diff.text +
+        currentText.slice(data.diff.index);
+      break;
+    case 'delete':
+      newText =
+        currentText.slice(0, data.diff.index) +
+        currentText.slice(data.diff.index + data.diff.count);
+      break;
+    case 'replace':
+      newText =
+        currentText.slice(0, data.diff.index) +
+        data.diff.text +
+        currentText.slice(data.diff.index + data.diff.text.length);
+      break;
+    default:
+      newText = currentText;
+  }
+  // Always update the underlying value (even if the user is muted)
+  inputEl.value = newText.slice(0, MAX_MESSAGE_LENGTH);
+
+  // If the user is muted locally, update the placeholder text (if present)
+  if (locallyMutedUsers.has(data.userId)) {
+    const placeholder = row.querySelector('.muted-placeholder');
+    if (placeholder) {
+      placeholder.textContent = '[Muted]';
     }
-    inputEl.value = newText.slice(0, MAX_MESSAGE_LENGTH);
   }
 }
 

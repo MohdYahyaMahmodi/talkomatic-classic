@@ -305,7 +305,7 @@ async function leaveRoom(socket, userId) {
   if (rm) {
     // remove user
     rm.users = rm.users.filter((u) => u.id !== userId);
-    // if leader => pass to next
+    // if leader => pass to next (oldest remaining user)
     if (rm.leaderId === userId && rm.users.length > 0) {
       rm.leaderId = rm.users[0].id; // next oldest
     }
@@ -348,6 +348,11 @@ function joinRoom(socket, roomId, userId) {
   if (!rm) {
     socket.emit('room not found');
     return;
+  }
+
+  // Set leader if not already assigned (i.e. first user joining)
+  if (!rm.leaderId) {
+    rm.leaderId = userId;
   }
 
   // Check permanent ban
@@ -739,14 +744,13 @@ io.on('connection', (socket) => {
         const votesAgainst = Object.values(rm.votes).filter((v) => v === targetUserId).length;
         const totalUsers = rm.users.length;
         if (votesAgainst > Math.floor(totalUsers / 2)) {
-          // Kick for majority
+          // Kick for majority vote
           const targetSocket = [...io.sockets.sockets.values()].find(
             (s) => s.handshake.session.userId === targetUserId
           );
           if (targetSocket) {
-            targetSocket.emit('kicked');
-            // With majority vote, we do a permanent ban or temp ban?
-            // Typically talkomatic did a forced remove. Let’s do 5-min:
+            targetSocket.emit('kicked', { reason: 'You have been voted by the majority to be kicked from this room' });
+            // With majority vote, we do a temporary 5-minute kick:
             if (!rm.tempBans) rm.tempBans = new Map();
             rm.tempBans.set(targetUserId, Date.now() + 5 * 60 * 1000);
 
