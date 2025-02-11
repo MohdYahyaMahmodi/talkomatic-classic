@@ -377,8 +377,8 @@ function addUserToRoom(user) {
   const modMenuImg = document.createElement('img');
   modMenuImg.src = '/images/icons/menu-icon.svg';
   modMenuImg.alt = 'Settings';
-  modMenuImg.style.width = '24px';
-  modMenuImg.style.height = '24px';
+  modMenuImg.style.width = '18px';
+  modMenuImg.style.height = '18px';
   modMenuBtn.appendChild(modMenuImg);
   modMenuBtn.addEventListener('click', () => {
     openUserSettingsModal(user);
