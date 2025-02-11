@@ -426,3 +426,95 @@
     }
   }
   
+  .moderator-modal {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.6);
+  }
+  
+  .moderator-modal-content {
+    background-color: #2e2e2e;
+    color: #fff;
+    margin: 10% auto;
+    padding: 20px;
+    width: 300px;
+    border-radius: 6px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.5);
+    font-family: talkoSS, sans-serif;
+    position: relative;
+  }
+  
+  .moderator-close {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    color: #fff;
+    font-size: 24px;
+    cursor: pointer;
+  }
+  
+  #moderatorModalTitle {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 20px;
+    color: #FF9800;
+  }
+  
+  .moderator-target-info p {
+    margin: 5px 0;
+    color: #ddd;
+  }
+  
+  .moderator-actions {
+    margin-top: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  
+  .mod-action-btn {
+    background-color: #414141;
+    border: none;
+    color: #fff;
+    padding: 8px 12px;
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+  }
+  
+  .mod-action-btn:hover {
+    background-color: #666666;
+  }
+  
+  .room-settings {
+    background: none;
+    border: none;
+    cursor: pointer;
+    margin-right: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .room-settings img {
+    width: 24px;
+    height: 24px;
+    transition: opacity 0.2s;
+  }
+  
+  .room-settings:hover img {
+    opacity: 0.8;
+  }
+
+  #roomLockStatus {
+    margin: 6px 0;
+    font-size: 14px;
+  }
+  

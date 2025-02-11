@@ -1,8 +1,26 @@
 // ============================================================================
 // room-client.js
 // ============================================================================
+//
+// Changes:
+// 1) If I'm the leader, show #roomSettingsBtn instead of #muteToggle in the top nav.
+// 2) "Mute" from the moderator modal calls `socket.emit('moderator action', { action:'mute', targetUserId })`
+//    which globally mutes that user server-side.
+// 3) On 'room update', we get a list of 'locked' plus any 'mutedUserIds' if we want to highlight them.
+// 4) The moderator modal also displays "Room is currently locked/unlocked" in #roomLockStatus.
+//
+// We'll assume we get 'locked' in the 'room update' event. If you want to keep track
+// of the globally muted users in the client, you can have the server also send something like
+// 'mutedUserIds': [...room.mutedUserIds].
+//
+// Let's implement that.
+//
+// We'll also have a separate "settings" modal if you'd like for the entire room, but
+// your request said you want the same modal to show Lock/Unlock status. We'll store it
+// in #roomLockStatus for now.
+//
 
-const socket = io(); // Initialize Socket.IO connection
+const MAX_MESSAGE_LENGTH = 5000;
 
 let currentUsername = '';
 let currentLocation = '';
@@ -12,36 +30,37 @@ let currentRoomLayout = 'horizontal';
 let lastSentMessage = '';
 let currentRoomName = '';
 let chatInput = null;
-const mutedUsers = new Set();
-const storedMessagesForMutedUsers = new Map();
+let currentLeaderId = null;
+let roomIsLocked = false; // track if locked
 
+// For moderator modal actions
+let moderatorTargetUserId = null;
+
+// Basic sounds
 const joinSound = document.getElementById('joinSound');
 const leaveSound = document.getElementById('leaveSound');
 let soundEnabled = true;
 
 const muteToggleButton = document.getElementById('muteToggle');
+const roomSettingsBtn = document.getElementById('roomSettingsBtn'); // new button for leaders
 const muteIcon = document.getElementById('muteIcon');
 
-const MAX_MESSAGE_LENGTH = 5000;
-
+// -------------- SOUND & MUTE (Personal) --------------
 function playJoinSound() {
   if (soundEnabled) {
-    joinSound.play().catch(error => console.error('Error playing join sound:', error));
+    joinSound.play().catch(err => console.error('Error playing join sound:', err));
   }
 }
-
 function playLeaveSound() {
   if (soundEnabled) {
-    leaveSound.play().catch(error => console.error('Error playing leave sound:', error));
+    leaveSound.play().catch(err => console.error('Error playing leave sound:', err));
   }
 }
-
 function toggleMute() {
   soundEnabled = !soundEnabled;
   localStorage.setItem('soundEnabled', JSON.stringify(soundEnabled));
   updateMuteIcon();
 }
-
 function updateMuteIcon() {
   if (soundEnabled) {
     muteIcon.src = 'images/icons/sound-on.svg';
@@ -52,6 +71,7 @@ function updateMuteIcon() {
   }
 }
 
+// -------------- Voting --------------
 function updateVotesUI(votes) {
   document.querySelectorAll('.chat-row').forEach(row => {
     const userId = row.dataset.userId;
@@ -68,48 +88,33 @@ function updateVotesUI(votes) {
   });
 }
 
-function updateCurrentMessages(messages) {
-  Object.keys(messages).forEach(userId => {
-    const chatInput = document.querySelector(`.chat-row[data-user-id="${userId}"] .chat-input`);
-    if (chatInput) {
-      chatInput.value = messages[userId].slice(0, MAX_MESSAGE_LENGTH);
-      if (userId === currentUserId) {
-        lastSentMessage = messages[userId];
-      }
-    }
-  });
-}
-
+// -------------- initRoom --------------
 async function initRoom() {
   const urlParams = new URLSearchParams(window.location.search);
   const roomIdFromUrl = urlParams.get('roomId');
-
   if (roomIdFromUrl) {
     currentRoomId = roomIdFromUrl;
     joinRoom(roomIdFromUrl);
   } else {
-    console.error('No room ID provided in URL');
     alert('No room ID provided. Redirecting to lobby.');
     window.location.href = '/index.html';
-    return;
   }
 }
-
 function joinRoom(roomId, accessCode = null) {
-  const data = { roomId, accessCode };
-  socket.emit('join room', data);
+  socket.emit('join room', { roomId, accessCode });
 }
 
+// -------------- Socket Handlers --------------
 socket.on('access code required', () => {
-  const accessCode = prompt('Please enter the 6-digit access code for this room:');
-  if (accessCode) {
-    if (accessCode.length !== 6 || !/^\d+$/.test(accessCode)) {
-      alert('Invalid access code. Please enter a 6-digit number.');
+  const code = prompt('Enter 6-digit access code:');
+  if (code) {
+    if (code.length !== 6 || !/^\d+$/.test(code)) {
+      alert('Invalid code. Must be 6 digits.');
       return;
     }
-    joinRoom(currentRoomId, accessCode);
+    joinRoom(currentRoomId, code);
   } else {
-    alert('Access code is required. Redirecting to lobby.');
+    alert('Access code required. Redirecting...');
     window.location.href = '/index.html';
   }
 });
@@ -118,13 +123,17 @@ socket.on('update votes', (votes) => {
   updateVotesUI(votes);
 });
 
-socket.on('kicked', () => {
-  alert('You have been removed from the room by a majority vote.');
+socket.on('dev message', (msg) => {
+  console.log(msg);
+});
+
+socket.on('kicked', (payload) => {
+  alert(payload?.reason || 'You have been removed by a moderator.');
   window.location.href = '/index.html';
 });
 
 socket.on('room full', () => {
-  alert('This room is full. You will be redirected to the lobby.');
+  alert('Room is full. Redirecting...');
   window.location.href = '/index.html';
 });
 
@@ -135,21 +144,30 @@ socket.on('room joined', (data) => {
   currentLocation = data.location;
   currentRoomLayout = data.layout || currentRoomLayout;
   currentRoomName = data.roomName;
+  currentLeaderId = data.leaderId || null;
+  roomIsLocked = data.locked || false;
 
   updateRoomInfo(data);
   updateRoomUI(data);
 
-  if (data.votes) {
-    updateVotesUI(data.votes);
-  }
+  if (data.votes) updateVotesUI(data.votes);
   if (data.currentMessages) {
-    updateCurrentMessages(data.currentMessages);
+    Object.keys(data.currentMessages).forEach(uid => {
+      const inp = document.querySelector(`.chat-row[data-user-id="${uid}"] .chat-input`);
+      if (inp) {
+        inp.value = data.currentMessages[uid].slice(0, MAX_MESSAGE_LENGTH);
+        if (uid === currentUserId) {
+          lastSentMessage = data.currentMessages[uid];
+        }
+      }
+    });
   }
   updateInviteLink();
+  adjustNavForLeader();
 });
 
 socket.on('room not found', () => {
-  alert('The room you are trying to join does not exist or has been deleted. Redirecting to lobby.');
+  alert('Room not found or deleted. Redirecting...');
   window.location.href = '/index.html';
 });
 
@@ -166,11 +184,18 @@ socket.on('user left', (userId) => {
 
 socket.on('room update', (roomData) => {
   currentRoomLayout = roomData.layout || currentRoomLayout;
+  if (roomData.leaderId) {
+    currentLeaderId = roomData.leaderId;
+  }
+  if (typeof roomData.locked === 'boolean') {
+    roomIsLocked = roomData.locked;
+  }
   updateRoomInfo(roomData);
   updateRoomUI(roomData);
   if (roomData.votes) {
     updateVotesUI(roomData.votes);
   }
+  adjustNavForLeader();
 });
 
 socket.on('chat update', (data) => {
@@ -179,157 +204,60 @@ socket.on('chat update', (data) => {
 
 socket.on('offensive word detected', (data) => {
   const { userId, filteredMessage } = data;
-  const chatInput = document.querySelector(`.chat-row[data-user-id="${userId}"] .chat-input`);
-  if (!chatInput) return;
-  chatInput.value = filteredMessage.slice(0, MAX_MESSAGE_LENGTH);
+  const chatInp = document.querySelector(`.chat-row[data-user-id="${userId}"] .chat-input`);
+  if (!chatInp) return;
+  chatInp.value = filteredMessage.slice(0, MAX_MESSAGE_LENGTH);
   if (userId === currentUserId) {
     lastSentMessage = filteredMessage;
   }
 });
 
-function updateRoomInfo(data) {
-  const roomNameElement = document.querySelector('.room-name');
-  const roomTypeElement = document.querySelector('.room-type');
-  const roomIdElement = document.querySelector('.room-id');
-
-  if (roomNameElement) {
-    roomNameElement.textContent = `Room: ${currentRoomName || data.roomName || data.roomId}`;
-  }
-  if (roomTypeElement) {
-    roomTypeElement.textContent = `${data.roomType || 'Public'} Room`;
-  }
-  if (roomIdElement) {
-    roomIdElement.textContent = `Room ID: ${data.roomId || currentRoomId}`;
-  }
-}
-
-function adjustVoteButtonVisibility() {
-  const userCount = document.querySelectorAll('.chat-row').length;
-  document.querySelectorAll('.chat-row').forEach(row => {
-    const userId = row.dataset.userId;
-    const voteButton = row.querySelector('.vote-button');
-    if (voteButton) {
-      if (userCount >= 3 && userId !== currentUserId) {
-        voteButton.style.display = 'inline-block';
-      } else {
-        voteButton.style.display = 'none';
-      }
-    }
-  });
-}
-
-function addUserToRoom(user) {
-  const chatContainer = document.querySelector('.chat-container');
-  if (!chatContainer) return;
-
-  const chatRow = document.createElement('div');
-  chatRow.classList.add('chat-row');
-  if (user.id === currentUserId) {
-    chatRow.classList.add('current-user');
-  }
-  chatRow.dataset.userId = user.id;
-
-  const userInfoSpan = document.createElement('span');
-  userInfoSpan.classList.add('user-info');
-  userInfoSpan.textContent = `${user.username} / ${user.location}`;
-
-  // Mute button
-  const muteButton = document.createElement('button');
-  muteButton.classList.add('mute-button');
-  muteButton.innerHTML = '🔊';
-  muteButton.style.display = 'none';
-  muteButton.addEventListener('click', () => {
-    if (mutedUsers.has(user.id)) {
-      // Unmute
-      mutedUsers.delete(user.id);
-      muteButton.innerHTML = '🔊';
-      muteButton.classList.remove('muted');
-      const chatInput = chatRow.querySelector('.chat-input');
-      chatInput.style.opacity = '1';
-      const queued = storedMessagesForMutedUsers.get(user.id);
-      if (queued && queued.length) {
-        queued.forEach(data => displayChatMessage(data));
-        storedMessagesForMutedUsers.delete(user.id);
-      }
-    } else {
-      // Mute
-      mutedUsers.add(user.id);
-      muteButton.innerHTML = '🔇';
-      muteButton.classList.add('muted');
-      const chatInput = chatRow.querySelector('.chat-input');
-      chatInput.style.opacity = '0.3';
-    }
-  });
-
-  // Vote button
-  const voteButton = document.createElement('button');
-  voteButton.classList.add('vote-button');
-  voteButton.innerHTML = '👎 0';
-  voteButton.style.display = 'none';
-  voteButton.addEventListener('click', () => {
-    socket.emit('vote', { targetUserId: user.id });
-  });
-
-  userInfoSpan.appendChild(muteButton);
-  userInfoSpan.appendChild(voteButton);
-
-  const newChatInput = document.createElement('textarea');
-  newChatInput.classList.add('chat-input');
-  if (user.id === currentUserId) {
-    chatInput = newChatInput;
+// -------------- adjustNavForLeader --------------
+function adjustNavForLeader() {
+  if (currentLeaderId === currentUserId) {
+    // I'm the leader => hide personal mute toggle, show roomSettingsBtn
+    muteToggleButton.style.display = 'none';
+    roomSettingsBtn.style.display = 'inline-block';
   } else {
-    newChatInput.readOnly = true;
-    if (mutedUsers.has(user.id)) {
-      newChatInput.style.opacity = '0.3';
-    }
-  }
-
-  chatRow.appendChild(userInfoSpan);
-  chatRow.appendChild(newChatInput);
-  chatContainer.appendChild(chatRow);
-
-  adjustVoteButtonVisibility();
-  adjustMuteButtonVisibility();
-}
-
-function adjustMuteButtonVisibility() {
-  document.querySelectorAll('.chat-row').forEach(row => {
-    const userId = row.dataset.userId;
-    const muteButton = row.querySelector('.mute-button');
-    if (muteButton && userId !== currentUserId) {
-      muteButton.style.display = 'inline-block';
-      if (mutedUsers.has(userId)) {
-        muteButton.innerHTML = '🔇';
-        muteButton.classList.add('muted');
-        const chatInput = row.querySelector('.chat-input');
-        chatInput.style.opacity = '0.3';
-      }
-    }
-  });
-}
-
-function removeUserFromRoom(userId) {
-  const chatRow = document.querySelector(`.chat-row[data-user-id="${userId}"]`);
-  if (chatRow) {
-    chatRow.remove();
-    adjustLayout();
+    // normal user => show personal mute toggle, hide roomSettingsBtn
+    muteToggleButton.style.display = 'inline-block';
+    roomSettingsBtn.style.display = 'none';
   }
 }
 
+// -------------- Room Info --------------
+function updateRoomInfo(data) {
+  const roomNameEl = document.querySelector('.room-name');
+  const roomTypeEl = document.querySelector('.room-type');
+  const roomIdEl   = document.querySelector('.room-id');
+
+  if (roomNameEl) {
+    roomNameEl.textContent = `Room: ${data.roomName || data.roomId}`;
+  }
+  if (roomTypeEl) {
+    roomTypeEl.textContent = `${data.roomType || 'Public'} Room`;
+  }
+  if (roomIdEl) {
+    roomIdEl.textContent = `Room ID: ${data.roomId || currentRoomId}`;
+  }
+}
+
+// -------------- Build UI --------------
 function updateRoomUI(roomData) {
   const chatContainer = document.querySelector('.chat-container');
   if (!chatContainer) return;
 
-  const currentInputs = new Map();
+  // store existing text states
+  const currentTextMap = new Map();
   let focusedUserId = null;
-  
+
   document.querySelectorAll('.chat-row').forEach(row => {
-    const userId = row.dataset.userId;
-    const input = row.querySelector('.chat-input');
-    if (input) {
-      currentInputs.set(userId, input.value);
-      if (document.activeElement === input) {
-        focusedUserId = userId;
+    const uid = row.dataset.userId;
+    const txt = row.querySelector('.chat-input');
+    if (txt) {
+      currentTextMap.set(uid, txt.value);
+      if (document.activeElement === txt) {
+        focusedUserId = uid;
       }
     }
   });
@@ -337,107 +265,387 @@ function updateRoomUI(roomData) {
   while (chatContainer.firstChild) {
     chatContainer.removeChild(chatContainer.firstChild);
   }
-
   chatInput = null;
 
-  if (roomData.users && Array.isArray(roomData.users)) {
-    roomData.users.forEach(user => {
-      addUserToRoom(user);
-      if (currentInputs.has(user.id)) {
-        const newInput = document.querySelector(`.chat-row[data-user-id="${user.id}"] .chat-input`);
-        if (newInput) {
-          newInput.value = currentInputs.get(user.id);
-          if (user.id === focusedUserId) {
-            newInput.focus();
+  if (Array.isArray(roomData.users)) {
+    roomData.users.forEach(u => {
+      addUserToRoom(u);
+      if (currentTextMap.has(u.id)) {
+        const inputEl = document.querySelector(`.chat-row[data-user-id="${u.id}"] .chat-input`);
+        if (inputEl) {
+          inputEl.value = currentTextMap.get(u.id);
+          if (u.id === focusedUserId) {
+            inputEl.focus();
           }
         }
       }
     });
   }
+  adjustLayout();
+  adjustVoteButtonVisibility();
+  adjustMuteButtonVisibility();
+  adjustModMenuVisibility();
+  updateInviteLink();
+}
+
+// -------------- addUserToRoom --------------
+function addUserToRoom(user) {
+  const container = document.querySelector('.chat-container');
+  if (!container) return;
+
+  const row = document.createElement('div');
+  row.classList.add('chat-row');
+  row.dataset.userId = user.id;
+  if (user.id === currentUserId) {
+    row.classList.add('current-user');
+  }
+
+  const userInfo = document.createElement('span');
+  userInfo.classList.add('user-info');
+  userInfo.textContent = `${user.username} / ${user.location}`;
+
+  // Mute button
+  const muteBtn = document.createElement('button');
+  muteBtn.classList.add('mute-button');
+  muteBtn.innerHTML = '🔊';
+  muteBtn.style.display = 'none';
+  muteBtn.addEventListener('click', () => {
+    // personal sound approach or local mute approach
+    // ...
+    alert("In this version, global mute is done by the moderator's 'mute' button in the settings modal.");
+  });
+  userInfo.appendChild(muteBtn);
+
+  // Vote button
+  const voteBtn = document.createElement('button');
+  voteBtn.classList.add('vote-button');
+  voteBtn.innerHTML = '👎 0';
+  voteBtn.style.display = 'none';
+  voteBtn.addEventListener('click', () => {
+    socket.emit('vote', { targetUserId: user.id });
+  });
+  userInfo.appendChild(voteBtn);
+
+  // Moderator gear
+  const modMenuBtn = document.createElement('button');
+  modMenuBtn.classList.add('mod-menu-button');
+  modMenuBtn.innerText = '⚙️';
+  modMenuBtn.style.display = 'none';
+  modMenuBtn.addEventListener('click', () => {
+    openModeratorModal(user);
+  });
+  userInfo.appendChild(modMenuBtn);
+
+  const textArea = document.createElement('textarea');
+  textArea.classList.add('chat-input');
+  if (user.id === currentUserId) {
+    chatInput = textArea;
+  } else {
+    textArea.readOnly = true;
+  }
+  row.appendChild(userInfo);
+  row.appendChild(textArea);
+  container.appendChild(row);
 
   adjustLayout();
   adjustVoteButtonVisibility();
   adjustMuteButtonVisibility();
-  updateInviteLink();
+  adjustModMenuVisibility();
 }
 
-function displayChatMessage(data) {
-  if (mutedUsers.has(data.userId)) {
-    if (!storedMessagesForMutedUsers.has(data.userId)) {
-      storedMessagesForMutedUsers.set(data.userId, []);
-    }
-    storedMessagesForMutedUsers.get(data.userId).push(data);
-    return;
+// -------------- removeUserFromRoom --------------
+function removeUserFromRoom(userId) {
+  const row = document.querySelector(`.chat-row[data-user-id="${userId}"]`);
+  if (row) {
+    row.remove();
   }
+  adjustLayout();
+}
 
-  const chatInput = document.querySelector(`.chat-row[data-user-id="${data.userId}"] .chat-input`);
-  if (!chatInput) return;
+// -------------- displayChatMessage --------------
+function displayChatMessage(data) {
+  const inputEl = document.querySelector(`.chat-row[data-user-id="${data.userId}"] .chat-input`);
+  if (!inputEl) return;
 
   if (data.diff) {
-    if (data.diff.type === 'full-replace') {
-      chatInput.value = data.diff.text.slice(0, MAX_MESSAGE_LENGTH);
-    } else {
-      const currentText = chatInput.value;
-      let newText;
-      switch (data.diff.type) {
-        case 'add':
-          newText = currentText.slice(0, data.diff.index) + data.diff.text + currentText.slice(data.diff.index);
-          break;
-        case 'delete':
-          newText = currentText.slice(0, data.diff.index) + currentText.slice(data.diff.index + data.diff.count);
-          break;
-        case 'replace':
-          newText = currentText.slice(0, data.diff.index) + data.diff.text + currentText.slice(data.diff.index + data.diff.text.length);
-          break;
-      }
-      chatInput.value = newText.slice(0, MAX_MESSAGE_LENGTH);
+    const currentText = inputEl.value;
+    let newText;
+    switch (data.diff.type) {
+      case 'full-replace':
+        newText = data.diff.text.slice(0, MAX_MESSAGE_LENGTH);
+        break;
+      case 'add':
+        newText = currentText.slice(0, data.diff.index) + data.diff.text + currentText.slice(data.diff.index);
+        break;
+      case 'delete':
+        newText = currentText.slice(0, data.diff.index) + currentText.slice(data.diff.index + data.diff.count);
+        break;
+      case 'replace':
+        newText = currentText.slice(0, data.diff.index) 
+                  + data.diff.text 
+                  + currentText.slice(data.diff.index + data.diff.text.length);
+        break;
+      default:
+        newText = currentText;
     }
-  } else {
-    chatInput.value = data.message.slice(0, MAX_MESSAGE_LENGTH);
+    inputEl.value = newText.slice(0, MAX_MESSAGE_LENGTH);
   }
 }
 
-function isMobile() {
-  return window.innerWidth <= 768;
+// -------------- Modals: open/close --------------
+function openModeratorModal(user) {
+  moderatorTargetUserId = user.id;
+
+  const modal = document.getElementById('moderatorModal');
+  const targetNameEl = document.getElementById('moderatorTargetName');
+  const targetIdEl   = document.getElementById('moderatorTargetId');
+  const lockStatusEl = document.getElementById('roomLockStatus');
+
+  targetNameEl.textContent = user.username;
+  targetIdEl.textContent   = user.id;
+
+  // show locked/unlocked
+  if (roomIsLocked) {
+    lockStatusEl.textContent = 'Room is currently LOCKED';
+  } else {
+    lockStatusEl.textContent = 'Room is currently UNLOCKED';
+  }
+
+  modal.style.display = 'block';
+}
+
+function closeModeratorModal() {
+  const modal = document.getElementById('moderatorModal');
+  modal.style.display = 'none';
+  moderatorTargetUserId = null;
+}
+
+// -------------- Layout & UI Adjustments --------------
+function adjustVoteButtonVisibility() {
+  const userCount = document.querySelectorAll('.chat-row').length;
+  document.querySelectorAll('.chat-row').forEach(row => {
+    const uid = row.dataset.userId;
+    const voteBtn = row.querySelector('.vote-button');
+    if (voteBtn) {
+      if (userCount >= 3 && uid !== currentUserId) {
+        voteBtn.style.display = 'inline-block';
+      } else {
+        voteBtn.style.display = 'none';
+      }
+    }
+  });
+}
+
+function adjustMuteButtonVisibility() {
+  document.querySelectorAll('.chat-row').forEach(row => {
+    const uid = row.dataset.userId;
+    const muteBtn = row.querySelector('.mute-button');
+    if (muteBtn) {
+      if (uid !== currentUserId) {
+        muteBtn.style.display = 'inline-block';
+      } else {
+        muteBtn.style.display = 'none';
+      }
+    }
+  });
+}
+
+function adjustModMenuVisibility() {
+  document.querySelectorAll('.chat-row').forEach(row => {
+    const uid = row.dataset.userId;
+    const modBtn = row.querySelector('.mod-menu-button');
+    if (!modBtn) return;
+    if (currentLeaderId === currentUserId && uid !== currentUserId) {
+      modBtn.style.display = 'inline-block';
+    } else {
+      modBtn.style.display = 'none';
+    }
+  });
 }
 
 function adjustLayout() {
   const chatContainer = document.querySelector('.chat-container');
   const chatRows = document.querySelectorAll('.chat-row');
+  if (!chatContainer) return;
 
-  const effectiveLayout = isMobile() ? 'horizontal' : currentRoomLayout;
+  const isMobile = window.innerWidth <= 768;
+  const layout = isMobile ? 'horizontal' : currentRoomLayout;
 
-  if (effectiveLayout === 'horizontal') {
+  if (layout === 'horizontal') {
     chatContainer.style.flexDirection = 'column';
     const availableHeight = window.innerHeight - chatContainer.offsetTop;
     const rowGap = 10;
     const totalGap = (chatRows.length - 1) * rowGap;
-    const chatRowHeight = Math.floor((availableHeight - totalGap) / chatRows.length);
+    const rowHeight = Math.floor((availableHeight - totalGap) / chatRows.length);
 
-    chatRows.forEach(row => {
-      row.style.height = `${chatRowHeight}px`;
-      row.style.minHeight = '100px';
-      row.style.width = '100%';
-      const userInfo = row.querySelector('.user-info');
-      const chatInput = row.querySelector('.chat-input');
-      const inputHeight = chatRowHeight - userInfo.offsetHeight - 2;
-      chatInput.style.height = `${inputHeight}px`;
+    chatRows.forEach(r => {
+      r.style.height = `${rowHeight}px`;
+      r.style.minHeight = '100px';
+      r.style.width = '100%';
+      const userInfo = r.querySelector('.user-info');
+      const chatInp = r.querySelector('.chat-input');
+      const inH = rowHeight - userInfo.offsetHeight - 2;
+      chatInp.style.height = `${inH}px`;
     });
   } else {
     chatContainer.style.flexDirection = 'row';
     const availableWidth = chatContainer.offsetWidth;
     const columnGap = 10;
     const totalGap = (chatRows.length - 1) * columnGap;
-    const chatColumnWidth = Math.floor((availableWidth - totalGap) / chatRows.length);
+    const colWidth = Math.floor((availableWidth - totalGap) / chatRows.length);
 
-    chatRows.forEach(row => {
-      row.style.width = `${chatColumnWidth}px`;
-      row.style.height = '100%';
-      const userInfo = row.querySelector('.user-info');
-      const chatInput = row.querySelector('.chat-input');
-      chatInput.style.height = `calc(100% - ${userInfo.offsetHeight}px - 2px)`;
+    chatRows.forEach(r => {
+      r.style.width = `${colWidth}px`;
+      r.style.height = '100%';
+      const userInfo = r.querySelector('.user-info');
+      const chatInp = r.querySelector('.chat-input');
+      chatInp.style.height = `calc(100% - ${userInfo.offsetHeight}px - 2px)`;
     });
   }
+}
+
+// -------------- Events --------------
+document.querySelector('.leave-room').addEventListener('click', () => {
+  socket.emit('leave room');
+  window.location.href = '/index.html';
+});
+
+document.querySelector('.chat-container').addEventListener('input', (e) => {
+  if (e.target.classList.contains('chat-input')
+   && e.target.closest('.chat-row').dataset.userId === currentUserId) {
+    const curVal = e.target.value;
+    if (curVal.length > MAX_MESSAGE_LENGTH) {
+      e.target.value = curVal.slice(0, MAX_MESSAGE_LENGTH);
+      return;
+    }
+    const diff = getDiff(lastSentMessage, curVal);
+    if (diff) {
+      socket.emit('chat update', { diff, index: diff.index });
+      lastSentMessage = curVal;
+    }
+  }
+});
+
+function getDiff(oldStr, newStr) {
+  if (oldStr === newStr) return null;
+  if (newStr.startsWith(oldStr)) {
+    return { type: 'add', text: newStr.slice(oldStr.length), index: oldStr.length };
+  }
+  if (oldStr.startsWith(newStr)) {
+    return { type: 'delete', count: oldStr.length - newStr.length, index: newStr.length };
+  }
+  return { type: 'full-replace', text: newStr };
+}
+
+// -------------- onLoad --------------
+window.addEventListener('load', () => {
+  initRoom();
+
+  setInterval(updateDateTime, 1000);
+  updateDateTime();
+  updateInviteLink();
+
+  const savedMuteState = localStorage.getItem('soundEnabled');
+  if (savedMuteState !== null) {
+    soundEnabled = JSON.parse(savedMuteState);
+    updateMuteIcon();
+  }
+
+  // Show/hide nav items
+  muteToggleButton.addEventListener('click', toggleMute);
+  roomSettingsBtn.addEventListener('click', () => {
+    // We could open a separate "Room Settings" modal or re-use the moderator modal
+    // for overall "Lock/Unlock" state. But your request merges them, so let's just
+    // open the modal with no user selected => show lock status
+    openModeratorModal({ id: '', username: 'No specific user' });
+  });
+
+  // Moderator modal
+  const modalClose = document.getElementById('moderatorModalClose');
+  modalClose.addEventListener('click', closeModeratorModal);
+
+  document.getElementById('modKickBtn').addEventListener('click', () => {
+    if (!moderatorTargetUserId) return;
+    socket.emit('moderator action', {
+      action: 'kick',
+      targetUserId: moderatorTargetUserId
+    });
+    closeModeratorModal();
+  });
+  document.getElementById('modBanBtn').addEventListener('click', () => {
+    if (!moderatorTargetUserId) return;
+    socket.emit('moderator action', {
+      action: 'ban',
+      targetUserId: moderatorTargetUserId
+    });
+    closeModeratorModal();
+  });
+  document.getElementById('modMuteBtn').addEventListener('click', () => {
+    if (!moderatorTargetUserId) return;
+    socket.emit('moderator action', {
+      action: 'mute',
+      targetUserId: moderatorTargetUserId
+    });
+    closeModeratorModal();
+  });
+  document.getElementById('modTransferBtn').addEventListener('click', () => {
+    if (!moderatorTargetUserId) return;
+    socket.emit('moderator action', {
+      action: 'transfer-leader',
+      targetUserId: moderatorTargetUserId
+    });
+    closeModeratorModal();
+  });
+  document.getElementById('modLockRoomBtn').addEventListener('click', () => {
+    socket.emit('moderator action', {
+      action: 'lock-room'
+    });
+    closeModeratorModal();
+  });
+
+  document.getElementById('copyInviteLink').addEventListener('click', copyInviteLink);
+
+  window.addEventListener('resize', adjustLayout);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', handleViewportChange);
+  }
+});
+
+function updateDateTime() {
+  const now = new Date();
+  const dateOptions = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
+  const timeOptions = { hour: '2-digit', minute: '2-digit', hour12: true };
+  const formattedDate = now.toLocaleDateString('en-US', dateOptions);
+  const formattedTime = now.toLocaleTimeString('en-US', timeOptions);
+  const dtEl = document.getElementById('dateTime');
+  if (dtEl) {
+    dtEl.querySelector('.date').textContent = formattedDate;
+    dtEl.querySelector('.time').textContent = formattedTime;
+  }
+}
+
+function updateInviteLink() {
+  const linkEl = document.getElementById('inviteLink');
+  if (!linkEl) return;
+  const currentUrl = new URL(window.location.href);
+  currentUrl.searchParams.set('roomId', currentRoomId);
+  const inviteLink = currentUrl.href;
+  linkEl.textContent = inviteLink;
+  linkEl.href = inviteLink;
+  const copyBtn = document.getElementById('copyInviteLink');
+  if (copyBtn) {
+    copyBtn.style.display = 'inline-block';
+  }
+}
+
+function copyInviteLink() {
+  const linkEl = document.getElementById('inviteLink');
+  if (!linkEl) return;
+  navigator.clipboard.writeText(linkEl.textContent).then(() => {
+    alert('Invite link copied to clipboard!');
+  }).catch(err => {
+    console.error('Copy failed:', err);
+  });
 }
 
 function handleViewportChange() {
@@ -452,106 +660,4 @@ function handleViewportChange() {
     }
   }
   adjustLayout();
-}
-
-function getDiff(oldStr, newStr) {
-  if (oldStr === newStr) return null;
-  if (newStr.startsWith(oldStr)) {
-    return { type: 'add', text: newStr.slice(oldStr.length), index: oldStr.length };
-  }
-  if (oldStr.startsWith(newStr)) {
-    return { type: 'delete', count: oldStr.length - newStr.length, index: newStr.length };
-  }
-  return { type: 'full-replace', text: newStr };
-}
-
-document.querySelector('.chat-container').addEventListener('input', (e) => {
-  if (e.target.classList.contains('chat-input') &&
-      e.target.closest('.chat-row').dataset.userId === currentUserId) {
-    const currentMessage = e.target.value;
-    if (currentMessage.length > MAX_MESSAGE_LENGTH) {
-      e.target.value = currentMessage.slice(0, MAX_MESSAGE_LENGTH);
-      return;
-    }
-    const diff = getDiff(lastSentMessage, currentMessage);
-    if (diff) {
-      socket.emit('chat update', { diff, index: diff.index });
-      lastSentMessage = currentMessage;
-    }
-  }
-});
-
-document.querySelector('.leave-room').addEventListener('click', () => {
-  socket.emit('leave room');
-  window.location.href = '/index.html';
-});
-
-const dateTimeElement = document.querySelector('#dateTime');
-function updateDateTime() {
-  const now = new Date();
-  const dateOptions = { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'short', 
-    day: 'numeric'
-  };
-  const timeOptions = {
-    hour: '2-digit', 
-    minute: '2-digit', 
-    hour12: true 
-  };
-  
-  const formattedDate = now.toLocaleDateString('en-US', dateOptions);
-  const formattedTime = now.toLocaleTimeString('en-US', timeOptions);
-  
-  dateTimeElement.querySelector('.date').textContent = formattedDate;
-  dateTimeElement.querySelector('.time').textContent = formattedTime;
-}
-setInterval(updateDateTime, 1000);
-
-window.addEventListener('load', () => {
-  initRoom();
-  updateDateTime();
-  adjustLayout();
-  updateInviteLink();
-
-  document.getElementById('copyInviteLink').addEventListener('click', copyInviteLink);
-
-  const savedMuteState = localStorage.getItem('soundEnabled');
-  if (savedMuteState !== null) {
-    soundEnabled = JSON.parse(savedMuteState);
-    updateMuteIcon();
-  }
-  muteToggleButton.addEventListener('click', toggleMute);
-
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', handleViewportChange);
-  }
-});
-
-window.addEventListener('resize', adjustLayout);
-window.addEventListener('resize', handleViewportChange);
-
-function generateInviteLink() {
-  const currentUrl = new URL(window.location.href);
-  currentUrl.searchParams.set('roomId', currentRoomId);
-  return currentUrl.href;
-}
-
-function updateInviteLink() {
-  const inviteLinkElement = document.getElementById('inviteLink');
-  const inviteLink = generateInviteLink();
-  inviteLinkElement.textContent = inviteLink;
-  inviteLinkElement.href = inviteLink;
-  const copyButton = document.getElementById('copyInviteLink');
-  copyButton.style.display = 'inline-block';
-}
-
-function copyInviteLink() {
-  const inviteLink = generateInviteLink();
-  navigator.clipboard.writeText(inviteLink).then(() => {
-    alert('Invite link copied to clipboard!');
-  }).catch(err => {
-    console.error('Failed to copy invite link: ', err);
-  });
 }
