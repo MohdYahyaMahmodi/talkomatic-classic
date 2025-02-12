@@ -1,4 +1,4 @@
-// public/js/fingerprint.js
+// public/js/users.js
 (function () {
   // Gather minimal device info
   function getDeviceInfo() {
