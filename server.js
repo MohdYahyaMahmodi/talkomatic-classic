@@ -32,7 +32,7 @@ const ROOM_CREATION_COOLDOWN = 30000; // 30 seconds
 const app = express();
 const server = http.createServer(app);
 
-let userStore = new Map(); // Map<guestId, { guestId, username, location, userId, createdAt }>
+let userStore = new Map(); // Map<compositeGuestId, { guestId, ip, username, location, userId, createdAt }>
 
 // Parse JSON bodies
 app.use(express.json());
@@ -70,8 +70,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(cookieParser());
 
-// Helmet security headers
-// We REMOVE the dynamic nonce for scriptSrc to avoid console warnings.
+// Helmet security headers with updated CSP (allowing api.ipify.org if needed)
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -90,7 +89,7 @@ app.use(
           "https://fonts.googleapis.com"
         ],
         imgSrc: ["'self'", "data:", "https:", "blob:"],
-        connectSrc: ["'self'"],
+        connectSrc: ["'self'", "https://api.ipify.org"],
         fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
         objectSrc: ["'none'"],
         mediaSrc: ["'self'"],
@@ -137,7 +136,7 @@ const sessionMiddleware = session({
 });
 app.use(sessionMiddleware);
 
-// Socket.io
+// Socket.io setup with shared session
 const io = socketIo(server, {
   cors: {
     origin: allowedOrigins,
@@ -147,7 +146,7 @@ const io = socketIo(server, {
 });
 io.use(sharedsession(sessionMiddleware, { autoSave: true }));
 
-// Serve static
+// Serve static files from "public"
 app.use(
   express.static(path.join(__dirname, 'public'), {
     setHeaders: (res, filePath) => {
@@ -159,7 +158,7 @@ app.use(
   })
 );
 
-// In-memory for rooms
+// In-memory storage for rooms and related data
 let rooms = new Map();
 const roomDeletionTimers = new Map();
 const typingTimeouts = new Map();
@@ -179,7 +178,7 @@ async function loadRooms() {
     const data = await fs.readFile(path.join(__dirname, 'rooms.json'), 'utf8');
     const loaded = JSON.parse(data);
     rooms = new Map(loaded);
-    // optionally clear on restart:
+    // Optionally clear on restart:
     rooms.clear();
   } catch (err) {
     if (err.code !== 'ENOENT') {
@@ -211,7 +210,7 @@ async function loadUsers() {
 }
 loadUsers();
 
-// Helpers
+// Helper functions
 function normalize(str) {
   return (str || '').trim().toLowerCase();
 }
@@ -298,20 +297,20 @@ function startRoomDeletionTimer(roomId) {
   roomDeletionTimers.set(roomId, timer);
 }
 
-// leaving room
+// Leaving a room
 async function leaveRoom(socket, userId) {
   if (!socket.roomId) return;
   const rm = rooms.get(socket.roomId);
   if (rm) {
-    // remove user
+    // Remove user from the room.
     rm.users = rm.users.filter((u) => u.id !== userId);
-    // if leader => pass to next (oldest remaining user)
+    // If the leaving user was the leader, assign the next user.
     if (rm.leaderId === userId && rm.users.length > 0) {
-      rm.leaderId = rm.users[0].id; // next oldest
+      rm.leaderId = rm.users[0].id;
     }
     rm.lastActiveTime = Date.now();
 
-    // remove votes
+    // Remove any votes associated with the user.
     if (rm.votes) {
       delete rm.votes[userId];
       for (let voterId in rm.votes) {
@@ -338,7 +337,7 @@ async function leaveRoom(socket, userId) {
   await saveRooms();
 }
 
-// joining room
+// Joining a room
 function joinRoom(socket, roomId, userId) {
   if (!roomId || roomId.length !== 6) {
     socket.emit('room not found');
@@ -350,30 +349,27 @@ function joinRoom(socket, roomId, userId) {
     return;
   }
 
-  // Set leader if not already assigned (i.e. first user joining)
+  // Set the leader if none is assigned.
   if (!rm.leaderId) {
     rm.leaderId = userId;
   }
 
-  // Check permanent ban
+  // Check for bans.
   if (rm.bannedUserIds && rm.bannedUserIds.has(userId)) {
     socket.emit('error', 'You have been banned from rejoining this room.');
     return;
   }
 
-  // Check 5-minute kick
   if (rm.tempBans && rm.tempBans.has(userId)) {
     const banExpiry = rm.tempBans.get(userId);
     if (Date.now() < banExpiry) {
       socket.emit('error', 'You have been kicked for 5 minutes. Please try again later.');
       return;
     } else {
-      // ban is expired
       rm.tempBans.delete(userId);
     }
   }
 
-  // if locked, cannot join
   if (rm.locked) {
     socket.emit('error', 'This room is locked by the moderator. Cannot join.');
     return;
@@ -405,12 +401,11 @@ function joinRoom(socket, roomId, userId) {
 
   socket.join(roomId);
 
-  // see if user is already in the room
+  // If the user is not already in the room, add them.
   let existingUser = rm.users.find((u) => u.id === userId);
   if (existingUser) {
     existingUser.username = username;
     existingUser.location = location;
-    // do not emit "user joined" again
   } else {
     rm.users.push({
       id: userId,
@@ -478,27 +473,33 @@ function handleTyping(socket, userId, username, isTyping) {
 }
 
 io.on('connection', (socket) => {
-  const { guestId } = socket.handshake.query;
-  if (!guestId) {
+  // Get the client-supplied fingerprint from query and combine with the client's IP.
+  const rawGuestId = socket.handshake.query.guestId;
+  const clientIp = socket.handshake.address;
+  const compositeId = clientIp + '|' + rawGuestId;
+
+  if (!rawGuestId) {
     socket.emit('error', 'No guestId (fingerprint) provided. Reload the page.');
     return;
   } else {
-    if (userStore.has(guestId)) {
-      socket.emit('guest detection', `user detected: ${guestId}`);
+    if (userStore.has(compositeId)) {
+      socket.emit('guest detection', `user detected.`);
     } else {
-      socket.emit('guest detection', `No account detected making new account: ${guestId}`);
-      userStore.set(guestId, {
-        guestId,
+      socket.emit('guest detection', `No account detected, creating new account.`);
+      userStore.set(compositeId, {
+        guestId: rawGuestId,
+        ip: clientIp,
         username: '',
         location: '',
         createdAt: Date.now(),
       });
       saveUsers();
     }
-    socket.handshake.session.guestId = guestId;
+    // Store the composite guestId in the session.
+    socket.handshake.session.guestId = compositeId;
   }
 
-  // check sign-in status
+  // Check sign-in status
   socket.on('check signin status', () => {
     let { guestId, username, location, userId } = socket.handshake.session;
     if ((!username || !location || !userId) && guestId && userStore.has(guestId)) {
@@ -526,7 +527,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // join lobby
+  // Join lobby
   socket.on('join lobby', async (data) => {
     try {
       if (!data) {
@@ -549,17 +550,18 @@ io.on('connection', (socket) => {
         }
       }
 
-      const userId = guestId + '-' + uuidv4().slice(0, 6);
+      const compositeGuestId = socket.handshake.session.guestId;
+      const newUserId = compositeGuestId + '-' + uuidv4().slice(0, 6);
       socket.handshake.session.username = username;
       socket.handshake.session.location = location;
-      socket.handshake.session.userId = userId;
+      socket.handshake.session.userId = newUserId;
 
-      if (userStore.has(guestId)) {
-        const rec = userStore.get(guestId);
+      if (userStore.has(compositeGuestId)) {
+        const rec = userStore.get(compositeGuestId);
         rec.username = username;
         rec.location = location;
-        rec.userId = userId;
-        userStore.set(guestId, rec);
+        rec.userId = newUserId;
+        userStore.set(compositeGuestId, rec);
         await saveUsers();
       }
 
@@ -570,7 +572,7 @@ io.on('connection', (socket) => {
             isSignedIn: true,
             username,
             location,
-            userId,
+            userId: newUserId,
           });
           updateLobby();
         }
@@ -581,7 +583,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // create room
+  // Create room
   socket.on('create room', (data) => {
     try {
       if (!data) {
@@ -604,7 +606,7 @@ io.on('connection', (socket) => {
       }
 
       if (getUsernameLocationRoomsCount(username, location) >= 2) {
-        socket.emit('error', 'unable to create room at the moment please try again later');
+        socket.emit('error', 'Unable to create room at the moment, please try again later');
         return;
       }
       if (getUserRoomsCount(userId) >= 2) {
@@ -650,7 +652,7 @@ io.on('connection', (socket) => {
         accessCode: roomType === 'semi-private' ? data.accessCode : null,
         votes: {},
         bannedUserIds: new Set(),
-        tempBans: new Map(), // for 5-min kicks
+        tempBans: new Map(), // for 5-minute kicks
         leaderId: null,
         locked: false,
         lastActiveTime: Date.now(),
@@ -666,7 +668,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // join room
+  // Join room
   socket.on('join room', (data) => {
     try {
       if (!data || !data.roomId) {
@@ -690,8 +692,7 @@ io.on('connection', (socket) => {
       }
       let { username, location, userId } = socket.handshake.session;
       if (!username || !location || !userId) {
-        // fallback
-        userId = guestId + '-' + uuidv4().slice(0, 6);
+        userId = socket.handshake.session.guestId + '-' + uuidv4().slice(0, 6);
         username = 'Anonymous';
         location = 'On The Web';
         socket.handshake.session.username = username;
@@ -710,7 +711,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // vote
+  // Vote
   socket.on('vote', (data) => {
     try {
       if (!data || typeof data !== 'object') {
@@ -740,20 +741,17 @@ io.on('connection', (socket) => {
         rm.votes[userId] = targetUserId;
         io.to(rmId).emit('update votes', rm.votes);
 
-        // majority check
+        // Majority check to kick user if needed.
         const votesAgainst = Object.values(rm.votes).filter((v) => v === targetUserId).length;
         const totalUsers = rm.users.length;
         if (votesAgainst > Math.floor(totalUsers / 2)) {
-          // Kick for majority vote
           const targetSocket = [...io.sockets.sockets.values()].find(
             (s) => s.handshake.session.userId === targetUserId
           );
           if (targetSocket) {
             targetSocket.emit('kicked', { reason: 'You have been voted by the majority to be kicked from this room' });
-            // With majority vote, we do a temporary 5-minute kick:
             if (!rm.tempBans) rm.tempBans = new Map();
             rm.tempBans.set(targetUserId, Date.now() + 5 * 60 * 1000);
-
             leaveRoom(targetSocket, targetUserId);
           }
         }
@@ -764,7 +762,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // leave room
+  // Leave room
   socket.on('leave room', async () => {
     try {
       const userId = socket.handshake.session.userId;
@@ -775,7 +773,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // chat update
+  // Chat update
   socket.on('chat update', (data) => {
     try {
       if (!socket.roomId) return;
@@ -785,9 +783,9 @@ io.on('connection', (socket) => {
       const userId = socket.handshake.session.userId;
       const username = socket.handshake.session.username;
 
-      // check global mute
+      // Check if the user is globally muted.
       if (rm.mutedUserIds && rm.mutedUserIds.has(userId)) {
-        return; // do not broadcast
+        return;
       }
 
       if (!userMessageBuffers.has(userId)) {
@@ -836,16 +834,13 @@ io.on('connection', (socket) => {
       if (ENABLE_WORD_FILTER) {
         const filterResult = wordFilter.checkText(userMessage);
         if (filterResult.hasOffensiveWord) {
-          // Replace in buffer
           userMessage = wordFilter.filterText(userMessage);
           userMessageBuffers.set(userId, userMessage);
-          // Let entire room know
           io.to(socket.roomId).emit('offensive word detected', {
             userId,
             filteredMessage: userMessage,
           });
         } else {
-          // broadcast diff
           socket.to(socket.roomId).emit('chat update', {
             userId,
             username,
@@ -865,7 +860,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // typing
+  // Typing indicator
   socket.on('typing', (data) => {
     try {
       if (!socket.roomId) return;
@@ -880,7 +875,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // moderator action
+  // Moderator actions
   socket.on('moderator action', (data) => {
     try {
       const userId = socket.handshake.session.userId;
@@ -896,10 +891,8 @@ io.on('connection', (socket) => {
       switch (action) {
         case 'kick': {
           if (targetUserId) {
-            // Kick for 5 min
             if (!rm.tempBans) rm.tempBans = new Map();
             rm.tempBans.set(targetUserId, Date.now() + 5 * 60 * 1000);
-
             const tSock = [...io.sockets.sockets.values()].find(
               (s) => s.handshake.session.userId === targetUserId
             );
@@ -960,12 +953,12 @@ io.on('connection', (socket) => {
     }
   });
 
-  // get rooms
+  // Get initial list of rooms
   socket.on('get rooms', () => {
     socket.emit('initial rooms', Array.from(rooms.values()));
   });
 
-  // disconnect
+  // Disconnect event
   socket.on('disconnect', async () => {
     try {
       const userId = socket.handshake.session.userId;
@@ -977,7 +970,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Periodic cleanup
+// Periodic cleanup of empty rooms
 setInterval(() => {
   for (const [rmId, rm] of rooms.entries()) {
     if (rm.users.length === 0) {
@@ -1005,7 +998,7 @@ function apiAuth(req, res, next) {
   next();
 }
 
-// example: GET /api/v1/rooms
+// GET /api/v1/rooms
 app.get('/api/v1/rooms', limiter, apiAuth, (req, res) => {
   const pubRooms = Array.from(rooms.values())
     .filter((r) => r.type !== 'private')
@@ -1111,7 +1104,7 @@ app.post('/api/v1/rooms/:id/join', limiter, apiAuth, (req, res) => {
   }
 });
 
-// example test route
+// Example test route
 app.get('/api/v1/protected/ping', limiter, apiAuth, (req, res) => {
   return res.json({ message: 'pong', time: Date.now() });
 });
