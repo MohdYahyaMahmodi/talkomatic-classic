@@ -1116,7 +1116,7 @@ app.get('/api/v1/protected/ping', limiter, apiAuth, (req, res) => {
   return res.json({ message: 'pong', time: Date.now() });
 });
 
-const PORT = process.env.PORT || 7842;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
