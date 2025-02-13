@@ -1158,6 +1158,25 @@ app.get('/api/v1/protected/ping', limiter, apiAuth, (req, res) => {
   return res.json({ message: 'pong', time: Date.now() });
 });
 
+/* --- NEW: Reject non-Socket.IO upgrade requests --- */
+server.on('upgrade', (request, socket, head) => {
+  try {
+    const { pathname } = new URL(request.url, `http://${request.headers.host}`);
+    // Only allow upgrade requests intended for Socket.IO
+    if (pathname.startsWith('/socket.io')) {
+      io.engine.handleUpgrade(request, socket, head, (ws) => {
+        io.engine.emit('connection', ws);
+      });
+    } else {
+      // Reject any other upgrade requests
+      socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+      socket.destroy();
+    }
+  } catch (err) {
+    socket.destroy();
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
