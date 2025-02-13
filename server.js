@@ -153,8 +153,8 @@ io.use(sharedsession(sessionMiddleware, { autoSave: true }));
 
 // ***** NEW: Rate-limit incoming Socket.IO connections by IP *****
 const connectionAttempts = new Map(); // Map<ip, Array of timestamps>
-const MAX_CONNECTIONS_PER_IP = 10;      // maximum allowed connection attempts per IP
-const CONNECTION_WINDOW = 10 * 1000;    // 10 seconds
+const MAX_CONNECTIONS_PER_IP = 30;      // maximum allowed connection attempts per IP
+const CONNECTION_WINDOW = 20 * 1000;    // 20 seconds
 
 io.use((socket, next) => {
   const ip =
