@@ -1,113 +1,128 @@
+<!-- 
+    Talkomatic Chat Room Page
+    =========================
+
+    This HTML document defines the structure of an individual chat room in the Talkomatic application. 
+    Users who join a specific chat room are presented with a live chat interface, an option to invite 
+    others, and sound notifications for joining and leaving the room.
+
+    Main Features:
+    - Displays current date and time in the navigation bar.
+    - Shows room details such as room name, type, and room ID.
+    - Allows users to leave the chat room.
+    - Provides a dynamic chat container where messages will be displayed.
+    - Displays an invite link that users can copy to invite others to the room.
+    - Includes sound effects when users join or leave the room.
+    
+    External Resources:
+    - room.css (styling for the chat room)
+    - room-client.js (client-side functionality for the chat room)
+    - socket.io.js (for real-time communication)
+    - ding.mp3 (audio for notifications)
+    
+    Last updated: 2025
+-->
+
 <!DOCTYPE html>
 <html lang="en">
+
+<!-- Head Section: Metadata and External Resources -->
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Talkomatic Room</title>
-  <link rel="stylesheet" href="stylesheets/room.css">
-  <link rel="icon" type="image/png" href="images/icons/favicon.png">
+    <!-- Specifies the document's character encoding as UTF-8 -->
+    <meta charset="UTF-8">
+    
+    <!-- Ensures proper scaling on mobile devices by setting the viewport properties -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Title of the webpage that appears in the browser tab -->
+    <title>Talkomatic Room</title>
+    
+    <!-- Link to external stylesheet for chat room-specific styles -->
+    <link rel="stylesheet" href="stylesheets/room.css?v=1.0.2">
+    
+    <!-- Favicon icon for the website, displayed in the browser tab -->
+    <link rel="icon" type="image/png" href="images/icons/favicon.png">
 </head>
+
+<!-- Body Section: Main content and layout of the page -->
 <body>
-  <div class="page-container">
-    <nav class="top-navbar">
-      <div class="navbar-section navbar-left">
-        <div id="dateTime" class="date-time">
-          <span class="date"></span>
-          <span class="time"></span>
+    <!-- Page container for the entire layout -->
+    <div class="page-container">
+        
+        <!-- Top navigation bar containing date, time, brand name, leave room option, and mute toggle -->
+        <nav class="top-navbar">
+            <!-- Left section of the navbar containing date and time -->
+            <div class="navbar-section navbar-left">
+                <!-- Date and time are dynamically updated here via JavaScript -->
+                <div id="dateTime" class="date-time">
+                    <span class="date"></span>
+                    <span class="time"></span>
+                </div>
+            </div>
+            
+            <!-- Center section of the navbar displaying the Talkomatic brand -->
+            <div class="navbar-section navbar-center">
+                <div class="brand">Talkomatic™</div>
+            </div>
+
+            <!-- Right section of the navbar with buttons -->
+            <div class="navbar-section navbar-right">
+
+                <!-- Mute Toggle Button -->
+                <button id="muteToggle" class="mute-toggle" aria-label="Toggle Sound">
+                    <img src="images/icons/sound-on.svg" alt="Sound On" id="muteIcon">
+                </button>
+                
+                <!-- Leave Room Button -->
+                <div class="leave-room">Leave Room</div>
+                
+            </div>
+        </nav>
+
+        <!-- Secondary navigation bar for room-specific details -->
+        <div class="second-navbar">
+            <!-- Placeholder for the room type (e.g., public, private) -->
+            <div class="room-type">*</div>
+            
+            <!-- Placeholder for the room name, dynamically updated -->
+            <div class="room-name">*</div>
+            
+            <!-- Placeholder for the room ID, dynamically updated -->
+            <div class="room-id">*</div>
         </div>
-      </div>
-      <div class="navbar-section navbar-center">
-        <div class="brand">Talkomatic™</div>
-      </div>
-      <div class="navbar-section navbar-right">
-        <!-- Normal users see Mute Toggle; leaders see Settings icon -->
-        <button id="muteToggle" class="mute-toggle" aria-label="Toggle Sound">
-          <img src="images/icons/sound-on.svg" alt="Sound On" id="muteIcon">
-        </button>
 
-        <button id="roomSettingsBtn" class="room-settings" style="display:none;">
-          <img src="images/icons/settings.svg" alt="Settings" />
-        </button>
+        <!-- Chat container where chat messages will be dynamically added -->
+        <div class="chat-container">
+            <!-- Chat rows will be dynamically added here by JavaScript -->
+        </div>
 
-        <div class="leave-room">Leave Room</div>
-      </div>
-    </nav>
-
-    <div class="second-navbar">
-      <div class="room-type">*</div>
-      <div class="room-name">*</div>
-      <div class="room-id">*</div>
+        <!-- Invite section: users can invite others by copying a dynamic link -->
+        <div class="invite-section">
+            <!-- Instructional text for inviting friends to the chat room -->
+            <div class="invite-text">Invite friends to your room with this link:</div>
+            
+            <!-- Container holding the invite link and copy button -->
+            <div class="invite-container">
+                <!-- The invite link will be dynamically generated and displayed here -->
+                <div class="invite-link" id="inviteLink"></div>
+                
+                <!-- Button to copy the invite link to the clipboard -->
+                <button id="copyInviteLink" aria-label="Copy invite link">
+                    <img src="images/icons/copy.svg" alt="Copy">
+                </button>
+            </div>
+        </div>
     </div>
 
-    <div class="chat-container"></div>
+    <!-- Audio elements for sound notifications when users join or leave the chat -->
+    <audio id="joinSound" src="audio/ding.mp3"></audio>
+    <audio id="leaveSound" src="audio/ding.mp3"></audio>
 
-    <div class="invite-section">
-      <div class="invite-text">Invite friends to your room with this link:</div>
-      <div class="invite-container">
-        <div class="invite-link" id="inviteLink"></div>
-        <button id="copyInviteLink" aria-label="Copy invite link">
-          <img src="images/icons/copy.svg" alt="Copy">
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============================
-       ROOM SETTINGS MODAL
-       (Moderator Only)
-  ============================= -->
-  <div id="roomSettingsModal" class="moderator-modal">
-    <div class="moderator-modal-content">
-      <span id="roomSettingsModalClose" class="moderator-close">&times;</span>
-      <h2 style="margin-top:0;margin-bottom:10px;font-size:20px;color:#FF9800;">Room Settings</h2>
-
-      <!-- Lock/Unlock status text -->
-      <p id="roomLockStatus" style="color:#FF9800; font-weight:bold;"></p>
-
-      <div class="moderator-actions">
-        <!-- Lock/Unlock button -->
-        <button id="toggleLockBtn" class="mod-action-btn">Lock Room</button>
-        <!-- Doorbell Mute for moderator only -->
-        <button id="toggleDoorbellBtn" class="mod-action-btn">Mute Doorbell</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============================
-       USER SETTINGS MODAL
-  ============================= -->
-  <div id="userSettingsModal" class="moderator-modal">
-    <div class="moderator-modal-content">
-      <span id="userSettingsModalClose" class="moderator-close">&times;</span>
-      <h2 id="moderatorModalTitle">User Settings</h2>
-
-      <div class="moderator-target-info">
-        <p>User: <span id="moderatorTargetName"></span></p>
-        <p>Guest ID: <span id="moderatorTargetId"></span></p>
-      </div>
-
-      <div class="moderator-actions">
-        <button id="modKickBtn" class="mod-action-btn">Kick (5 min)</button>
-        <button id="modBanBtn" class="mod-action-btn">Ban (Permanent)</button>
-        <button id="modMuteBtn" class="mod-action-btn">Mute (Global)</button>
-        <button id="modTransferBtn" class="mod-action-btn">Grant Leadership</button>
-      </div>
-    </div>
-  </div>
-
-  <audio id="joinSound" src="audio/ding.mp3"></audio>
-  <audio id="leaveSound" src="audio/ding.mp3"></audio>
-
-  <!-- 1) Load socket.io -->
-  <script src="/socket.io/socket.io.js"></script>
-
-  <!-- 2) users.js (formerly fingerprint.js) -->
-  <script src="js/users.js?v=1.0.5"></script>
-
-  <!-- 3) init-socket-room.js to define socket for the room page -->
-  <script src="js/init-socket-room.js?v=1.0.3"></script>
-
-  <!-- 4) Then room-client that references socket -->
-  <script src="js/room-client.js?v=1.1.1"></script>
+    <!-- External JavaScript files -->
+    <!-- Socket.io for real-time communication with the server -->
+    <script src="/socket.io/socket.io.js"></script>
+    
+    <!-- JavaScript file handling chat room functionality -->
+    <script src="js/room-client.js?v=1.0.3"></script>
 </body>
 </html>

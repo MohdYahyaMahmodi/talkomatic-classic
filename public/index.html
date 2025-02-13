@@ -240,21 +240,11 @@
         </div>
     </div>
 
-    <!-- Existing scripts with the nonce from your server-side (e.g. <%= nonce %>) -->
-  <script nonce="<%= nonce %>" src="js/jquery.min.js?v=1.0.1"></script>
-  <script nonce="<%= nonce %>" src="js/toastr.min.js?v=1.0.1"></script>
-  <script nonce="<%= nonce %>" src="js/lobby.js?v=1.0.2"></script>
-  
-  <!-- 1) Load socket.io -->
-  <script nonce="<%= nonce %>" src="/socket.io/socket.io.js?v=1.0.1"></script>
-
-  <!-- 2) Load users.js so we can call generateGuestId() -->
-  <script nonce="<%= nonce %>" src="js/users.js?v=1.0.5"></script>
-
-  <!-- 3) Load your new "init-socket.js" to define guestId + socket -->
-  <script nonce="<%= nonce %>" src="js/init-socket.js?v=1.0.3"></script>
-
-  <!-- 4) Finally load the lobby-client that references socket -->
-  <script nonce="<%= nonce %>" src="js/lobby-client.js?v=1.0.4"></script>
+    <!-- External scripts with both nonce and version -->
+    <script nonce="<%= nonce %>" src="js/jquery.min.js?v=1.0.1"></script>
+    <script nonce="<%= nonce %>" src="js/toastr.min.js?v=1.0.1"></script>
+    <script nonce="<%= nonce %>" src="js/lobby.js?v=1.0.2"></script>
+    <script nonce="<%= nonce %>" src="/socket.io/socket.io.js?v=1.0.1"></script>
+    <script nonce="<%= nonce %>" src="js/lobby-client.js?v=1.0.3"></script>
 </body>
 </html>

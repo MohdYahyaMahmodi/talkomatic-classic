@@ -2,9 +2,9 @@
 // lobby-client.js
 // ============================================================================
 
-// (We assume socket is already defined globally via <script> in index.html)
-// Because we do: const socket = io({ query: { guestId } });
+const socket = io(); // Initialize Socket.IO connection
 
+// DOM elements
 const logForm = document.getElementById('logform'); 
 const createRoomForm = document.getElementById('lobbyForm');
 const roomListContainer = document.querySelector('.roomList');
@@ -19,6 +19,7 @@ const noRoomsMessage = document.getElementById('noRoomsMessage');
 const accessCodeInput = document.getElementById('accessCodeInput');
 const roomTypeRadios = document.querySelectorAll('input[name="roomType"]');
 
+// Variables
 let currentUsername = '';
 let currentLocation = '';
 let isSignedIn = false;
@@ -27,7 +28,11 @@ const MAX_USERNAME_LENGTH = 12;
 const MAX_LOCATION_LENGTH = 12;
 const MAX_ROOM_NAME_LENGTH = 20;
 
-// Show/hide access code field based on room type selection
+function checkSignInStatus() {
+  socket.emit('check signin status');
+}
+
+// Show/hide access code field
 roomTypeRadios.forEach(radio => {
   radio.addEventListener('change', (e) => {
     if (e.target.value === 'semi-private') {
@@ -140,10 +145,11 @@ socket.on('signin status', (data) => {
   if (data.isSignedIn) {
     currentUsername = data.username;
     currentLocation = data.location;
+    currentUserId = data.userId;
     isSignedIn = true;
     usernameInput.value = currentUsername;
     locationInput.value = currentLocation;
-    console.log(`Auto sign in detected: ${currentUsername} (${currentLocation})`);
+
     signInButton.textContent = 'Change ';
     const img = document.createElement('img');
     img.src = 'images/icons/pencil.png';
@@ -274,8 +280,4 @@ window.addEventListener('load', () => {
 
 socket.on('initial rooms', (rooms) => {
   updateLobby(rooms);
-});
-
-socket.on('dev message', (msg) => {
-  console.log(msg);
 });
