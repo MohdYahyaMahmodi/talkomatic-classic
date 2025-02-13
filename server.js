@@ -30,6 +30,10 @@ const lastRoomCreationTimes = new Map();
 const ROOM_CREATION_COOLDOWN = 30000; // 30 seconds
 
 const app = express();
+// If you are behind a reverse proxy (like Nginx) on your Vultr VPS,
+// enable the trust proxy setting so that req.ip and related values are correct.
+app.set('trust proxy', 1);
+
 const server = http.createServer(app);
 
 let userStore = new Map(); // Map<guestId, { guestId, username, location, userId, createdAt }>
@@ -117,7 +121,7 @@ app.use(
 app.use(xss());
 app.use(hpp());
 
-// Rate limit
+// Rate limit for HTTP endpoints
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000,
@@ -146,6 +150,44 @@ const io = socketIo(server, {
   },
 });
 io.use(sharedsession(sessionMiddleware, { autoSave: true }));
+
+// ***** NEW: Rate-limit incoming Socket.IO connections by IP *****
+const connectionAttempts = new Map(); // Map<ip, Array of timestamps>
+const MAX_CONNECTIONS_PER_IP = 10;      // maximum allowed connection attempts per IP
+const CONNECTION_WINDOW = 10 * 1000;    // 10 seconds
+
+io.use((socket, next) => {
+  const ip =
+    socket.request.headers['x-forwarded-for'] ||
+    socket.request.connection.remoteAddress;
+  if (!ip) {
+    return next(new Error("Unable to determine IP address"));
+  }
+  const now = Date.now();
+  let attempts = connectionAttempts.get(ip) || [];
+  // Keep only timestamps within the connection window
+  attempts = attempts.filter(timestamp => now - timestamp < CONNECTION_WINDOW);
+  attempts.push(now);
+  connectionAttempts.set(ip, attempts);
+  if (attempts.length > MAX_CONNECTIONS_PER_IP) {
+    return next(new Error("Too many connections from this IP, please try again later."));
+  }
+  next();
+});
+
+// Optionally, clear old entries periodically to free memory.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, attempts] of connectionAttempts.entries()) {
+    const filtered = attempts.filter(timestamp => now - timestamp < CONNECTION_WINDOW);
+    if (filtered.length > 0) {
+      connectionAttempts.set(ip, filtered);
+    } else {
+      connectionAttempts.delete(ip);
+    }
+  }
+}, CONNECTION_WINDOW);
+// ***** End of Rate-limiting setup *****
 
 // Serve static
 app.use(
