@@ -2,37 +2,30 @@
 // lobby-client.js
 // ============================================================================
 
-const socket = io(); // Initialize Socket.IO connection
-
-// DOM elements
-const logForm = document.getElementById('logform'); 
-const createRoomForm = document.getElementById('lobbyForm');
-const roomListContainer = document.querySelector('.roomList');
-const dynamicRoomList = document.getElementById('dynamicRoomList');
-const usernameInput = logForm.querySelector('input[placeholder="Your Name"]');
-const locationInput = logForm.querySelector('input[placeholder="Location (optional)"]');
-const roomNameInput = createRoomForm.querySelector('input[placeholder="Room Name"]');
-const goChatButton = createRoomForm.querySelector('.go-chat-button');
-const signInButton = logForm.querySelector('button[type="submit"]');
-const signInMessage = document.getElementById('signInMessage');
-const noRoomsMessage = document.getElementById('noRoomsMessage');
-const accessCodeInput = document.getElementById('accessCodeInput');
-const roomTypeRadios = document.querySelectorAll('input[name="roomType"]');
-
-// Modal functionality
-const customModal = document.getElementById('customModal');
-const modalTitle = document.getElementById('modalTitle');
-const modalMessage = document.getElementById('modalMessage');
-const modalInput = document.getElementById('modalInput');
-const modalInputContainer = document.getElementById('modalInputContainer');
-const modalInputError = document.getElementById('modalInputError');
-const modalCancelBtn = document.getElementById('modalCancelBtn');
-const modalConfirmBtn = document.getElementById('modalConfirmBtn');
-const closeModalBtn = document.querySelector('.close-modal-btn');
-
-let currentModalCallback = null;
-
-function showModal(title, message, options = {}) {
+// Modal functionality wrapped in an IIFE to avoid conflicts
+(function() {
+  // Only initialize once to avoid duplicate event listeners
+  if (window.modalFunctionsInitialized) {
+    console.log("Custom modal already initialized");
+    return;
+  }
+  window.modalFunctionsInitialized = true;
+  
+  // Get modal elements
+  const customModal = document.getElementById('customModal');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalMessage = document.getElementById('modalMessage');
+  const modalInput = document.getElementById('modalInput');
+  const modalInputContainer = document.getElementById('modalInputContainer');
+  const modalInputError = document.getElementById('modalInputError');
+  const modalCancelBtn = document.getElementById('modalCancelBtn');
+  const modalConfirmBtn = document.getElementById('modalConfirmBtn');
+  const closeModalBtn = document.querySelector('.close-modal-btn');
+  
+  let currentModalCallback = null;
+  
+  // Define the modal functions - make private to this scope
+  function showModal(title, message, options = {}) {
     modalTitle.textContent = title;
     modalMessage.textContent = message;
     
@@ -44,10 +37,10 @@ function showModal(title, message, options = {}) {
     
     // Configure input if needed
     if (options.showInput) {
-        modalInputContainer.style.display = 'block';
-        modalInput.placeholder = options.inputPlaceholder || '';
-        modalInput.setAttribute('maxLength', options.maxLength || '6');
-        modalInput.focus();
+      modalInputContainer.style.display = 'block';
+      modalInput.placeholder = options.inputPlaceholder || '';
+      modalInput.setAttribute('maxLength', options.maxLength || '6');
+      modalInput.focus();
     }
     
     // Configure buttons
@@ -65,109 +58,123 @@ function showModal(title, message, options = {}) {
     
     // Prevent background scrolling
     document.body.style.overflow = 'hidden';
-}
-
-function closeModal() {
+  }
+  
+  function hideCustomModal() {
     customModal.classList.remove('show');
     document.body.style.overflow = '';
     currentModalCallback = null;
-}
-
-function showErrorModal(message) {
+  }
+  
+  // Expose public methods to window
+  window.showErrorModal = function(message) {
     showModal('Error', message, {
-        showCancel: false,
-        confirmText: 'OK',
-        callback: (confirmed) => {
-            // Just close the modal
-        }
+      showCancel: false,
+      confirmText: 'OK'
     });
-}
-
-function showInfoModal(message) {
+  };
+  
+  window.showInfoModal = function(message) {
     showModal('Information', message, {
-        showCancel: false,
-        confirmText: 'OK',
-        callback: (confirmed) => {
-            // Just close the modal
-        }
+      showCancel: false,
+      confirmText: 'OK'
     });
-}
-
-function showConfirmModal(message, callback) {
+  };
+  
+  window.showConfirmModal = function(message, callback) {
     showModal('Confirmation', message, {
-        confirmText: 'Yes',
-        cancelText: 'No',
-        callback: callback
+      confirmText: 'Yes',
+      cancelText: 'No',
+      callback: callback
     });
-}
-
-function showInputModal(title, message, options, callback) {
+  };
+  
+  window.showInputModal = function(title, message, options, callback) {
     showModal(title, message, {
-        showInput: true,
-        inputPlaceholder: options.placeholder || '',
-        maxLength: options.maxLength || '6',
-        confirmText: options.confirmText || 'Submit',
-        callback: (confirmed, inputValue) => {
-            if (confirmed && options.validate) {
-                const validationResult = options.validate(inputValue);
-                if (validationResult !== true) {
-                    modalInputError.textContent = validationResult;
-                    modalInputError.style.display = 'block';
-                    return false; // Prevent modal from closing
-                }
-            }
-            callback(confirmed, inputValue);
-            return true;
+      showInput: true,
+      inputPlaceholder: options.placeholder || '',
+      maxLength: options.maxLength || '6',
+      confirmText: options.confirmText || 'Submit',
+      callback: (confirmed, inputValue) => {
+        if (confirmed && options.validate) {
+          const validationResult = options.validate(inputValue);
+          if (validationResult !== true) {
+            modalInputError.textContent = validationResult;
+            modalInputError.style.display = 'block';
+            return false; // Prevent modal from closing
+          }
         }
+        callback(confirmed, inputValue);
+        return true;
+      }
     });
-}
-
-// Event listeners for modal
-modalConfirmBtn.addEventListener('click', () => {
+  };
+  
+  // Event listeners for modal
+  modalConfirmBtn.addEventListener('click', () => {
     if (currentModalCallback) {
-        const shouldClose = currentModalCallback(true, modalInput.value);
-        if (shouldClose !== false) {
-            closeModal();
-        }
+      const shouldClose = currentModalCallback(true, modalInput.value);
+      if (shouldClose !== false) {
+        hideCustomModal();
+      }
     } else {
-        closeModal();
+      hideCustomModal();
     }
-});
-
-modalCancelBtn.addEventListener('click', () => {
+  });
+  
+  modalCancelBtn.addEventListener('click', () => {
     if (currentModalCallback) {
-        currentModalCallback(false);
+      currentModalCallback(false);
     }
-    closeModal();
-});
-
-closeModalBtn.addEventListener('click', closeModal);
-
-// Close modal when clicking outside the content
-customModal.addEventListener('click', (e) => {
+    hideCustomModal();
+  });
+  
+  closeModalBtn.addEventListener('click', hideCustomModal);
+  
+  // Close modal when clicking outside the content
+  customModal.addEventListener('click', (e) => {
     if (e.target === customModal) {
-        closeModal();
+      hideCustomModal();
     }
-});
-
-// Validate input for numbers only
-modalInput.addEventListener('input', (e) => {
+  });
+  
+  // Validate input for numbers only
+  modalInput.addEventListener('input', (e) => {
     e.target.value = e.target.value.replace(/[^0-9]/g, '');
-});
-
-// Close modal with Escape key
-document.addEventListener('keydown', (e) => {
+  });
+  
+  // Close modal with Escape key
+  document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && customModal.classList.contains('show')) {
-        closeModal();
+      hideCustomModal();
     }
-});
-
-// Enter key in input field triggers confirm button
-modalInput.addEventListener('keydown', (e) => {
+  });
+  
+  // Enter key in input field triggers confirm button
+  modalInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
-        modalConfirmBtn.click();
+      modalConfirmBtn.click();
     }
-});
+  });
+})();
+
+// Socket.io initialization
+const socket = io();
+
+// DOM elements
+const logForm = document.getElementById('logform'); 
+const createRoomForm = document.getElementById('lobbyForm');
+const roomListContainer = document.querySelector('.roomList');
+const dynamicRoomList = document.getElementById('dynamicRoomList');
+const usernameInput = logForm.querySelector('input[placeholder="Your Name"]');
+const locationInput = logForm.querySelector('input[placeholder="Location (optional)"]');
+const roomNameInput = createRoomForm.querySelector('input[placeholder="Room Name"]');
+const goChatButton = createRoomForm.querySelector('.go-chat-button');
+const signInButton = logForm.querySelector('button[type="submit"]');
+const signInMessage = document.getElementById('signInMessage');
+const noRoomsMessage = document.getElementById('noRoomsMessage');
+const accessCodeInput = document.getElementById('accessCodeInput');
+const roomTypeRadios = document.querySelectorAll('input[name="roomType"]');
 
 // Variables
 let currentUsername = '';
@@ -228,7 +235,7 @@ logForm.addEventListener('submit', (e) => {
     });
     showRoomList();
   } else {
-    showErrorModal('Please enter a username.');
+    window.showErrorModal('Please enter a username.');
   }
 });
 
@@ -241,7 +248,7 @@ goChatButton.addEventListener('click', () => {
   if (roomName && roomType && roomLayout) {
     if (roomType === 'semi-private') {
       if (!accessCode || accessCode.length !== 6 || !/^\d+$/.test(accessCode)) {
-        showErrorModal('Please enter a valid 6-digit access code for the semi-private room.');
+        window.showErrorModal('Please enter a valid 6-digit access code for the semi-private room.');
         return;
       }
     }
@@ -252,7 +259,7 @@ goChatButton.addEventListener('click', () => {
       accessCode
     });
   } else {
-    showErrorModal('Please fill in all room details.');
+    window.showErrorModal('Please fill in all room details.');
   }
 });
 
@@ -271,7 +278,7 @@ dynamicRoomList.addEventListener('click', (e) => {
 });
 
 function promptAccessCode(roomId) {
-  showInputModal('Access Code Required', 'Please enter the 6-digit access code for this room:', {
+  window.showInputModal('Access Code Required', 'Please enter the 6-digit access code for this room:', {
     placeholder: '6-digit code',
     maxLength: '6',
     validate: (value) => {
@@ -334,7 +341,7 @@ socket.on('room created', (roomId) => {
 });
 
 socket.on('error', (error) => {
-  showErrorModal(`An error occurred: ${error}`);
+  window.showErrorModal(`An error occurred: ${error}`);
 });
 
 function createRoomElement(room) {

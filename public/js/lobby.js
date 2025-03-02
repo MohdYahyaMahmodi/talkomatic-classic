@@ -19,9 +19,9 @@ const toggleButton = document.getElementById('toggleButton');
 const hideMenuButton = document.getElementById('hideMenuButton');
 
 // Modal functionality
-const modal = document.getElementById('roomInfoModal');
+const roomInfoModal = document.getElementById('roomInfoModal');
 const learnMoreBtn = document.querySelector('.learn-more');
-const closeModal = document.querySelector('.close-modal');
+const closeRoomInfoBtn = document.querySelector('.close-modal');
 
 /**
  * Toggles the left panel open/closed state
@@ -84,39 +84,39 @@ function init() {
 }
 
 /**
- * Opens the modal with a fade-in animation
+ * Opens the room info modal with a fade-in animation
  */
-function openModal() {
-    modal.style.display = 'flex';
+function openRoomInfoModal() {
+    roomInfoModal.style.display = 'flex';
     // Trigger reflow
-    modal.offsetHeight;
-    modal.classList.add('show');
+    roomInfoModal.offsetHeight;
+    roomInfoModal.classList.add('show');
 }
 
 /**
- * Closes the modal with a fade-out animation
+ * Closes the room info modal with a fade-out animation
  */
-function closeModalHandler() {
-    modal.classList.remove('show');
+function closeRoomInfoModal() {
+    roomInfoModal.classList.remove('show');
     setTimeout(() => {
-        modal.style.display = 'none';
+        roomInfoModal.style.display = 'none';
     }, 300);
 }
 
-// Event listeners for modal
+// Event listeners for room info modal
 learnMoreBtn.addEventListener('click', (e) => {
     e.preventDefault();
-    openModal();
+    openRoomInfoModal();
 });
-closeModal.addEventListener('click', closeModalHandler);
-modal.addEventListener('click', (e) => {
-    if (e.target === modal) {
-        closeModalHandler();
+closeRoomInfoBtn.addEventListener('click', closeRoomInfoModal);
+roomInfoModal.addEventListener('click', (e) => {
+    if (e.target === roomInfoModal) {
+        closeRoomInfoModal();
     }
 });
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && modal.classList.contains('show')) {
-        closeModalHandler();
+    if (e.key === 'Escape' && roomInfoModal.classList.contains('show')) {
+        closeRoomInfoModal();
     }
 });
 
