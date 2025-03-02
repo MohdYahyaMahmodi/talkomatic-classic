@@ -19,6 +19,156 @@ const noRoomsMessage = document.getElementById('noRoomsMessage');
 const accessCodeInput = document.getElementById('accessCodeInput');
 const roomTypeRadios = document.querySelectorAll('input[name="roomType"]');
 
+// Modal functionality
+const customModal = document.getElementById('customModal');
+const modalTitle = document.getElementById('modalTitle');
+const modalMessage = document.getElementById('modalMessage');
+const modalInput = document.getElementById('modalInput');
+const modalInputContainer = document.getElementById('modalInputContainer');
+const modalInputError = document.getElementById('modalInputError');
+const modalCancelBtn = document.getElementById('modalCancelBtn');
+const modalConfirmBtn = document.getElementById('modalConfirmBtn');
+const closeModalBtn = document.querySelector('.close-modal-btn');
+
+let currentModalCallback = null;
+
+function showModal(title, message, options = {}) {
+    modalTitle.textContent = title;
+    modalMessage.textContent = message;
+    
+    // Reset modal state
+    modalInputContainer.style.display = 'none';
+    modalInput.value = '';
+    modalInputError.style.display = 'none';
+    modalInputError.textContent = '';
+    
+    // Configure input if needed
+    if (options.showInput) {
+        modalInputContainer.style.display = 'block';
+        modalInput.placeholder = options.inputPlaceholder || '';
+        modalInput.setAttribute('maxLength', options.maxLength || '6');
+        modalInput.focus();
+    }
+    
+    // Configure buttons
+    modalCancelBtn.textContent = options.cancelText || 'Cancel';
+    modalConfirmBtn.textContent = options.confirmText || 'Confirm';
+    
+    // Show/hide cancel button
+    modalCancelBtn.style.display = options.showCancel !== false ? 'block' : 'none';
+    
+    // Store callback
+    currentModalCallback = options.callback || null;
+    
+    // Show modal
+    customModal.classList.add('show');
+    
+    // Prevent background scrolling
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+    customModal.classList.remove('show');
+    document.body.style.overflow = '';
+    currentModalCallback = null;
+}
+
+function showErrorModal(message) {
+    showModal('Error', message, {
+        showCancel: false,
+        confirmText: 'OK',
+        callback: (confirmed) => {
+            // Just close the modal
+        }
+    });
+}
+
+function showInfoModal(message) {
+    showModal('Information', message, {
+        showCancel: false,
+        confirmText: 'OK',
+        callback: (confirmed) => {
+            // Just close the modal
+        }
+    });
+}
+
+function showConfirmModal(message, callback) {
+    showModal('Confirmation', message, {
+        confirmText: 'Yes',
+        cancelText: 'No',
+        callback: callback
+    });
+}
+
+function showInputModal(title, message, options, callback) {
+    showModal(title, message, {
+        showInput: true,
+        inputPlaceholder: options.placeholder || '',
+        maxLength: options.maxLength || '6',
+        confirmText: options.confirmText || 'Submit',
+        callback: (confirmed, inputValue) => {
+            if (confirmed && options.validate) {
+                const validationResult = options.validate(inputValue);
+                if (validationResult !== true) {
+                    modalInputError.textContent = validationResult;
+                    modalInputError.style.display = 'block';
+                    return false; // Prevent modal from closing
+                }
+            }
+            callback(confirmed, inputValue);
+            return true;
+        }
+    });
+}
+
+// Event listeners for modal
+modalConfirmBtn.addEventListener('click', () => {
+    if (currentModalCallback) {
+        const shouldClose = currentModalCallback(true, modalInput.value);
+        if (shouldClose !== false) {
+            closeModal();
+        }
+    } else {
+        closeModal();
+    }
+});
+
+modalCancelBtn.addEventListener('click', () => {
+    if (currentModalCallback) {
+        currentModalCallback(false);
+    }
+    closeModal();
+});
+
+closeModalBtn.addEventListener('click', closeModal);
+
+// Close modal when clicking outside the content
+customModal.addEventListener('click', (e) => {
+    if (e.target === customModal) {
+        closeModal();
+    }
+});
+
+// Validate input for numbers only
+modalInput.addEventListener('input', (e) => {
+    e.target.value = e.target.value.replace(/[^0-9]/g, '');
+});
+
+// Close modal with Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && customModal.classList.contains('show')) {
+        closeModal();
+    }
+});
+
+// Enter key in input field triggers confirm button
+modalInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        modalConfirmBtn.click();
+    }
+});
+
 // Variables
 let currentUsername = '';
 let currentLocation = '';
@@ -78,7 +228,7 @@ logForm.addEventListener('submit', (e) => {
     });
     showRoomList();
   } else {
-    alert('Please enter a username.');
+    showErrorModal('Please enter a username.');
   }
 });
 
@@ -91,7 +241,7 @@ goChatButton.addEventListener('click', () => {
   if (roomName && roomType && roomLayout) {
     if (roomType === 'semi-private') {
       if (!accessCode || accessCode.length !== 6 || !/^\d+$/.test(accessCode)) {
-        alert('Please enter a valid 6-digit access code for the semi-private room.');
+        showErrorModal('Please enter a valid 6-digit access code for the semi-private room.');
         return;
       }
     }
@@ -102,7 +252,7 @@ goChatButton.addEventListener('click', () => {
       accessCode
     });
   } else {
-    alert('Please fill in all room details.');
+    showErrorModal('Please fill in all room details.');
   }
 });
 
@@ -121,10 +271,21 @@ dynamicRoomList.addEventListener('click', (e) => {
 });
 
 function promptAccessCode(roomId) {
-  const accessCode = prompt('Please enter the 6-digit access code for this room:');
-  if (accessCode) {
-    joinRoom(roomId, accessCode);
-  }
+  showInputModal('Access Code Required', 'Please enter the 6-digit access code for this room:', {
+    placeholder: '6-digit code',
+    maxLength: '6',
+    validate: (value) => {
+      if (!value) return 'Access code is required';
+      if (value.length !== 6 || !/^\d+$/.test(value)) {
+        return 'Invalid access code. Please enter a 6-digit number.';
+      }
+      return true;
+    }
+  }, (confirmed, accessCode) => {
+    if (confirmed && accessCode) {
+      joinRoom(roomId, accessCode);
+    }
+  });
 }
 
 function joinRoom(roomId, accessCode = null) {
@@ -173,7 +334,7 @@ socket.on('room created', (roomId) => {
 });
 
 socket.on('error', (error) => {
-  alert(`An error occurred: ${error}`);
+  showErrorModal(`An error occurred: ${error}`);
 });
 
 function createRoomElement(room) {

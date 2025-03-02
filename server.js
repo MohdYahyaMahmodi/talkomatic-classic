@@ -649,6 +649,13 @@ io.on('connection', (socket) => {
           socket.emit('access code required');
           return;
         }
+        // Server-side validation of access code
+        if (typeof data.accessCode !== 'string' || 
+            data.accessCode.length !== 6 || 
+            !/^\d+$/.test(data.accessCode)) {
+          socket.emit('error', 'Invalid access code format');
+          return;
+        }
         if (room.accessCode !== data.accessCode) {
           socket.emit('error', 'Incorrect access code');
           return;
@@ -983,8 +990,20 @@ app.post('/api/v1/rooms/:id/join', limiter, apiAuth, (req, res) => {
       return res.status(400).json({ error: 'Room is full' });
     }
     if (room.type === 'semi-private') {
-      if (room.accessCode !== req.body.accessCode) {
-        return res.status(403).json({ error: 'Invalid access code' });
+      if (!data.accessCode) {
+        socket.emit('access code required');
+        return;
+      }
+      // Server-side validation of access code
+      if (typeof data.accessCode !== 'string' || 
+          data.accessCode.length !== 6 || 
+          !/^\d+$/.test(data.accessCode)) {
+        socket.emit('error', 'Invalid access code format');
+        return;
+      }
+      if (room.accessCode !== data.accessCode) {
+        socket.emit('error', 'Incorrect access code');
+        return;
       }
     }
     // If everything is okay, respond success
