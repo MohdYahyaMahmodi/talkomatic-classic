@@ -571,7 +571,7 @@ body, html {
   opacity: 1;
 }
 
-.modal-content {
+.modal-content-info {
   background-color: #202020;
   margin: auto;
   padding: 2rem;
@@ -711,7 +711,7 @@ body, html {
 
 /* Mobile Responsiveness */
 @media (max-width: 767px) {
-  .modal-content {
+  .modal-content-info {
       width: 95%;
       padding: 1.5rem;
       margin: 1rem;
