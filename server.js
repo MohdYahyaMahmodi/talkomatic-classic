@@ -657,12 +657,12 @@ io.on('connection', (socket) => {
         socket.emit('room not found');
         return;
       }
-
+  
       // For semi-private
       if (room.type === 'semi-private') {
         // Check if this room has a validated access code in the session
         const validatedAccessCode = socket.handshake.session.validatedRooms && 
-                                   socket.handshake.session.validatedRooms[data.roomId];
+                                    socket.handshake.session.validatedRooms[data.roomId];
         
         if (validatedAccessCode) {
           // User already validated for this room, use the stored code
@@ -691,9 +691,11 @@ io.on('connection', (socket) => {
           socket.handshake.session.validatedRooms = {};
         }
         socket.handshake.session.validatedRooms[data.roomId] = data.accessCode;
+        
+        // Make sure to save the session synchronously before proceeding
         socket.handshake.session.save();
       }
-
+  
       let { username, location, userId } = socket.handshake.session;
       if (!username || !location || !userId) {
         // fallback if session is missing
@@ -704,7 +706,7 @@ io.on('connection', (socket) => {
         socket.handshake.session.location = location;
         socket.handshake.session.userId = userId;
       }
-
+  
       socket.handshake.session.save((err) => {
         if (!err) {
           joinRoom(socket, data.roomId, userId);

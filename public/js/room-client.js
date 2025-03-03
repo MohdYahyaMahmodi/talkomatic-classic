@@ -233,12 +233,15 @@ function updateCurrentMessages(messages) {
 async function initRoom() {
   const urlParams = new URLSearchParams(window.location.search);
   const roomIdFromUrl = urlParams.get('roomId');
+  
+  // Check if there's an access code in the URL (from the lobby redirect)
+  const accessCodeFromUrl = urlParams.get('accessCode');
 
   if (roomIdFromUrl) {
     currentRoomId = roomIdFromUrl;
     
-    // We don't need to provide access code here - server will check session
-    joinRoom(roomIdFromUrl);
+    // If we have an access code from the URL, use it
+    joinRoom(roomIdFromUrl, accessCodeFromUrl);
   } else {
     console.error('No room ID provided in URL');
     showInfoModal('No room ID provided. Redirecting to lobby.', () => {
@@ -699,6 +702,10 @@ window.addEventListener('resize', handleViewportChange);
 function generateInviteLink() {
   const currentUrl = new URL(window.location.href);
   currentUrl.searchParams.set('roomId', currentRoomId);
+  
+  // Important: Remove the access code from invite links!
+  currentUrl.searchParams.delete('accessCode');
+  
   return currentUrl.href;
 }
 

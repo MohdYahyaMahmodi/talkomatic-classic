@@ -180,6 +180,7 @@ const roomTypeRadios = document.querySelectorAll('input[name="roomType"]');
 let currentUsername = '';
 let currentLocation = '';
 let isSignedIn = false;
+let lastUsedAccessCode = null;  // Store the last access code used from the lobby
 
 const MAX_USERNAME_LENGTH = 12;
 const MAX_LOCATION_LENGTH = 12;
@@ -251,7 +252,11 @@ goChatButton.addEventListener('click', () => {
         window.showErrorModal('Please enter a valid 6-digit access code for the semi-private room.');
         return;
       }
+      
+      // Store the access code for the redirect
+      lastUsedAccessCode = accessCode;
     }
+    
     socket.emit('create room', {
       name: roomName,
       type: roomType,
@@ -290,6 +295,8 @@ function promptAccessCode(roomId) {
     }
   }, (confirmed, accessCode) => {
     if (confirmed && accessCode) {
+      // Store the access code for the redirect
+      lastUsedAccessCode = accessCode;
       joinRoom(roomId, accessCode);
     }
   });
@@ -306,7 +313,14 @@ socket.on('access code required', () => {
 });
 
 socket.on('room joined', (data) => {
-  window.location.href = `/room.html?roomId=${data.roomId}`;
+  // If we're redirecting from the lobby AND we have a validated access code, 
+  // include it in the URL
+  if (lastUsedAccessCode) {
+    window.location.href = `/room.html?roomId=${data.roomId}&accessCode=${lastUsedAccessCode}`;
+    lastUsedAccessCode = null; // Clear it after use
+  } else {
+    window.location.href = `/room.html?roomId=${data.roomId}`;
+  }
 });
 
 socket.on('signin status', (data) => {
@@ -337,7 +351,13 @@ socket.on('lobby update', (rooms) => {
 });
 
 socket.on('room created', (roomId) => {
-  window.location.href = `/room.html?roomId=${roomId}`;
+  // For created rooms, only include the access code if we have one
+  if (lastUsedAccessCode) {
+    window.location.href = `/room.html?roomId=${roomId}&accessCode=${lastUsedAccessCode}`;
+    lastUsedAccessCode = null; // Clear it after use
+  } else {
+    window.location.href = `/room.html?roomId=${roomId}`;
+  }
 });
 
 socket.on('error', (error) => {
