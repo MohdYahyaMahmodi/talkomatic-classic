@@ -479,7 +479,7 @@
   cursor: pointer;
   color: #FF9800;
   background-color: rgba(0, 0, 0, 0.3);
-  border-radius: 50%;
+  border-radius: 4px;
   border: 1px solid #444;
   transition: all 0.2s;
   line-height: 0;
