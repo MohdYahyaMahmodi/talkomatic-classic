@@ -335,6 +335,12 @@ async function leaveRoom(socket, userId) {
       }
     }
 
+    // Clean up validated access codes when leaving a room
+    if (socket.handshake.session.validatedRooms && 
+        socket.handshake.session.validatedRooms[socket.roomId]) {
+      delete socket.handshake.session.validatedRooms[socket.roomId];
+    }
+
     socket.roomId = null;
     socket.handshake.session.currentRoom = null;
     await new Promise((resolve) => {
@@ -622,6 +628,15 @@ io.on('connection', (socket) => {
       };
       rooms.set(roomId, newRoom);
 
+      // If this is a semi-private room, store the access code in the session
+      if (roomType === 'semi-private' && data.accessCode) {
+        if (!socket.handshake.session.validatedRooms) {
+          socket.handshake.session.validatedRooms = {};
+        }
+        socket.handshake.session.validatedRooms[roomId] = data.accessCode;
+        socket.handshake.session.save();
+      }
+
       socket.emit('room created', roomId);
       updateLobby();
       saveRooms();
@@ -645,10 +660,19 @@ io.on('connection', (socket) => {
 
       // For semi-private
       if (room.type === 'semi-private') {
-        if (!data.accessCode) {
+        // Check if this room has a validated access code in the session
+        const validatedAccessCode = socket.handshake.session.validatedRooms && 
+                                   socket.handshake.session.validatedRooms[data.roomId];
+        
+        if (validatedAccessCode) {
+          // User already validated for this room, use the stored code
+          data.accessCode = validatedAccessCode;
+        } else if (!data.accessCode) {
+          // No access code provided and no validation in session
           socket.emit('access code required');
           return;
         }
+        
         // Server-side validation of access code
         if (typeof data.accessCode !== 'string' || 
             data.accessCode.length !== 6 || 
@@ -656,10 +680,18 @@ io.on('connection', (socket) => {
           socket.emit('error', 'Invalid access code format');
           return;
         }
+        
         if (room.accessCode !== data.accessCode) {
           socket.emit('error', 'Incorrect access code');
           return;
         }
+        
+        // Store the valid access code in session for future use
+        if (!socket.handshake.session.validatedRooms) {
+          socket.handshake.session.validatedRooms = {};
+        }
+        socket.handshake.session.validatedRooms[data.roomId] = data.accessCode;
+        socket.handshake.session.save();
       }
 
       let { username, location, userId } = socket.handshake.session;
@@ -968,6 +1000,16 @@ app.post('/api/v1/rooms', limiter, apiAuth, (req, res) => {
       lastActiveTime: Date.now(),
     };
     rooms.set(roomId, newRoom);
+    
+    // If there's a session, store the validated access code
+    if (req.session && roomType === 'semi-private' && data.accessCode) {
+      if (!req.session.validatedRooms) {
+        req.session.validatedRooms = {};
+      }
+      req.session.validatedRooms[roomId] = data.accessCode;
+      req.session.save();
+    }
+    
     updateLobby();
     saveRooms();
 
@@ -989,23 +1031,39 @@ app.post('/api/v1/rooms/:id/join', limiter, apiAuth, (req, res) => {
     if (room.users.length >= MAX_ROOM_CAPACITY) {
       return res.status(400).json({ error: 'Room is full' });
     }
+    
     if (room.type === 'semi-private') {
-      if (!data.accessCode) {
-        socket.emit('access code required');
-        return;
-      }
-      // Server-side validation of access code
-      if (typeof data.accessCode !== 'string' || 
-          data.accessCode.length !== 6 || 
-          !/^\d+$/.test(data.accessCode)) {
-        socket.emit('error', 'Invalid access code format');
-        return;
-      }
-      if (room.accessCode !== data.accessCode) {
-        socket.emit('error', 'Incorrect access code');
-        return;
+      // Check if the access code is already validated in the session
+      const validatedAccessCode = req.session && req.session.validatedRooms && 
+                                 req.session.validatedRooms[roomId];
+      
+      if (validatedAccessCode) {
+        // Already validated
+      } else if (!req.body.accessCode) {
+        return res.status(403).json({ error: 'Access code required' });
+      } else {
+        // Server-side validation of access code
+        if (typeof req.body.accessCode !== 'string' || 
+            req.body.accessCode.length !== 6 || 
+            !/^\d+$/.test(req.body.accessCode)) {
+          return res.status(400).json({ error: 'Invalid access code format' });
+        }
+        
+        if (room.accessCode !== req.body.accessCode) {
+          return res.status(403).json({ error: 'Incorrect access code' });
+        }
+        
+        // Store validated code in session
+        if (req.session) {
+          if (!req.session.validatedRooms) {
+            req.session.validatedRooms = {};
+          }
+          req.session.validatedRooms[roomId] = req.body.accessCode;
+          req.session.save();
+        }
       }
     }
+    
     // If everything is okay, respond success
     return res.json({
       success: true,

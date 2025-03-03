@@ -860,7 +860,6 @@ body, html {
     padding-bottom: 15px;
   }
 }
-
 /* Custom Modal Styles */
 .custom-modal {
   display: none;
@@ -874,61 +873,86 @@ body, html {
   justify-content: center;
   align-items: center;
   font-family: talkoSS, Arial, sans-serif;
+  padding: 20px;
+  box-sizing: border-box;
 }
 
 .custom-modal.show {
   display: flex;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .modal-content {
   background-color: #202020;
   color: white;
-  border-radius: 5px;
-  padding: 20px;
+  border-radius: 8px;
+  padding: 24px;
   width: 90%;
   max-width: 500px;
-  box-shadow: 0 0 15px rgba(255, 152, 0, 0.4);
+  box-shadow: 0 0 20px rgba(255, 152, 0, 0.5);
   border: 1px solid #FF9800;
   position: relative;
+  margin: 0 auto;
 }
 
 .close-modal-btn {
   position: absolute;
-  top: 10px;
-  right: 15px;
-  font-size: 24px;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
   cursor: pointer;
   color: #FF9800;
-  transition: color 0.3s;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 50%;
+  border: 1px solid #444;
+  transition: all 0.2s;
+  line-height: 0;
+  padding-bottom: 4px;
+  z-index: 5;
 }
 
 .close-modal-btn:hover {
   color: #ffff00;
+  background-color: rgba(0, 0, 0, 0.6);
+  transform: scale(1.1);
 }
 
 #modalTitle {
   margin-top: 0;
+  margin-right: 30px; /* Space for the X button */
   background: linear-gradient(to bottom, #616161, #303030);
   color: #FF9800;
-  padding: 8px 10px;
+  padding: 10px 15px;
   border-radius: 4px 4px 0 0;
   font-weight: bold;
-  margin-bottom: 15px;
+  margin-bottom: 20px;
+  letter-spacing: 0.5px;
 }
 
 #modalMessage {
-  margin-bottom: 20px;
-  line-height: 1.5;
+  margin-bottom: 22px;
+  line-height: 1.6;
   color: #f0f0f0;
+  font-size: 16px;
 }
 
 #modalInputContainer {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 #modalInput {
   width: 100%;
-  padding: 10px;
+  padding: 12px;
   margin-bottom: 10px;
   background-color: black;
   border: 1px solid #444;
@@ -937,36 +961,40 @@ body, html {
   font-family: talkoText, Arial, sans-serif;
   font-size: 18px;
   box-sizing: border-box;
+  transition: border-color 0.3s;
 }
 
 #modalInput:focus {
   border-color: cyan;
   outline: none;
+  box-shadow: 0 0 0 1px rgba(0, 255, 255, 0.3);
 }
 
 .input-error {
   color: #ff5252;
   font-size: 14px;
-  margin: 5px 0 0;
+  margin: 8px 0 0;
   display: none;
+  padding-left: 2px;
 }
 
 .modal-buttons {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 12px;
 }
 
 .modal-btn {
-  padding: 8px 15px;
+  padding: 10px 18px;
   border-radius: 5px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 15px;
   background-color: black;
   color: white;
   border: 1px solid #444;
   font-family: talkoSS, Arial, sans-serif;
   transition: all 0.2s;
+  min-width: 80px;
 }
 
 .modal-confirm-btn {
@@ -978,34 +1006,69 @@ body, html {
 .modal-confirm-btn:hover {
   background-color: #FF9800;
   color: black;
+  transform: translateY(-2px);
 }
 
 .modal-btn:hover {
   background-color: #2a2a2a;
   border-color: #666;
+  transform: translateY(-2px);
+}
+
+.modal-btn:active, .modal-confirm-btn:active {
+  transform: translateY(0);
 }
 
 /* Mobile responsiveness */
-@media screen and (max-width: 576px) {
-  .modal-content {
-    width: 95%;
+@media screen and (max-width: 768px) {
+  .custom-modal {
     padding: 15px;
+  }
+  
+  .modal-content {
+    width: 100%;
+    max-width: 450px;
+    padding: 20px;
+  }
+}
+
+@media screen and (max-width: 576px) {
+  .custom-modal {
+    padding: 12px;
+  }
+  
+  .modal-content {
+    padding: 18px;
+    width: 100%;
+    margin: 0 12px;
+    max-width: none;
   }
   
   #modalTitle {
     font-size: 16px;
+    padding: 8px 12px;
+    margin-bottom: 16px;
   }
   
   #modalMessage {
-    font-size: 14px;
+    font-size: 15px;
+    margin-bottom: 18px;
   }
   
   .modal-btn {
-    padding: 6px 12px;
-    font-size: 13px;
+    padding: 8px 14px;
+    font-size: 14px;
+    min-width: 70px;
   }
   
   #modalInput {
     font-size: 16px;
+    padding: 10px;
+  }
+  
+  .close-modal-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 24px;
   }
 }

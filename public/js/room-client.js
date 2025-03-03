@@ -236,6 +236,8 @@ async function initRoom() {
 
   if (roomIdFromUrl) {
     currentRoomId = roomIdFromUrl;
+    
+    // We don't need to provide access code here - server will check session
     joinRoom(roomIdFromUrl);
   } else {
     console.error('No room ID provided in URL');
