@@ -58,16 +58,27 @@ const allowedOrigins = [
 ];
 
 // CORS config
+// CORS config with support for all GitHub Pages domains
 const corsOptions = {
   origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, etc)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) === -1) {
-      return callback(
-        new Error('The CORS policy does not allow access from this origin.'),
-        false
-      );
+    
+    // Allow explicitly listed domains
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
     }
-    return callback(null, true);
+    
+    // Allow all GitHub Pages domains
+    if (origin.endsWith('github.io')) {
+      return callback(null, true);
+    }
+    
+    // Reject all other origins
+    return callback(
+      new Error('The CORS policy does not allow access from this origin.'),
+      false
+    );
   },
   methods: ['GET', 'POST'],
   credentials: true,
@@ -154,7 +165,26 @@ app.use(sessionMiddleware);
 // Socket.io setup with shared session
 const io = socketIo(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: function(origin, callback) {
+      // Allow requests with no origin
+      if (!origin) return callback(null, true);
+      
+      // Allow explicitly listed domains
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        return callback(null, true);
+      }
+      
+      // Allow all GitHub Pages domains
+      if (origin.endsWith('github.io')) {
+        return callback(null, true);
+      }
+      
+      // Reject all other origins
+      return callback(
+        new Error('Not allowed by CORS'),
+        false
+      );
+    },
     methods: ["GET", "POST"],
     credentials: true
   }
