@@ -1,11 +1,13 @@
-/****************************
- * server.js
- * ==========================
+/**********************************
+ * Talkomatic Server
+ * =========================
+ * Enhanced with better support for custom frontends
  * Last updated: 2025
- ****************************/
+ **********************************/
 
 require('dotenv').config(); // Loads environment vars from .env
 
+// Core dependencies
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -23,41 +25,72 @@ const hpp = require('hpp');
 const crypto = require('crypto');
 const WordFilter = require('./public/js/word-filter.js');
 
+/********************************* 
+ * CONFIGURATION & CONSTANTS
+ *********************************/
+// System-wide constants - will be exposed via API
+const CONFIG = {
+  LIMITS: {
+    MAX_USERNAME_LENGTH: 12,
+    MAX_LOCATION_LENGTH: 12,
+    MAX_ROOM_NAME_LENGTH: 20,
+    MAX_MESSAGE_LENGTH: 5000,
+    MAX_ROOM_CAPACITY: 5
+  },
+  FEATURES: {
+    ENABLE_WORD_FILTER: true
+  },
+  TIMING: {
+    ROOM_CREATION_COOLDOWN: 30000, // 30 seconds cooldown
+    ROOM_DELETION_TIMEOUT: 15000,   // 15 seconds after empty
+    TYPING_TIMEOUT: 2000            // 2 seconds
+  },
+  VERSIONS: {
+    API: 'v1',
+    SERVER: '1.1.0'
+  }
+};
+
+// Error codes for standardized error handling
+const ERROR_CODES = {
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  SERVER_ERROR: 'SERVER_ERROR',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  NOT_FOUND: 'NOT_FOUND',
+  RATE_LIMITED: 'RATE_LIMITED',
+  ROOM_FULL: 'ROOM_FULL',
+  ACCESS_DENIED: 'ACCESS_DENIED',
+  BAD_REQUEST: 'BAD_REQUEST',
+  FORBIDDEN: 'FORBIDDEN'
+};
+
+// Load word filter
 const wordFilter = new WordFilter(
   path.join(__dirname, 'public', 'js', 'offensive_words.json')
 );
 
+// State management
 const lastRoomCreationTimes = new Map();
-const ROOM_CREATION_COOLDOWN = 30000; // 30 seconds cooldown
+let rooms = new Map();
+const users = new Map();
+const roomDeletionTimers = new Map();
+const typingTimeouts = new Map();
+const userMessageBuffers = new Map();
 
+// Create express app and server
 const app = express();
 const server = http.createServer(app);
 
-// Parse JSON bodies for the REST API
-app.use(express.json());
-
-// Security & limits
-function sanitizeInput(input) {
-  return input;
-}
-
-const MAX_USERNAME_LENGTH = 12;
-const MAX_LOCATION_LENGTH = 12;
-const MAX_ROOM_NAME_LENGTH = 20;
-const MAX_MESSAGE_LENGTH = 5000;
-const MAX_ROOM_CAPACITY = 5;
-
-const ENABLE_WORD_FILTER = true;
-
+/********************************* 
+ * MIDDLEWARE & SECURITY SETUP
+ *********************************/
 // Allowed origins for CORS
 const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'https://classic.talkomatic.co'
-  // Add other allowed frontends here, if needed.
 ];
 
-// CORS config
 // CORS config with support for all GitHub Pages domains
 const corsOptions = {
   origin: function (origin, callback) {
@@ -85,6 +118,8 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
 };
 
+// Parse JSON bodies for the REST API
+app.use(express.json());
 app.use(cors(corsOptions));
 app.use(cookieParser());
 
@@ -146,6 +181,13 @@ app.use(hpp());
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000,
+  standardHeaders: true,
+  message: {
+    error: {
+      code: ERROR_CODES.RATE_LIMITED,
+      message: 'Too many requests, please try again later.'
+    }
+  }
 });
 app.use(limiter);
 
@@ -204,12 +246,104 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
-// In-memory data
-let rooms = new Map();
-const users = new Map();
-const roomDeletionTimers = new Map();
-const typingTimeouts = new Map();
-const userMessageBuffers = new Map();
+/********************************* 
+ * UTILITY FUNCTIONS
+ *********************************/
+/**
+ * Create a standardized error response
+ */
+function createErrorResponse(code, message, details = null) {
+  const response = {
+    error: {
+      code,
+      message
+    }
+  };
+  
+  if (details) {
+    response.error.details = details;
+  }
+  
+  return response;
+}
+
+/**
+ * Send a standardized error response
+ */
+function sendErrorResponse(res, code, message, status = 400, details = null) {
+  return res.status(status).json(createErrorResponse(code, message, details));
+}
+
+/**
+ * Validation rules for various inputs
+ */
+const validationRules = {
+  username: (value) => {
+    if (!value || typeof value !== 'string') return 'Username is required';
+    if (value.trim().length === 0) return 'Username cannot be empty';
+    if (value.length > CONFIG.LIMITS.MAX_USERNAME_LENGTH) 
+      return `Username must be at most ${CONFIG.LIMITS.MAX_USERNAME_LENGTH} characters`;
+    return null;
+  },
+  location: (value) => {
+    if (typeof value === 'string' && value.length > CONFIG.LIMITS.MAX_LOCATION_LENGTH) 
+      return `Location must be at most ${CONFIG.LIMITS.MAX_LOCATION_LENGTH} characters`;
+    return null;
+  },
+  roomName: (value) => {
+    if (!value || typeof value !== 'string') return 'Room name is required';
+    if (value.trim().length === 0) return 'Room name cannot be empty';
+    if (value.length > CONFIG.LIMITS.MAX_ROOM_NAME_LENGTH) 
+      return `Room name must be at most ${CONFIG.LIMITS.MAX_ROOM_NAME_LENGTH} characters`;
+    return null;
+  },
+  roomType: (value) => {
+    if (!value) return 'Room type is required';
+    if (!['public', 'semi-private', 'private'].includes(value)) 
+      return 'Room type must be public, semi-private, or private';
+    return null;
+  },
+  layout: (value) => {
+    if (!value) return 'Room layout is required';
+    if (!['horizontal', 'vertical'].includes(value)) 
+      return 'Room layout must be horizontal or vertical';
+    return null;
+  },
+  accessCode: (value, roomType) => {
+    if (roomType === 'semi-private') {
+      if (!value) return 'Access code is required for semi-private rooms';
+      if (typeof value !== 'string' || value.length !== 6 || !/^\d+$/.test(value)) 
+        return 'Access code must be a 6-digit number';
+    }
+    return null;
+  }
+};
+
+/**
+ * Validate input against a specific rule
+ */
+function validate(field, value, context = {}) {
+  if (validationRules[field]) {
+    return validationRules[field](value, context);
+  }
+  return null;
+}
+
+/**
+ * Validate a complete object against multiple validation rules
+ */
+function validateObject(obj, rules) {
+  const errors = {};
+  for (const [field, options] of Object.entries(rules)) {
+    const value = obj[field];
+    const context = options.context || {};
+    const error = validate(options.rule || field, value, context);
+    if (error) {
+      errors[field] = error;
+    }
+  }
+  return Object.keys(errors).length > 0 ? errors : null;
+}
 
 /**
  * Convert strings to lower-case for consistent checks
@@ -249,35 +383,45 @@ function getUsernameLocationRoomsCount(username, location) {
   return count;
 }
 
-// Helper functions
+/**
+ * Enforce character limit on different input types
+ */
 function enforceCharacterLimit(message) {
-  return typeof message === 'string' ? message.slice(0, MAX_MESSAGE_LENGTH) : message;
+  return typeof message === 'string' ? message.slice(0, CONFIG.LIMITS.MAX_MESSAGE_LENGTH) : message;
 }
 function enforceUsernameLimit(username) {
-  return username.slice(0, MAX_USERNAME_LENGTH);
+  return username.slice(0, CONFIG.LIMITS.MAX_USERNAME_LENGTH);
 }
 function enforceLocationLimit(location) {
-  return location.slice(0, MAX_LOCATION_LENGTH);
+  return location.slice(0, CONFIG.LIMITS.MAX_LOCATION_LENGTH);
 }
 function enforceRoomNameLimit(roomName) {
-  return roomName.slice(0, MAX_ROOM_NAME_LENGTH);
+  return roomName.slice(0, CONFIG.LIMITS.MAX_ROOM_NAME_LENGTH);
 }
 
+/**
+ * Save rooms to disk
+ */
 async function saveRooms() {
   try {
     const roomsData = JSON.stringify(Array.from(rooms.entries()));
     await fs.writeFile(path.join(__dirname, 'rooms.json'), roomsData);
+    console.log('Rooms saved successfully');
   } catch (error) {
     console.error('Error saving rooms:', error);
   }
 }
 
+/**
+ * Load rooms from disk
+ */
 async function loadRooms() {
   try {
     const roomsData = await fs.readFile(path.join(__dirname, 'rooms.json'), 'utf8');
     const loadedRooms = JSON.parse(roomsData);
     rooms = new Map(loadedRooms);
-    // Clear all rooms on server restart
+    console.log(`Loaded ${rooms.size} rooms from disk`);
+    // Comment out to preserve rooms across restarts
     rooms.clear();
   } catch (error) {
     if (error.code !== 'ENOENT') {
@@ -285,12 +429,17 @@ async function loadRooms() {
     }
   }
 }
-loadRooms();
 
+/**
+ * Generate a random room ID
+ */
 function generateRoomId() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+/**
+ * Start a timer to delete a room after it's been empty for a while
+ */
 function startRoomDeletionTimer(roomId) {
   if (roomDeletionTimers.has(roomId)) {
     clearTimeout(roomDeletionTimers.get(roomId));
@@ -300,21 +449,28 @@ function startRoomDeletionTimer(roomId) {
     roomDeletionTimers.delete(roomId);
     updateLobby();
     saveRooms();
-  }, 15000);
+    console.log(`Room ${roomId} deleted due to inactivity`);
+  }, CONFIG.TIMING.ROOM_DELETION_TIMEOUT);
   roomDeletionTimers.set(roomId, timer);
 }
 
+/**
+ * Update all clients in the lobby with the latest room list
+ */
 function updateLobby() {
   const publicRooms = Array.from(rooms.values())
     .filter(room => room.type !== 'private')
     .map(room => ({
       ...room,
       accessCode: undefined, // Hide the access code
-      isFull: room.users.length >= MAX_ROOM_CAPACITY
+      isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
     }));
   io.to('lobby').emit('lobby update', publicRooms);
 }
 
+/**
+ * Update all clients in a room with the latest room state
+ */
 function updateRoom(roomId) {
   const room = rooms.get(roomId);
   if (room) {
@@ -330,14 +486,22 @@ function updateRoom(roomId) {
   }
 }
 
+/**
+ * Get all the current message content for all users in a room
+ */
 function getCurrentMessages(users) {
   const messages = {};
-  users.forEach(user => {
-    messages[user.id] = userMessageBuffers.get(user.id) || '';
-  });
+  if (Array.isArray(users)) {
+    users.forEach(user => {
+      messages[user.id] = userMessageBuffers.get(user.id) || '';
+    });
+  }
   return messages;
 }
 
+/**
+ * Handle a user leaving a room
+ */
 async function leaveRoom(socket, userId) {
   if (socket.roomId) {
     const room = rooms.get(socket.roomId);
@@ -391,19 +555,19 @@ async function leaveRoom(socket, userId) {
 function joinRoom(socket, roomId, userId) {
   // Validate
   if (!roomId || typeof roomId !== 'string' || roomId.length !== 6) {
-    socket.emit('room not found');
+    socket.emit('error', createErrorResponse(ERROR_CODES.NOT_FOUND, 'Room not found'));
     return;
   }
 
   const room = rooms.get(roomId);
   if (!room) {
-    socket.emit('room not found');
+    socket.emit('error', createErrorResponse(ERROR_CODES.NOT_FOUND, 'Room not found'));
     return;
   }
 
   // Check if user is banned
   if (room.bannedUserIds && room.bannedUserIds.has(userId)) {
-    socket.emit('error', 'You have been banned from rejoining this room.');
+    socket.emit('error', createErrorResponse(ERROR_CODES.FORBIDDEN, 'You have been banned from rejoining this room.'));
     return;
   }
 
@@ -419,14 +583,20 @@ function joinRoom(socket, roomId, userId) {
     // Check how many rooms this session is in
     const userRoomsCount = getUserRoomsCount(userId);
     if (userRoomsCount >= 2) {
-      socket.emit('error', 'unable to join room at the moment please try again later');
+      socket.emit('error', createErrorResponse(
+        ERROR_CODES.FORBIDDEN, 
+        'Unable to join room at the moment. You are already in the maximum number of rooms.'
+      ));
       return;
     }
 
     // Check how many rooms exist with same (username, location)
     const sameNameLocCount = getUsernameLocationRoomsCount(username, location);
     if (sameNameLocCount >= 2) {
-      socket.emit('error', 'unable to join room at the moment please try again later');
+      socket.emit('error', createErrorResponse(
+        ERROR_CODES.FORBIDDEN, 
+        'Unable to join room at the moment. This username/location is already in the maximum number of rooms.'
+      ));
       return;
     }
   }
@@ -434,8 +604,8 @@ function joinRoom(socket, roomId, userId) {
   if (!room.users) room.users = [];
   if (!room.votes) room.votes = {};
 
-  if (room.users.length >= MAX_ROOM_CAPACITY) {
-    socket.emit('room full');
+  if (room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY) {
+    socket.emit('room full', createErrorResponse(ERROR_CODES.ROOM_FULL, 'This room is full'));
     return;
   }
 
@@ -486,6 +656,9 @@ function joinRoom(socket, roomId, userId) {
   saveRooms();
 }
 
+/**
+ * Handle typing indicators
+ */
 function handleTyping(socket, userId, username, isTyping) {
   if (typingTimeouts.has(userId)) {
     clearTimeout(typingTimeouts.get(userId));
@@ -495,16 +668,282 @@ function handleTyping(socket, userId, username, isTyping) {
     typingTimeouts.set(userId, setTimeout(() => {
       socket.to(socket.roomId).emit('user typing', { userId, username, isTyping: false });
       typingTimeouts.delete(userId);
-    }, 2000));
+    }, CONFIG.TIMING.TYPING_TIMEOUT));
   } else {
     socket.to(socket.roomId).emit('user typing', { userId, username, isTyping: false });
     typingTimeouts.delete(userId);
   }
 }
 
-/***************************************
- * SOCKET.IO CONNECTION & EVENT HANDLERS
- ***************************************/
+// Initialize by loading rooms from disk
+loadRooms();
+
+/********************************* 
+ * NEW REST API ENDPOINTS
+ *********************************/
+
+// GET /api/v1/config - Get server configuration
+app.get(`/api/${CONFIG.VERSIONS.API}/config`, (req, res) => {
+  res.json({
+    limits: CONFIG.LIMITS,
+    features: CONFIG.FEATURES,
+    versions: CONFIG.VERSIONS
+  });
+});
+
+// GET /api/v1/health - Health check endpoint
+app.get(`/api/${CONFIG.VERSIONS.API}/health`, (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: Date.now(),
+    version: CONFIG.VERSIONS.SERVER
+  });
+});
+
+// GET /api/v1/me - Get current user session info
+app.get(`/api/${CONFIG.VERSIONS.API}/me`, (req, res) => {
+  const { username, location, userId } = req.session;
+  
+  if (username && location && userId) {
+    res.json({
+      isSignedIn: true,
+      username,
+      location,
+      userId
+    });
+  } else {
+    res.json({ isSignedIn: false });
+  }
+});
+
+// GET /api/v1/docs/rooms - Room documentation
+app.get(`/api/${CONFIG.VERSIONS.API}/docs/rooms`, (req, res) => {
+  res.json({
+    roomTypes: {
+      public: {
+        description: 'Visible to all users and can be joined without restrictions',
+        requiresAccessCode: false
+      },
+      'semi-private': {
+        description: 'Visible in room list but requires an access code to join',
+        requiresAccessCode: true
+      },
+      private: {
+        description: 'Not visible in room list, requires direct link and access code',
+        requiresAccessCode: true
+      }
+    },
+    layouts: {
+      horizontal: 'Chat windows arranged side by side',
+      vertical: 'Chat windows stacked vertically'
+    },
+    limits: {
+      maxUsers: CONFIG.LIMITS.MAX_ROOM_CAPACITY,
+      maxRoomNameLength: CONFIG.LIMITS.MAX_ROOM_NAME_LENGTH
+    }
+  });
+});
+
+/********************************* 
+ * EXISTING REST API ENDPOINTS
+ *********************************/
+function apiAuth(req, res, next) {
+  const apiKey = req.header('x-api-key');
+  const validApiKey = 'tK_public_key_4f8a9b2c7d6e3f1a5g8h9i0j4k5l6m7n8o9p';
+  if (!apiKey || apiKey !== validApiKey) {
+    return sendErrorResponse(
+      res, 
+      ERROR_CODES.UNAUTHORIZED, 
+      'Forbidden: invalid or missing x-api-key.', 
+      403
+    );
+  }
+  next();
+}
+
+// GET /api/v1/rooms - list non-private rooms
+app.get(`/api/${CONFIG.VERSIONS.API}/rooms`, limiter, apiAuth, (req, res) => {
+  const publicRooms = Array.from(rooms.values())
+    .filter(room => room.type !== 'private')
+    .map(room => ({
+      id: room.id,
+      name: room.name,
+      type: room.type,
+      users: room.users.map(u => ({
+        id: u.id,
+        username: u.username,
+        location: u.location
+      })),
+      isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
+    }));
+  return res.json(publicRooms);
+});
+
+// GET /api/v1/rooms/:id - detail about a specific room
+app.get(`/api/${CONFIG.VERSIONS.API}/rooms/:id`, limiter, apiAuth, (req, res) => {
+  const roomId = req.params.id;
+  const room = rooms.get(roomId);
+  if (!room) {
+    return sendErrorResponse(res, ERROR_CODES.NOT_FOUND, 'Room not found', 404);
+  }
+  // Hide access code
+  return res.json({
+    id: room.id,
+    name: room.name,
+    type: room.type,
+    users: room.users.map(u => ({ id: u.id, username: u.username, location: u.location })),
+    isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
+  });
+});
+
+// POST /api/v1/rooms - create a new room (REST API version)
+app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, limiter, apiAuth, (req, res) => {
+  try {
+    const data = req.body;
+    
+    // Validate with improved validation system
+    const validationErrors = validateObject(data, {
+      name: { rule: 'roomName' },
+      type: { rule: 'roomType' },
+      layout: { rule: 'layout' },
+      accessCode: { 
+        rule: 'accessCode', 
+        context: data.type 
+      }
+    });
+    
+    if (validationErrors) {
+      return sendErrorResponse(
+        res, 
+        ERROR_CODES.VALIDATION_ERROR, 
+        'Validation failed', 
+        400, 
+        validationErrors
+      );
+    }
+
+    let roomName = enforceRoomNameLimit(data.name);
+    if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
+      const roomNameCheck = wordFilter.checkText(roomName);
+      if (roomNameCheck.hasOffensiveWord) {
+        return sendErrorResponse(
+          res, 
+          ERROR_CODES.VALIDATION_ERROR, 
+          'Room name contains forbidden words.',
+          400
+        );
+      }
+    }
+
+    let roomType = data.type;
+    let layout = data.layout;
+
+    let roomId;
+    do {
+      roomId = generateRoomId();
+    } while (rooms.has(roomId));
+
+    const newRoom = {
+      id: roomId,
+      name: roomName,
+      type: roomType,
+      layout: layout,
+      users: [],
+      accessCode: roomType === 'semi-private' ? data.accessCode : null,
+      votes: {},
+      bannedUserIds: new Set(),
+      lastActiveTime: Date.now(),
+    };
+    rooms.set(roomId, newRoom);
+    
+    // If there's a session, store the validated access code
+    if (req.session && roomType === 'semi-private' && data.accessCode) {
+      if (!req.session.validatedRooms) {
+        req.session.validatedRooms = {};
+      }
+      req.session.validatedRooms[roomId] = data.accessCode;
+      req.session.save();
+    }
+    
+    updateLobby();
+    saveRooms();
+
+    return res.json({ success: true, roomId });
+  } catch (err) {
+    console.error('Error in /api/v1/rooms POST:', err);
+    return sendErrorResponse(
+      res, 
+      ERROR_CODES.SERVER_ERROR, 
+      'Internal server error',
+      500
+    );
+  }
+});
+
+// POST /api/v1/rooms/:id/join - simple check for capacity & access code
+app.post(`/api/${CONFIG.VERSIONS.API}/rooms/:id/join`, limiter, apiAuth, (req, res) => {
+  try {
+    const roomId = req.params.id;
+    const room = rooms.get(roomId);
+    if (!room) {
+      return sendErrorResponse(res, ERROR_CODES.NOT_FOUND, 'Room not found', 404);
+    }
+    if (room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY) {
+      return sendErrorResponse(res, ERROR_CODES.ROOM_FULL, 'Room is full', 400);
+    }
+    
+    if (room.type === 'semi-private') {
+      // Check if the access code is already validated in the session
+      const validatedAccessCode = req.session && req.session.validatedRooms && 
+                                 req.session.validatedRooms[roomId];
+      
+      if (validatedAccessCode) {
+        // Already validated
+      } else if (!req.body.accessCode) {
+        return sendErrorResponse(res, ERROR_CODES.FORBIDDEN, 'Access code required', 403);
+      } else {
+        // Server-side validation of access code
+        if (typeof req.body.accessCode !== 'string' || 
+            req.body.accessCode.length !== 6 || 
+            !/^\d+$/.test(req.body.accessCode)) {
+          return sendErrorResponse(res, ERROR_CODES.VALIDATION_ERROR, 'Invalid access code format', 400);
+        }
+        
+        if (room.accessCode !== req.body.accessCode) {
+          return sendErrorResponse(res, ERROR_CODES.FORBIDDEN, 'Incorrect access code', 403);
+        }
+        
+        // Store validated code in session
+        if (req.session) {
+          if (!req.session.validatedRooms) {
+            req.session.validatedRooms = {};
+          }
+          req.session.validatedRooms[roomId] = req.body.accessCode;
+          req.session.save();
+        }
+      }
+    }
+    
+    // If everything is okay, respond success
+    return res.json({
+      success: true,
+      message: 'You can now connect via Socket.IO to join the room in real time.'
+    });
+  } catch (err) {
+    console.error('Error in /api/v1/rooms/:id/join:', err);
+    return sendErrorResponse(res, ERROR_CODES.SERVER_ERROR, 'Internal server error', 500);
+  }
+});
+
+// Example test route
+app.get(`/api/${CONFIG.VERSIONS.API}/protected/ping`, limiter, apiAuth, (req, res) => {
+  return res.json({ message: 'pong', time: Date.now() });
+});
+
+/********************************* 
+ * SOCKET.IO EVENT HANDLERS
+ *********************************/
 io.on('connection', (socket) => {
   socket.on('check signin status', () => {
     const { username, location, userId } = socket.handshake.session;
@@ -526,22 +965,43 @@ io.on('connection', (socket) => {
   socket.on('join lobby', (data) => {
     try {
       if (!data) {
-        socket.emit('error', 'No data provided when joining lobby.');
+        socket.emit('error', createErrorResponse(
+          ERROR_CODES.BAD_REQUEST,
+          'No data provided when joining lobby.'
+        ));
         return;
       }
+      
+      // Validate input
+      const validationErrors = validateObject(data, {
+        username: { rule: 'username' },
+        location: { rule: 'location' }
+      });
+      
+      if (validationErrors) {
+        socket.emit('validation_error', validationErrors);
+        return;
+      }
+      
       // Normalize user inputs
       let username = enforceUsernameLimit(data.username || '');
       let location = enforceLocationLimit(data.location || 'On The Web');
 
-      if (ENABLE_WORD_FILTER) {
+      if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
         const usernameCheck = wordFilter.checkText(username);
         if (usernameCheck.hasOffensiveWord) {
-          socket.emit('error', 'Your chosen name contains forbidden words. Please pick another.');
+          socket.emit('error', createErrorResponse(
+            ERROR_CODES.VALIDATION_ERROR,
+            'Your chosen name contains forbidden words. Please pick another.'
+          ));
           return;
         }
         const locationCheck = wordFilter.checkText(location);
         if (locationCheck.hasOffensiveWord) {
-          socket.emit('error', 'Your chosen location contains forbidden words. Please pick another.');
+          socket.emit('error', createErrorResponse(
+            ERROR_CODES.VALIDATION_ERROR,
+            'Your chosen location contains forbidden words. Please pick another.'
+          ));
           return;
         }
       }
@@ -566,19 +1026,45 @@ io.on('connection', (socket) => {
       });
     } catch (err) {
       console.error('Error in join lobby:', err);
-      socket.emit('error', 'Internal server error while joining lobby.');
+      socket.emit('error', createErrorResponse(
+        ERROR_CODES.SERVER_ERROR,
+        'Internal server error while joining lobby.'
+      ));
     }
   });
 
   socket.on('create room', (data) => {
     try {
       if (!data) {
-        socket.emit('error', 'No data provided to create room.');
+        socket.emit('error', createErrorResponse(
+          ERROR_CODES.BAD_REQUEST,
+          'No data provided to create room.'
+        ));
         return;
       }
+      
       const userId = socket.handshake.session.userId;
       if (!userId) {
-        socket.emit('error', 'You must be signed in to create a room.');
+        socket.emit('error', createErrorResponse(
+          ERROR_CODES.UNAUTHORIZED,
+          'You must be signed in to create a room.'
+        ));
+        return;
+      }
+
+      // Validate input
+      const validationErrors = validateObject(data, {
+        name: { rule: 'roomName' },
+        type: { rule: 'roomType' },
+        layout: { rule: 'layout' },
+        accessCode: { 
+          rule: 'accessCode', 
+          context: data.type 
+        }
+      });
+      
+      if (validationErrors) {
+        socket.emit('validation_error', validationErrors);
         return;
       }
 
@@ -590,29 +1076,41 @@ io.on('connection', (socket) => {
       const isAnonymous =
         userLower === 'anonymous' && locLower === 'on the web';
       if (isAnonymous) {
-        socket.emit('error', 'Anonymous users cannot create rooms.');
+        socket.emit('error', createErrorResponse(
+          ERROR_CODES.FORBIDDEN,
+          'Anonymous users cannot create rooms.'
+        ));
         return;
       }
 
       // 2) If the same user+location is already in >=2 rooms, do not allow creation
       const sameNameLocCount = getUsernameLocationRoomsCount(username, location);
       if (sameNameLocCount >= 2) {
-        socket.emit('error', 'unable to create room at the moment please try again later');
+        socket.emit('error', createErrorResponse(
+          ERROR_CODES.FORBIDDEN,
+          'Unable to create room. This username/location combination is already in the maximum number of rooms.'
+        ));
         return;
       }
 
       // 3) If the session is already in >=2 rooms, do not allow creation
       const userRoomsCount = getUserRoomsCount(userId);
       if (userRoomsCount >= 2) {
-        socket.emit('error', 'You are in too many rooms to create a new one right now.');
+        socket.emit('error', createErrorResponse(
+          ERROR_CODES.FORBIDDEN,
+          'You are in too many rooms to create a new one right now.'
+        ));
         return;
       }
 
       // 4) Rate-limiting creation
       const now = Date.now();
       const lastCreationTime = lastRoomCreationTimes.get(userId) || 0;
-      if (now - lastCreationTime < ROOM_CREATION_COOLDOWN) {
-        socket.emit('error', 'You are creating rooms too frequently. Please wait a bit.');
+      if (now - lastCreationTime < CONFIG.TIMING.ROOM_CREATION_COOLDOWN) {
+        socket.emit('error', createErrorResponse(
+          ERROR_CODES.RATE_LIMITED,
+          'You are creating rooms too frequently. Please wait a bit.'
+        ));
         return;
       }
 
@@ -621,19 +1119,13 @@ io.on('connection', (socket) => {
       let roomType = data.type;
       let layout = data.layout;
 
-      if (!roomType) {
-        socket.emit('error', 'Room type is missing.');
-        return;
-      }
-      if (!layout) {
-        socket.emit('error', 'Room layout is missing.');
-        return;
-      }
-
-      if (ENABLE_WORD_FILTER) {
+      if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
         const roomNameCheck = wordFilter.checkText(roomName);
         if (roomNameCheck.hasOffensiveWord) {
-          socket.emit('error', 'Your chosen room name contains forbidden words. Please pick another.');
+          socket.emit('error', createErrorResponse(
+            ERROR_CODES.VALIDATION_ERROR,
+            'Your chosen room name contains forbidden words. Please pick another.'
+          ));
           return;
         }
       }
@@ -672,19 +1164,28 @@ io.on('connection', (socket) => {
       saveRooms();
     } catch (err) {
       console.error('Error in create room:', err);
-      socket.emit('error', 'Internal server error while creating room.');
+      socket.emit('error', createErrorResponse(
+        ERROR_CODES.SERVER_ERROR,
+        'Internal server error while creating room.'
+      ));
     }
   });
 
   socket.on('join room', (data) => {
     try {
       if (!data || !data.roomId) {
-        socket.emit('error', 'Invalid or missing data when attempting to join room.');
+        socket.emit('error', createErrorResponse(
+          ERROR_CODES.BAD_REQUEST,
+          'Invalid or missing data when attempting to join room.'
+        ));
         return;
       }
       const room = rooms.get(data.roomId);
       if (!room) {
-        socket.emit('room not found');
+        socket.emit('room not found', createErrorResponse(
+          ERROR_CODES.NOT_FOUND,
+          'Room not found'
+        ));
         return;
       }
   
@@ -707,12 +1208,18 @@ io.on('connection', (socket) => {
         if (typeof data.accessCode !== 'string' || 
             data.accessCode.length !== 6 || 
             !/^\d+$/.test(data.accessCode)) {
-          socket.emit('error', 'Invalid access code format');
+          socket.emit('error', createErrorResponse(
+            ERROR_CODES.VALIDATION_ERROR,
+            'Invalid access code format'
+          ));
           return;
         }
         
         if (room.accessCode !== data.accessCode) {
-          socket.emit('error', 'Incorrect access code');
+          socket.emit('error', createErrorResponse(
+            ERROR_CODES.FORBIDDEN,
+            'Incorrect access code'
+          ));
           return;
         }
         
@@ -744,22 +1251,28 @@ io.on('connection', (socket) => {
       });
     } catch (err) {
       console.error('Error in join room:', err);
-      socket.emit('error', 'Internal server error while joining room.');
+      socket.emit('error', createErrorResponse(
+        ERROR_CODES.SERVER_ERROR,
+        'Internal server error while joining room.'
+      ));
     }
   });
 
-  /************************
-   * "vote" event
-   ************************/
   socket.on('vote', (data) => {
     try {
       if (!data || typeof data !== 'object') {
-        socket.emit('error', 'Invalid data for vote.');
+        socket.emit('error', createErrorResponse(
+          ERROR_CODES.BAD_REQUEST,
+          'Invalid data for vote.'
+        ));
         return;
       }
       const { targetUserId } = data;
       if (!targetUserId) {
-        socket.emit('error', 'Missing target user ID for vote.');
+        socket.emit('error', createErrorResponse(
+          ERROR_CODES.BAD_REQUEST,
+          'Missing target user ID for vote.'
+        ));
         return;
       }
 
@@ -806,7 +1319,10 @@ io.on('connection', (socket) => {
       }
     } catch (err) {
       console.error('Error in vote handler:', err);
-      socket.emit('error', 'Internal server error during vote.');
+      socket.emit('error', createErrorResponse(
+        ERROR_CODES.SERVER_ERROR,
+        'Internal server error during vote.'
+      ));
     }
   });
 
@@ -816,7 +1332,10 @@ io.on('connection', (socket) => {
       await leaveRoom(socket, userId);
     } catch (err) {
       console.error('Error in leave room:', err);
-      socket.emit('error', 'Internal server error while leaving room.');
+      socket.emit('error', createErrorResponse(
+        ERROR_CODES.SERVER_ERROR,
+        'Internal server error while leaving room.'
+      ));
     }
   });
 
@@ -832,7 +1351,10 @@ io.on('connection', (socket) => {
       let userMessage = userMessageBuffers.get(userId);
 
       if (!data || typeof data !== 'object') {
-        socket.emit('error', 'Invalid chat update data.');
+        socket.emit('error', createErrorResponse(
+          ERROR_CODES.BAD_REQUEST,
+          'Invalid chat update data.'
+        ));
         return;
       }
       let diff = data.diff;
@@ -861,13 +1383,16 @@ io.on('connection', (socket) => {
             userMessage.slice(diff.index + diff.text.length);
           break;
         default:
-          socket.emit('error', 'Unknown diff type.');
+          socket.emit('error', createErrorResponse(
+            ERROR_CODES.BAD_REQUEST,
+            'Unknown diff type.'
+          ));
           return;
       }
 
       userMessageBuffers.set(userId, userMessage);
 
-      if (ENABLE_WORD_FILTER) {
+      if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
         const filterResult = wordFilter.checkText(userMessage);
         if (filterResult.hasOffensiveWord) {
           // Replace the text in their buffer
@@ -897,7 +1422,10 @@ io.on('connection', (socket) => {
       }
     } catch (err) {
       console.error('Error in chat update:', err);
-      socket.emit('error', 'Internal server error during chat update.');
+      socket.emit('error', createErrorResponse(
+        ERROR_CODES.SERVER_ERROR,
+        'Internal server error during chat update.'
+      ));
     }
   });
 
@@ -916,7 +1444,45 @@ io.on('connection', (socket) => {
   });
 
   socket.on('get rooms', () => {
-    socket.emit('initial rooms', Array.from(rooms.values()));
+    socket.emit('initial rooms', Array.from(rooms.values())
+      .filter(room => room.type !== 'private')
+      .map(room => ({
+        ...room,
+        accessCode: undefined, // Hide the access code
+        isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
+      }))
+    );
+  });
+
+  // NEW: Get room state
+  socket.on('get room state', (roomId) => {
+    if (!roomId) {
+      socket.emit('error', createErrorResponse(
+        ERROR_CODES.BAD_REQUEST,
+        'Room ID is required'
+      ));
+      return;
+    }
+    
+    const room = rooms.get(roomId);
+    if (!room) {
+      socket.emit('error', createErrorResponse(
+        ERROR_CODES.NOT_FOUND,
+        'Room not found'
+      ));
+      return;
+    }
+    
+    socket.emit('room state', {
+      id: room.id,
+      name: room.name,
+      type: room.type,
+      layout: room.layout,
+      users: room.users,
+      votes: room.votes,
+      currentMessages: getCurrentMessages(room.users),
+      isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
+    });
   });
 
   socket.on('disconnect', async () => {
@@ -936,7 +1502,7 @@ setInterval(() => {
   for (const [roomId, room] of rooms.entries()) {
     if (room.users.length === 0) {
       const timeSinceLastActive = Date.now() - (room.lastActiveTime || 0);
-      if (timeSinceLastActive > 15000) {
+      if (timeSinceLastActive > CONFIG.TIMING.ROOM_DELETION_TIMEOUT) {
         rooms.delete(roomId);
         roomDeletionTimers.delete(roomId);
         updateLobby();
@@ -947,173 +1513,9 @@ setInterval(() => {
   }
 }, 10000);
 
-/***************************************************
- * OPTIONAL: Additional REST API (with API key)
- ***************************************************/
-function apiAuth(req, res, next) {
-  const apiKey = req.header('x-api-key');
-  const validApiKey = 'tK_public_key_4f8a9b2c7d6e3f1a5g8h9i0j4k5l6m7n8o9p';
-  if (!apiKey || apiKey !== validApiKey) {
-    return res.status(403).json({ error: 'Forbidden: invalid or missing x-api-key.' });
-  }
-  next();
-}
-
-// GET /api/v1/rooms - list non-private rooms
-app.get('/api/v1/rooms', limiter, apiAuth, (req, res) => {
-  const publicRooms = Array.from(rooms.values())
-    .filter(room => room.type !== 'private')
-    .map(room => ({
-      id: room.id,
-      name: room.name,
-      type: room.type,
-      users: room.users.map(u => ({
-        id: u.id,
-        username: u.username,
-        location: u.location
-      })),
-      isFull: room.users.length >= MAX_ROOM_CAPACITY
-    }));
-  return res.json(publicRooms);
-});
-
-// GET /api/v1/rooms/:id - detail about a specific room
-app.get('/api/v1/rooms/:id', limiter, apiAuth, (req, res) => {
-  const roomId = req.params.id;
-  const room = rooms.get(roomId);
-  if (!room) {
-    return res.status(404).json({ error: 'Room not found' });
-  }
-  // Hide access code
-  return res.json({
-    id: room.id,
-    name: room.name,
-    type: room.type,
-    users: room.users.map(u => ({ id: u.id, username: u.username, location: u.location })),
-    isFull: room.users.length >= MAX_ROOM_CAPACITY
-  });
-});
-
-// POST /api/v1/rooms - create a new room (REST API version)
-app.post('/api/v1/rooms', limiter, apiAuth, (req, res) => {
-  try {
-    const data = req.body;
-    if (!data || !data.name || !data.type || !data.layout) {
-      return res.status(400).json({
-        error: 'Missing required fields: name, type, layout'
-      });
-    }
-
-    let roomName = enforceRoomNameLimit(data.name);
-    if (ENABLE_WORD_FILTER) {
-      const roomNameCheck = wordFilter.checkText(roomName);
-      if (roomNameCheck.hasOffensiveWord) {
-        return res.status(400).json({ error: 'Room name contains forbidden words.' });
-      }
-    }
-
-    let roomType = data.type;
-    let layout = data.layout;
-
-    let roomId;
-    do {
-      roomId = generateRoomId();
-    } while (rooms.has(roomId));
-
-    const newRoom = {
-      id: roomId,
-      name: roomName,
-      type: roomType,
-      layout: layout,
-      users: [],
-      accessCode: roomType === 'semi-private' ? data.accessCode : null,
-      votes: {},
-      bannedUserIds: new Set(),
-      lastActiveTime: Date.now(),
-    };
-    rooms.set(roomId, newRoom);
-    
-    // If there's a session, store the validated access code
-    if (req.session && roomType === 'semi-private' && data.accessCode) {
-      if (!req.session.validatedRooms) {
-        req.session.validatedRooms = {};
-      }
-      req.session.validatedRooms[roomId] = data.accessCode;
-      req.session.save();
-    }
-    
-    updateLobby();
-    saveRooms();
-
-    return res.json({ success: true, roomId });
-  } catch (err) {
-    console.error('Error in /api/v1/rooms POST:', err);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// POST /api/v1/rooms/:id/join - simple check for capacity & access code
-app.post('/api/v1/rooms/:id/join', limiter, apiAuth, (req, res) => {
-  try {
-    const roomId = req.params.id;
-    const room = rooms.get(roomId);
-    if (!room) {
-      return res.status(404).json({ error: 'Room not found' });
-    }
-    if (room.users.length >= MAX_ROOM_CAPACITY) {
-      return res.status(400).json({ error: 'Room is full' });
-    }
-    
-    if (room.type === 'semi-private') {
-      // Check if the access code is already validated in the session
-      const validatedAccessCode = req.session && req.session.validatedRooms && 
-                                 req.session.validatedRooms[roomId];
-      
-      if (validatedAccessCode) {
-        // Already validated
-      } else if (!req.body.accessCode) {
-        return res.status(403).json({ error: 'Access code required' });
-      } else {
-        // Server-side validation of access code
-        if (typeof req.body.accessCode !== 'string' || 
-            req.body.accessCode.length !== 6 || 
-            !/^\d+$/.test(req.body.accessCode)) {
-          return res.status(400).json({ error: 'Invalid access code format' });
-        }
-        
-        if (room.accessCode !== req.body.accessCode) {
-          return res.status(403).json({ error: 'Incorrect access code' });
-        }
-        
-        // Store validated code in session
-        if (req.session) {
-          if (!req.session.validatedRooms) {
-            req.session.validatedRooms = {};
-          }
-          req.session.validatedRooms[roomId] = req.body.accessCode;
-          req.session.save();
-        }
-      }
-    }
-    
-    // If everything is okay, respond success
-    return res.json({
-      success: true,
-      message: 'You can now connect via Socket.IO to join the room in real time.'
-    });
-  } catch (err) {
-    console.error('Error in /api/v1/rooms/:id/join:', err);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Example test route
-app.get('/api/v1/protected/ping', limiter, apiAuth, (req, res) => {
-  return res.json({ message: 'pong', time: Date.now() });
-});
-
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Talkomatic server is running on port ${PORT}`);
+  console.log(`Server version: ${CONFIG.VERSIONS.SERVER}`);
 });
