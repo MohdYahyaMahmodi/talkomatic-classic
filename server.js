@@ -717,6 +717,20 @@ app.get(`/api/${CONFIG.VERSIONS.API}/me`, (req, res) => {
   }
 });
 
+// Serve emojiList.json - Add this after your other static file serving middleware
+app.get('/js/emojiList.json', async (req, res) => {
+  try {
+    const emojiListPath = path.join(__dirname, 'public', 'js', 'emojiList.json');
+    const data = await fs.readFile(emojiListPath, 'utf8');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); 
+    res.send(data);
+  } catch (error) {
+    console.error('Error serving emoji list:', error);
+    res.status(404).json({ error: 'Emoji list not found' });
+  }
+});
+
 // GET /api/v1/docs/rooms - Room documentation
 app.get(`/api/${CONFIG.VERSIONS.API}/docs/rooms`, (req, res) => {
   res.json({

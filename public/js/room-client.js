@@ -24,6 +24,15 @@ const muteIcon = document.getElementById('muteIcon');
 
 const MAX_MESSAGE_LENGTH = 5000;
 
+// Emote system variables
+let emoteList = {};
+let emoteAutocomplete = null;
+let autocompleteActive = false;
+let selectedEmoteIndex = -1;
+let filteredEmotes = [];
+let currentEmotePrefix = '';
+let currentEmoteInfo = null;
+
 // Modal functionality
 const customModal = document.getElementById('customModal');
 const modalTitle = document.getElementById('modalTitle');
@@ -36,6 +45,21 @@ const modalConfirmBtn = document.getElementById('modalConfirmBtn');
 const closeModalBtn = document.querySelector('.close-modal-btn');
 
 let currentModalCallback = null;
+
+// Load emotes from JSON file
+async function loadEmotes() {
+  try {
+    const response = await fetch('/js/emojiList.json');
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+    emoteList = await response.json();
+    console.log('Emotes loaded:', Object.keys(emoteList).length);
+  } catch (error) {
+    console.error('Error loading emotes:', error);
+    emoteList = {}; // Empty object as fallback
+  }
+}
 
 function showModal(title, message, options = {}) {
     modalTitle.textContent = title;
@@ -174,6 +198,596 @@ modalInput.addEventListener('keydown', (e) => {
     }
 });
 
+// === Utility Functions for ContentEditable Handling ===
+
+// Get plain text from contenteditable
+function getPlainText(element) {
+    if (!element) return '';
+    
+    // Function to extract text recursively, handling images
+    function extractText(node) {
+        let text = '';
+        if (node.nodeType === Node.TEXT_NODE) {
+            text += node.textContent;
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            if (node.nodeName === 'IMG' && node.dataset.emoteCode) {
+                text += `:${node.dataset.emoteCode}:`;
+            } else if (node.nodeName === 'BR') {
+                text += '\n';
+            } else if (node.nodeName === 'DIV') {
+                // For div elements (new lines in contenteditable)
+                if (node.previousSibling) {
+                    text += '\n';
+                }
+                for (let child of node.childNodes) {
+                    text += extractText(child);
+                }
+            } else {
+                for (let child of node.childNodes) {
+                    text += extractText(child);
+                }
+            }
+        }
+        return text;
+    }
+    
+    try {
+        return extractText(element);
+    } catch (error) {
+        console.error("Error extracting plain text:", error);
+        return element.textContent || '';
+    }
+}
+
+// Replace emote codes with image elements
+// Replace emote codes with image elements
+function replaceEmotes(element) {
+  if (!element) return;
+  
+  // Save selection and cursor position relative to the end
+  const selection = window.getSelection();
+  let cursorPosition = null;
+  let cursorOffset = 0;
+  
+  if (selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      
+      // If the selection is in the element we're modifying
+      if (element.contains(range.startContainer)) {
+          // Calculate offset from the end of the content
+          const tempRange = document.createRange();
+          tempRange.selectNodeContents(element);
+          tempRange.setEnd(range.startContainer, range.startOffset);
+          
+          // Get the length of content before the cursor
+          const beforeCursorText = tempRange.toString();
+          cursorPosition = beforeCursorText.length;
+          
+          // Calculate the offset from the end
+          cursorOffset = getPlainText(element).length - cursorPosition;
+      }
+  }
+  
+  const textNodes = [];
+  const walk = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+  
+  while (walk.nextNode()) {
+      textNodes.push(walk.currentNode);
+  }
+  
+  const emoteRegex = /:([\w]+):/g;
+  let hasReplacements = false;
+  
+  // Process each text node
+  for (const node of textNodes) {
+      const text = node.textContent;
+      let match;
+      let lastIndex = 0;
+      let matches = [];
+      
+      // Find all emote matches
+      emoteRegex.lastIndex = 0; // Reset regex state
+      while ((match = emoteRegex.exec(text)) !== null) {
+          const emoteCode = match[1];
+          if (emoteList[emoteCode]) {
+              matches.push({
+                  start: match.index,
+                  end: match.index + match[0].length,
+                  code: emoteCode,
+                  fullMatch: match[0]
+              });
+          }
+      }
+      
+      // Replace emotes if found, in reverse order to not mess up indices
+      if (matches.length > 0) {
+          hasReplacements = true;
+          const fragment = document.createDocumentFragment();
+          let lastIndex = 0;
+          
+          // Sort matches by position to process them in order
+          matches.sort((a, b) => a.start - b.start);
+          
+          for (const match of matches) {
+              // Add text before the emote
+              if (match.start > lastIndex) {
+                  fragment.appendChild(document.createTextNode(text.substring(lastIndex, match.start)));
+              }
+              
+              // Create and add the emote image
+              const img = document.createElement('img');
+              img.src = emoteList[match.code];
+              img.alt = match.code;
+              img.title = match.fullMatch;
+              img.className = 'emote';
+              img.style.display = 'inline-block';
+              img.style.verticalAlign = 'middle';
+              img.style.width = '20px';
+              img.style.height = '20px';
+              img.style.margin = '0 2px';
+              img.dataset.emoteCode = match.code;
+              
+              fragment.appendChild(img);
+              lastIndex = match.end;
+          }
+          
+          // Add any remaining text
+          if (lastIndex < text.length) {
+              fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
+          }
+          
+          // Replace the original text node
+          if (node.parentNode) {
+              node.parentNode.replaceChild(fragment, node);
+          }
+      }
+  }
+  
+  // Restore cursor position if there were replacements
+  if (hasReplacements && cursorPosition !== null && element.isContentEditable) {
+      try {
+          const newLength = getPlainText(element).length;
+          const newPosition = Math.max(0, newLength - cursorOffset);
+          
+          // Set cursor to the new position
+          setCursorPosition(element, newPosition);
+      } catch (e) {
+          console.error('Error restoring cursor position:', e);
+          // If all else fails, place cursor at end
+          placeCursorAtEnd(element);
+      }
+  }
+}
+// Set cursor position at the end of contenteditable
+function placeCursorAtEnd(element) {
+    if (!element) return;
+    
+    try {
+        element.focus();
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        range.collapse(false); // false means collapse to end
+        
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+    } catch (error) {
+        console.error("Error placing cursor at end:", error);
+    }
+}
+
+// Find emote code at cursor
+function findEmoteAtCursor(element) {
+    const selection = window.getSelection();
+    if (selection.rangeCount === 0) return null;
+    
+    const range = selection.getRangeAt(0);
+    const cursorNode = range.startContainer;
+    const cursorOffset = range.startOffset;
+    
+    // If cursor is in a text node
+    if (cursorNode.nodeType === Node.TEXT_NODE) {
+        const text = cursorNode.textContent;
+        
+        // Look for the colon before cursor
+        let startPos = cursorOffset - 1;
+        while (startPos >= 0 && text[startPos] !== ':') {
+            startPos--;
+        }
+        
+        if (startPos >= 0 && text[startPos] === ':') {
+            const prefix = text.substring(startPos + 1, cursorOffset);
+            if (prefix) {
+                return {
+                    node: cursorNode,
+                    prefix: prefix,
+                    startPos: startPos,
+                    endPos: cursorOffset
+                };
+            }
+        }
+    }
+    
+    return null;
+}
+
+// Autocomplete functions
+function showAutocomplete(input, prefix) {
+    if (!prefix || prefix.length < 1) {
+        hideAutocomplete();
+        return;
+    }
+    
+    // Filter emotes by prefix
+    filteredEmotes = Object.keys(emoteList)
+        .filter(code => code.toLowerCase().startsWith(prefix.toLowerCase()))
+        .slice(0, 10); // Limit to 10 suggestions
+    
+    if (filteredEmotes.length === 0) {
+        hideAutocomplete();
+        return;
+    }
+    
+    // Save current emote info for when user clicks on menu
+    currentEmoteInfo = findEmoteAtCursor(input);
+    
+    if (!emoteAutocomplete) {
+        emoteAutocomplete = document.createElement('div');
+        emoteAutocomplete.classList.add('emote-autocomplete');
+        document.body.appendChild(emoteAutocomplete);
+    }
+    
+    // Get position for dropdown
+    const selection = window.getSelection();
+    if (selection.rangeCount === 0) {
+        hideAutocomplete();
+        return;
+    }
+    
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    
+    // Populate autocomplete
+    emoteAutocomplete.innerHTML = '';
+    filteredEmotes.forEach((code, index) => {
+        const item = document.createElement('div');
+        item.className = 'emote-autocomplete-item';
+        if (index === selectedEmoteIndex) {
+            item.classList.add('selected');
+        }
+        
+        const img = document.createElement('img');
+        img.src = emoteList[code];
+        img.alt = `:${code}:`;
+        
+        const span = document.createElement('span');
+        span.textContent = code;
+        
+        item.appendChild(img);
+        item.appendChild(span);
+        item.addEventListener('mousedown', (e) => {
+            // Prevent default to prevent blur and focus loss
+            e.preventDefault();
+            insertEmoteAtCursor(input, code);
+        });
+        
+        emoteAutocomplete.appendChild(item);
+    });
+    
+    // Position dropdown near cursor
+    const top = rect.bottom + window.scrollY + 5;
+    const left = rect.left + window.scrollX;
+    
+    emoteAutocomplete.style.top = `${top}px`;
+    emoteAutocomplete.style.left = `${left}px`;
+    emoteAutocomplete.style.display = 'block';
+    emoteAutocomplete.style.zIndex = '10000'; // Make sure it's on top
+    
+    autocompleteActive = true;
+    currentEmotePrefix = prefix;
+}
+
+function hideAutocomplete() {
+    if (emoteAutocomplete) {
+        emoteAutocomplete.style.display = 'none';
+    }
+    autocompleteActive = false;
+    selectedEmoteIndex = -1;
+    currentEmotePrefix = '';
+    currentEmoteInfo = null;
+}
+
+function handleEmoteNavigation(e, input) {
+    if (!autocompleteActive) return false;
+    
+    switch (e.key) {
+        case 'ArrowDown':
+            e.preventDefault();
+            selectedEmoteIndex = (selectedEmoteIndex + 1) % filteredEmotes.length;
+            updateSelectedEmote();
+            return true;
+            
+        case 'ArrowUp':
+            e.preventDefault();
+            selectedEmoteIndex = selectedEmoteIndex <= 0 ? 
+                filteredEmotes.length - 1 : selectedEmoteIndex - 1;
+            updateSelectedEmote();
+            return true;
+            
+        case 'Tab':
+        case 'Enter':
+            if (selectedEmoteIndex >= 0 && selectedEmoteIndex < filteredEmotes.length) {
+                e.preventDefault();
+                insertEmoteAtCursor(input, filteredEmotes[selectedEmoteIndex]);
+                return true;
+            }
+            break;
+            
+        case 'Escape':
+            hideAutocomplete();
+            return true;
+    }
+    
+    return false;
+}
+
+function updateSelectedEmote() {
+    if (!emoteAutocomplete) return;
+    
+    const items = emoteAutocomplete.querySelectorAll('.emote-autocomplete-item');
+    items.forEach((item, index) => {
+        if (index === selectedEmoteIndex) {
+            item.classList.add('selected');
+            // Scroll item into view if needed
+            if (item.offsetTop < emoteAutocomplete.scrollTop || 
+                item.offsetTop + item.offsetHeight > emoteAutocomplete.scrollTop + emoteAutocomplete.offsetHeight) {
+                item.scrollIntoView({ block: 'nearest' });
+            }
+        } else {
+            item.classList.remove('selected');
+        }
+    });
+}
+
+// Insert emote at current cursor position
+function insertEmoteAtCursor(input, emoteCode) {
+    // Use either current emote info or find it again
+    const emoteInfo = currentEmoteInfo || findEmoteAtCursor(input);
+    if (!emoteInfo) return;
+    
+    // Save selection
+    const selection = window.getSelection();
+    if (selection.rangeCount === 0) return;
+    
+    const oldRange = selection.getRangeAt(0).cloneRange();
+    
+    // Create a new range for the emote prefix
+    const prefixRange = document.createRange();
+    prefixRange.setStart(emoteInfo.node, emoteInfo.startPos);
+    prefixRange.setEnd(emoteInfo.node, emoteInfo.endPos);
+    
+    // Delete the prefix
+    prefixRange.deleteContents();
+    
+    // Create and insert the emote image
+    const img = document.createElement('img');
+    img.src = emoteList[emoteCode];
+    img.alt = emoteCode;
+    img.title = `:${emoteCode}:`;
+    img.className = 'emote';
+    img.style.display = 'inline-block';
+    img.style.verticalAlign = 'middle';
+    img.style.width = '20px';
+    img.style.height = '20px';
+    img.style.margin = '0 2px';
+    img.dataset.emoteCode = emoteCode;
+    
+    prefixRange.insertNode(img);
+    
+    // Set cursor after the emote
+    try {
+        const newRange = document.createRange();
+        newRange.setStartAfter(img);
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+    } catch (error) {
+        console.error("Error setting cursor after emote:", error);
+        placeCursorAtEnd(input);
+    }
+    
+    // Hide autocomplete
+    hideAutocomplete();
+    
+    // Update the last sent message
+    updateSentMessage(input);
+    
+    // Keep focus on input
+    setTimeout(() => {
+        input.focus();
+    }, 0);
+}
+
+// Update the last sent message with the current content
+function updateSentMessage(input) {
+    try {
+        const plainText = getPlainText(input);
+        const diff = getDiff(lastSentMessage, plainText);
+        if (diff) {
+            socket.emit('chat update', { diff, index: diff.index });
+            lastSentMessage = plainText;
+        }
+    } catch (error) {
+        console.error("Error updating sent message:", error);
+    }
+}
+
+function createEmotesDropdown() {
+    // Find room-type element and replace it
+    const roomTypeEl = document.querySelector('.room-type');
+    if (!roomTypeEl) return;
+    
+    // Create button
+    const button = document.createElement('button');
+    button.classList.add('emotes-button');
+    button.textContent = 'Emoticons';
+    button.style.padding = '5px 10px';
+    button.style.backgroundColor = '#444';
+    button.style.color = 'white';
+    button.style.border = 'none';
+    button.style.borderRadius = '4px';
+    button.style.cursor = 'pointer';
+    
+    // Create dropdown
+    const dropdown = document.createElement('div');
+    dropdown.classList.add('emotes-dropdown');
+    dropdown.style.display = 'none';
+    dropdown.style.position = 'absolute';
+    dropdown.style.backgroundColor = '#333';
+    dropdown.style.border = '1px solid #555';
+    dropdown.style.borderRadius = '4px';
+    dropdown.style.padding = '10px';
+    dropdown.style.zIndex = '1000';
+    dropdown.style.maxWidth = '300px';
+    dropdown.style.maxHeight = '300px';
+    dropdown.style.overflowY = 'auto';
+    dropdown.style.display = 'flex';
+    dropdown.style.flexWrap = 'wrap';
+    dropdown.style.gap = '5px';
+    
+    // Populate dropdown with emotes
+    Object.entries(emoteList).forEach(([code, url]) => {
+        const emoteItem = document.createElement('div');
+        emoteItem.classList.add('emote-item');
+        emoteItem.style.display = 'flex';
+        emoteItem.style.flexDirection = 'column';
+        emoteItem.style.alignItems = 'center';
+        emoteItem.style.padding = '5px';
+        emoteItem.style.cursor = 'pointer';
+        emoteItem.style.borderRadius = '4px';
+        emoteItem.style.backgroundColor = '#444';
+        emoteItem.style.width = '60px';
+        emoteItem.style.height = '60px';
+        
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = code;
+        img.style.width = '30px';
+        img.style.height = '30px';
+        
+        const name = document.createElement('span');
+        name.textContent = code;
+        name.style.fontSize = '10px';
+        name.style.color = 'white';
+        name.style.marginTop = '5px';
+        name.style.textAlign = 'center';
+        name.style.wordBreak = 'break-all';
+        
+        emoteItem.appendChild(img);
+        emoteItem.appendChild(name);
+        
+        // Click handler to insert emote
+        emoteItem.addEventListener('mousedown', (e) => {
+            // Prevent the default action to avoid focus loss
+            e.preventDefault();
+            
+            if (chatInput) {
+                // Insert emote at cursor position
+                const selection = window.getSelection();
+                if (selection.rangeCount > 0) {
+                    // Create and insert the emote image
+                    const img = document.createElement('img');
+                    img.src = emoteList[code];
+                    img.alt = code;
+                    img.title = `:${code}:`;
+                    img.className = 'emote';
+                    img.style.display = 'inline-block';
+                    img.style.verticalAlign = 'middle';
+                    img.style.width = '20px';
+                    img.style.height = '20px';
+                    img.style.margin = '0 2px';
+                    img.dataset.emoteCode = code;
+                    
+                    const range = selection.getRangeAt(0);
+                    range.deleteContents();
+                    range.insertNode(img);
+                    
+                    // Position cursor after image
+                    const newRange = document.createRange();
+                    newRange.setStartAfter(img);
+                    newRange.collapse(true);
+                    selection.removeAllRanges();
+                    selection.addRange(newRange);
+                    
+                    // Update sent message
+                    updateSentMessage(chatInput);
+                } else {
+                    // If no selection, append at the end
+                    const img = document.createElement('img');
+                    img.src = emoteList[code];
+                    img.alt = code;
+                    img.title = `:${code}:`;
+                    img.className = 'emote';
+                    img.style.display = 'inline-block';
+                    img.style.verticalAlign = 'middle';
+                    img.style.width = '20px';
+                    img.style.height = '20px';
+                    img.style.margin = '0 2px';
+                    img.dataset.emoteCode = code;
+                    
+                    chatInput.appendChild(img);
+                    
+                    // Position cursor after image
+                    const range = document.createRange();
+                    range.setStartAfter(img);
+                    range.collapse(true);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    
+                    // Update sent message
+                    updateSentMessage(chatInput);
+                }
+                
+                // Keep focus on input
+                setTimeout(() => {
+                    chatInput.focus();
+                }, 0);
+            }
+            
+            // Hide dropdown after selection
+            dropdown.style.display = 'none';
+        });
+        
+        dropdown.appendChild(emoteItem);
+    });
+    
+    // Toggle dropdown on button click
+    button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (dropdown.style.display === 'none' || dropdown.style.display === '') {
+            dropdown.style.display = 'flex';
+            
+            // Position dropdown below button
+            const rect = button.getBoundingClientRect();
+            dropdown.style.top = `${rect.bottom + window.scrollY + 5}px`;
+            dropdown.style.left = `${rect.left + window.scrollX}px`;
+        } else {
+            dropdown.style.display = 'none';
+        }
+    });
+    
+    // Close dropdown when clicking elsewhere
+    document.addEventListener('click', (e) => {
+        if (!dropdown.contains(e.target) && e.target !== button) {
+            dropdown.style.display = 'none';
+        }
+    });
+    
+    // Replace room-type with button and add dropdown to body
+    roomTypeEl.parentNode.replaceChild(button, roomTypeEl);
+    document.body.appendChild(dropdown);
+}
+
 function playJoinSound() {
   if (soundEnabled) {
     joinSound.play().catch(error => console.error('Error playing join sound:', error));
@@ -220,17 +834,71 @@ function updateVotesUI(votes) {
 
 function updateCurrentMessages(messages) {
   Object.keys(messages).forEach(userId => {
-    const chatInput = document.querySelector(`.chat-row[data-user-id="${userId}"] .chat-input`);
-    if (chatInput) {
-      chatInput.value = messages[userId].slice(0, MAX_MESSAGE_LENGTH);
+    const chatDiv = document.querySelector(`.chat-row[data-user-id="${userId}"] .chat-input`);
+    if (chatDiv) {
+      const messageText = messages[userId].slice(0, MAX_MESSAGE_LENGTH);
+      
+      // For contenteditable, we need to handle rich content
       if (userId === currentUserId) {
-        lastSentMessage = messages[userId];
+        // Save current focus state
+        const isActive = document.activeElement === chatDiv;
+        let cursorPosition = 0;
+        
+        if (isActive) {
+          const selection = window.getSelection();
+          if (selection.rangeCount > 0) {
+            // Save cursor position
+            cursorPosition = getCursorPosition(chatDiv);
+          }
+        }
+        
+        // Clear and set plain text first
+        chatDiv.innerHTML = '';
+        chatDiv.textContent = messageText;
+        
+        // Then replace emotes
+        replaceEmotes(chatDiv);
+        
+        // Update last sent message
+        lastSentMessage = messageText;
+        
+        // Restore cursor position if previously focused
+        if (isActive) {
+          try {
+            setCursorPosition(chatDiv, Math.min(cursorPosition, messageText.length));
+          } catch (e) {
+            console.error("Error restoring cursor:", e);
+            // Place cursor at end as fallback
+            placeCursorAtEnd(chatDiv);
+          }
+        }
+      } else {
+        // For other users just render the message with emotes
+        updateOtherUserMessage(chatDiv, messageText);
       }
     }
   });
 }
 
+// Update message display for other users
+function updateOtherUserMessage(element, message) {
+    if (!element) return;
+    
+    // Clear the element
+    element.innerHTML = '';
+    
+    // Create a text node with the message
+    const textNode = document.createTextNode(message);
+    element.appendChild(textNode);
+    
+    // Replace emotes
+    replaceEmotes(element);
+}
+
 async function initRoom() {
+  // Load emotes first
+  await loadEmotes();
+  
   const urlParams = new URLSearchParams(window.location.search);
   const roomIdFromUrl = urlParams.get('roomId');
   
@@ -312,6 +980,17 @@ socket.on('room joined', (data) => {
     updateCurrentMessages(data.currentMessages);
   }
   updateInviteLink();
+  
+  // Create emotes dropdown
+  createEmotesDropdown();
+  
+  // Focus the input field immediately when joining
+  setTimeout(() => {
+    if (chatInput) {
+      chatInput.focus();
+      placeCursorAtEnd(chatInput);
+    }
+  }, 100);
 });
 
 socket.on('room not found', () => {
@@ -320,25 +999,277 @@ socket.on('room not found', () => {
   });
 });
 
+// Modified user joined handler to avoid disrupting typing
 socket.on('user joined', (data) => {
-  addUserToRoom(data);
-  updateRoomInfo(data);
-  playJoinSound();
+  // Don't rebuild the UI, just add the new user
+  if (!document.querySelector(`.chat-row[data-user-id="${data.id}"]`)) {
+    const chatContainer = document.querySelector('.chat-container');
+    if (chatContainer) {
+      createUserRow(data, chatContainer);
+      adjustLayout();
+      updateRoomInfo(data);
+      playJoinSound();
+      
+      // Make sure our input stays focused
+      if (chatInput) {
+        setTimeout(() => {
+          chatInput.focus();
+        }, 10);
+      }
+    }
+  }
 });
 
+// Modified user left handler to avoid disrupting typing
 socket.on('user left', (userId) => {
-  removeUserFromRoom(userId);
-  playLeaveSound();
+  // Only remove the specific user's row
+  if (userId !== currentUserId) {
+    const userRow = document.querySelector(`.chat-row[data-user-id="${userId}"]`);
+    if (userRow) {
+      userRow.remove();
+      adjustLayout();
+      playLeaveSound();
+      
+      // Make sure our input stays focused
+      if (chatInput) {
+        setTimeout(() => {
+          chatInput.focus();
+        }, 10);
+      }
+    }
+  }
 });
 
+// Modified room update to preserve focus and input
 socket.on('room update', (roomData) => {
   currentRoomLayout = roomData.layout || currentRoomLayout;
   updateRoomInfo(roomData);
-  updateRoomUI(roomData);
+  
+  // Track current focus and input values
+  const activeElement = document.activeElement;
+  const inputValues = new Map();
+  let currentCursorPosition = 0;
+  
+  // Save current state
+  document.querySelectorAll('.chat-row').forEach(row => {
+    const userId = row.dataset.userId;
+    const input = row.querySelector('.chat-input');
+    if (input) {
+      inputValues.set(userId, getPlainText(input));
+      
+      if (activeElement === input) {
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0) {
+          currentCursorPosition = getCursorPosition(input);
+        }
+      }
+    }
+  });
+  
+  // Only update what's necessary
+  const existingUserIds = new Set();
+  document.querySelectorAll('.chat-row').forEach(row => {
+    existingUserIds.add(row.dataset.userId);
+  });
+  
+  // Add missing users
+  if (roomData.users && Array.isArray(roomData.users)) {
+    const chatContainer = document.querySelector('.chat-container');
+    roomData.users.forEach(user => {
+      if (!existingUserIds.has(user.id)) {
+        createUserRow(user, chatContainer);
+      }
+    });
+  }
+  
+  // Remove users no longer in the room
+  const newUserIds = new Set(roomData.users.map(u => u.id));
+  document.querySelectorAll('.chat-row').forEach(row => {
+    const userId = row.dataset.userId;
+    if (!newUserIds.has(userId) && userId !== currentUserId) {
+      row.remove();
+    }
+  });
+  
+  // Restore state
+  inputValues.forEach((value, userId) => {
+    const chatDiv = document.querySelector(`.chat-row[data-user-id="${userId}"] .chat-input`);
+    if (chatDiv) {
+      if (userId === currentUserId) {
+        // Restore content
+        chatDiv.innerHTML = '';
+        chatDiv.textContent = value;
+        replaceEmotes(chatDiv);
+        
+        // Restore focus if needed
+        if (activeElement && activeElement.classList.contains('chat-input') && 
+            activeElement.closest('.chat-row').dataset.userId === userId) {
+          chatDiv.focus();
+          try {
+            setCursorPosition(chatDiv, currentCursorPosition);
+          } catch (e) {
+            placeCursorAtEnd(chatDiv);
+          }
+        }
+      } else {
+        updateOtherUserMessage(chatDiv, value);
+      }
+    }
+  });
+  
   if (roomData.votes) {
     updateVotesUI(roomData.votes);
   }
+  
+  adjustLayout();
 });
+
+// Create a user row without affecting the rest of the UI
+function createUserRow(user, container) {
+  const chatRow = document.createElement('div');
+  chatRow.classList.add('chat-row');
+  if (user.id === currentUserId) {
+    chatRow.classList.add('current-user');
+  }
+  chatRow.dataset.userId = user.id;
+
+  const userInfoSpan = document.createElement('span');
+  userInfoSpan.classList.add('user-info');
+  userInfoSpan.textContent = `${user.username} / ${user.location}`;
+
+  // Mute button
+  const muteButton = document.createElement('button');
+  muteButton.classList.add('mute-button');
+  muteButton.innerHTML = '🔊';
+  muteButton.style.display = 'none';
+  muteButton.addEventListener('click', () => {
+    if (mutedUsers.has(user.id)) {
+      // Unmute
+      mutedUsers.delete(user.id);
+      muteButton.innerHTML = '🔊';
+      muteButton.classList.remove('muted');
+      const chatInput = chatRow.querySelector('.chat-input');
+      if (chatInput) chatInput.style.opacity = '1';
+      const queued = storedMessagesForMutedUsers.get(user.id);
+      if (queued && queued.length) {
+        queued.forEach(data => displayChatMessage(data));
+        storedMessagesForMutedUsers.delete(user.id);
+      }
+    } else {
+      // Mute
+      mutedUsers.add(user.id);
+      muteButton.innerHTML = '🔇';
+      muteButton.classList.add('muted');
+      const chatInput = chatRow.querySelector('.chat-input');
+      if (chatInput) chatInput.style.opacity = '0.3';
+    }
+  });
+
+  // Vote button
+  const voteButton = document.createElement('button');
+  voteButton.classList.add('vote-button');
+  voteButton.innerHTML = '👎 0';
+  voteButton.style.display = 'none';
+  voteButton.addEventListener('click', () => {
+    socket.emit('vote', { targetUserId: user.id });
+  });
+
+  userInfoSpan.appendChild(muteButton);
+  userInfoSpan.appendChild(voteButton);
+
+  // Create chat input wrapper
+  const chatInputWrapper = document.createElement('div');
+  chatInputWrapper.classList.add('chat-input-wrapper');
+  chatInputWrapper.style.position = 'relative';
+  chatInputWrapper.style.width = '100%';
+  chatInputWrapper.style.height = '100%';
+
+  // Create contenteditable div for input
+  const contentEditableDiv = document.createElement('div');
+  contentEditableDiv.classList.add('chat-input');
+  contentEditableDiv.contentEditable = user.id === currentUserId;
+  contentEditableDiv.style.width = '100%';
+  contentEditableDiv.style.height = '100%';
+  contentEditableDiv.style.backgroundColor = 'black';
+  contentEditableDiv.style.color = 'orange';
+  contentEditableDiv.style.overflowX = 'hidden';
+  contentEditableDiv.style.overflowY = 'auto';
+  contentEditableDiv.style.padding = '6px 8px';
+  contentEditableDiv.style.boxSizing = 'border-box';
+  contentEditableDiv.style.outline = 'none';
+  contentEditableDiv.style.whiteSpace = 'pre-wrap';
+  contentEditableDiv.style.wordBreak = 'break-word';
+  contentEditableDiv.style.position = 'absolute';
+  contentEditableDiv.style.top = '0';
+  contentEditableDiv.style.left = '0';
+  contentEditableDiv.style.zIndex = '2';
+  contentEditableDiv.spellcheck = false;
+
+  // Set up for current user
+  if (user.id === currentUserId) {
+    chatInput = contentEditableDiv;
+    
+    // Prevent paste with formatting
+    contentEditableDiv.addEventListener('paste', (e) => {
+      e.preventDefault();
+      
+      // Get plain text from clipboard
+      let text = '';
+      if (e.clipboardData && e.clipboardData.getData) {
+        text = e.clipboardData.getData('text/plain');
+      }
+      
+      // Insert text at cursor position
+      document.execCommand('insertText', false, text);
+    });
+    
+    // Handle input
+    contentEditableDiv.addEventListener('input', (e) => {
+      const emotePrefixInfo = findEmoteAtCursor(contentEditableDiv);
+      if (emotePrefixInfo) {
+        showAutocomplete(contentEditableDiv, emotePrefixInfo.prefix);
+      } else {
+        hideAutocomplete();
+      }
+      
+      // Detect and replace any unprocessed emote codes
+      replaceEmotes(contentEditableDiv);
+      
+      // Update the sent message
+      updateSentMessage(contentEditableDiv);
+    });
+    
+    // Handle keydown for special keys
+    contentEditableDiv.addEventListener('keydown', (e) => {
+      if (handleEmoteNavigation(e, contentEditableDiv)) {
+        return;
+      }
+      
+      // Limited to MAX_MESSAGE_LENGTH characters
+      if (getPlainText(contentEditableDiv).length >= MAX_MESSAGE_LENGTH && 
+          !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+        e.preventDefault();
+        return;
+      }
+    });
+    
+    // Make sure we can type immediately
+    setTimeout(() => {
+      contentEditableDiv.focus();
+    }, 0);
+  }
+
+  // Add to DOM
+  chatInputWrapper.appendChild(contentEditableDiv);
+  chatRow.appendChild(userInfoSpan);
+  chatRow.appendChild(chatInputWrapper);
+  container.appendChild(chatRow);
+
+  adjustVoteButtonVisibility();
+  adjustMuteButtonVisibility();
+  
+  return chatRow;
+}
 
 socket.on('chat update', (data) => {
   displayChatMessage(data);
@@ -346,13 +1277,115 @@ socket.on('chat update', (data) => {
 
 socket.on('offensive word detected', (data) => {
   const { userId, filteredMessage } = data;
-  const chatInput = document.querySelector(`.chat-row[data-user-id="${userId}"] .chat-input`);
-  if (!chatInput) return;
-  chatInput.value = filteredMessage.slice(0, MAX_MESSAGE_LENGTH);
+  const chatDiv = document.querySelector(`.chat-row[data-user-id="${userId}"] .chat-input`);
+  if (!chatDiv) return;
+  
   if (userId === currentUserId) {
+    // Save cursor position and focus state
+    const isActive = document.activeElement === chatDiv;
+    let cursorPosition = 0;
+    
+    if (isActive) {
+      const selection = window.getSelection();
+      if (selection.rangeCount > 0) {
+        cursorPosition = getCursorPosition(chatDiv);
+      }
+    }
+    
+    // Update our own display
+    chatDiv.innerHTML = '';
+    chatDiv.textContent = filteredMessage.slice(0, MAX_MESSAGE_LENGTH);
+    replaceEmotes(chatDiv);
+    
+    // Update last sent message
     lastSentMessage = filteredMessage;
+    
+    // Restore cursor and focus
+    if (isActive) {
+      try {
+        setCursorPosition(chatDiv, Math.min(cursorPosition, filteredMessage.length));
+      } catch (e) {
+        console.error("Error restoring cursor position:", e);
+        placeCursorAtEnd(chatDiv);
+      }
+    }
+  } else {
+    // Update other user's display
+    updateOtherUserMessage(chatDiv, filteredMessage.slice(0, MAX_MESSAGE_LENGTH));
   }
 });
+
+// Get cursor position in contenteditable
+function getCursorPosition(element) {
+    if (!element) return 0;
+    
+    try {
+        const selection = window.getSelection();
+        if (selection.rangeCount === 0) return 0;
+        
+        const range = selection.getRangeAt(0);
+        const preCaretRange = range.cloneRange();
+        preCaretRange.selectNodeContents(element);
+        preCaretRange.setEnd(range.endContainer, range.endOffset);
+        
+        return preCaretRange.toString().length;
+    } catch (error) {
+        console.error("Error getting cursor position:", error);
+        return 0;
+    }
+}
+
+// Set cursor position in contenteditable
+function setCursorPosition(element, position) {
+    if (!element) return false;
+    
+    try {
+        // Get all text nodes
+        const textNodes = [];
+        const walk = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+        while (walk.nextNode()) {
+            textNodes.push(walk.currentNode);
+        }
+        
+        if (textNodes.length === 0) {
+            // If no text nodes, place at beginning
+            const range = document.createRange();
+            range.setStart(element, 0);
+            range.collapse(true);
+            
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            
+            return true;
+        }
+        
+        // Find the right text node
+        let currentPos = 0;
+        for (const node of textNodes) {
+            if (currentPos + node.length >= position) {
+                const range = document.createRange();
+                range.setStart(node, position - currentPos);
+                range.collapse(true);
+                
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+                
+                return true;
+            }
+            currentPos += node.length;
+        }
+        
+        // If we get here, position was beyond text length, so place at end
+        placeCursorAtEnd(element);
+        return false;
+    } catch (error) {
+        console.error("Error setting cursor position:", error);
+        placeCursorAtEnd(element);
+        return false;
+    }
+}
 
 function updateRoomInfo(data) {
   const roomNameElement = document.querySelector('.room-name');
@@ -389,74 +1422,13 @@ function addUserToRoom(user) {
   const chatContainer = document.querySelector('.chat-container');
   if (!chatContainer) return;
 
-  const chatRow = document.createElement('div');
-  chatRow.classList.add('chat-row');
-  if (user.id === currentUserId) {
-    chatRow.classList.add('current-user');
-  }
-  chatRow.dataset.userId = user.id;
-
-  const userInfoSpan = document.createElement('span');
-  userInfoSpan.classList.add('user-info');
-  userInfoSpan.textContent = `${user.username} / ${user.location}`;
-
-  // Mute button
-  const muteButton = document.createElement('button');
-  muteButton.classList.add('mute-button');
-  muteButton.innerHTML = '🔊';
-  muteButton.style.display = 'none';
-  muteButton.addEventListener('click', () => {
-    if (mutedUsers.has(user.id)) {
-      // Unmute
-      mutedUsers.delete(user.id);
-      muteButton.innerHTML = '🔊';
-      muteButton.classList.remove('muted');
-      const chatInput = chatRow.querySelector('.chat-input');
-      chatInput.style.opacity = '1';
-      const queued = storedMessagesForMutedUsers.get(user.id);
-      if (queued && queued.length) {
-        queued.forEach(data => displayChatMessage(data));
-        storedMessagesForMutedUsers.delete(user.id);
-      }
-    } else {
-      // Mute
-      mutedUsers.add(user.id);
-      muteButton.innerHTML = '🔇';
-      muteButton.classList.add('muted');
-      const chatInput = chatRow.querySelector('.chat-input');
-      chatInput.style.opacity = '0.3';
-    }
-  });
-
-  // Vote button
-  const voteButton = document.createElement('button');
-  voteButton.classList.add('vote-button');
-  voteButton.innerHTML = '👎 0';
-  voteButton.style.display = 'none';
-  voteButton.addEventListener('click', () => {
-    socket.emit('vote', { targetUserId: user.id });
-  });
-
-  userInfoSpan.appendChild(muteButton);
-  userInfoSpan.appendChild(voteButton);
-
-  const newChatInput = document.createElement('textarea');
-  newChatInput.classList.add('chat-input');
-  if (user.id === currentUserId) {
-    chatInput = newChatInput;
-  } else {
-    newChatInput.readOnly = true;
-    if (mutedUsers.has(user.id)) {
-      newChatInput.style.opacity = '0.3';
-    }
+  // Check if user already exists
+  if (document.querySelector(`.chat-row[data-user-id="${user.id}"]`)) {
+    return; // Don't add duplicates
   }
 
-  chatRow.appendChild(userInfoSpan);
-  chatRow.appendChild(newChatInput);
-  chatContainer.appendChild(chatRow);
-
-  adjustVoteButtonVisibility();
-  adjustMuteButtonVisibility();
+  createUserRow(user, chatContainer);
+  adjustLayout();
 }
 
 function adjustMuteButtonVisibility() {
@@ -469,7 +1441,7 @@ function adjustMuteButtonVisibility() {
         muteButton.innerHTML = '🔇';
         muteButton.classList.add('muted');
         const chatInput = row.querySelector('.chat-input');
-        chatInput.style.opacity = '0.3';
+        if (chatInput) chatInput.style.opacity = '0.3';
       }
     }
   });
@@ -487,20 +1459,7 @@ function updateRoomUI(roomData) {
   const chatContainer = document.querySelector('.chat-container');
   if (!chatContainer) return;
 
-  const currentInputs = new Map();
-  let focusedUserId = null;
-  
-  document.querySelectorAll('.chat-row').forEach(row => {
-    const userId = row.dataset.userId;
-    const input = row.querySelector('.chat-input');
-    if (input) {
-      currentInputs.set(userId, input.value);
-      if (document.activeElement === input) {
-        focusedUserId = userId;
-      }
-    }
-  });
-
+  // Clear the container first
   while (chatContainer.firstChild) {
     chatContainer.removeChild(chatContainer.firstChild);
   }
@@ -509,23 +1468,19 @@ function updateRoomUI(roomData) {
 
   if (roomData.users && Array.isArray(roomData.users)) {
     roomData.users.forEach(user => {
-      addUserToRoom(user);
-      if (currentInputs.has(user.id)) {
-        const newInput = document.querySelector(`.chat-row[data-user-id="${user.id}"] .chat-input`);
-        if (newInput) {
-          newInput.value = currentInputs.get(user.id);
-          if (user.id === focusedUserId) {
-            newInput.focus();
-          }
-        }
-      }
+      createUserRow(user, chatContainer);
     });
   }
 
   adjustLayout();
-  adjustVoteButtonVisibility();
-  adjustMuteButtonVisibility();
-  updateInviteLink();
+  
+  // Focus the input right away
+  if (chatInput) {
+    setTimeout(() => {
+      chatInput.focus();
+      placeCursorAtEnd(chatInput);
+    }, 0);
+  }
 }
 
 function displayChatMessage(data) {
@@ -537,15 +1492,20 @@ function displayChatMessage(data) {
     return;
   }
 
-  const chatInput = document.querySelector(`.chat-row[data-user-id="${data.userId}"] .chat-input`);
-  if (!chatInput) return;
+  const chatRow = document.querySelector(`.chat-row[data-user-id="${data.userId}"]`);
+  if (!chatRow) return;
+  
+  const chatDiv = chatRow.querySelector('.chat-input');
+  if (!chatDiv) return;
 
+  // Get current plain text
+  let currentText = getPlainText(chatDiv);
+  let newText = '';
+  
   if (data.diff) {
     if (data.diff.type === 'full-replace') {
-      chatInput.value = data.diff.text.slice(0, MAX_MESSAGE_LENGTH);
+      newText = data.diff.text.slice(0, MAX_MESSAGE_LENGTH);
     } else {
-      const currentText = chatInput.value;
-      let newText;
       switch (data.diff.type) {
         case 'add':
           newText = currentText.slice(0, data.diff.index) + data.diff.text + currentText.slice(data.diff.index);
@@ -554,13 +1514,53 @@ function displayChatMessage(data) {
           newText = currentText.slice(0, data.diff.index) + currentText.slice(data.diff.index + data.diff.count);
           break;
         case 'replace':
-          newText = currentText.slice(0, data.diff.index) + data.diff.text + currentText.slice(data.diff.index + data.diff.text.length);
+          newText = currentText.slice(0, data.diff.index) + data.diff.text + 
+                    currentText.slice(data.diff.index + data.diff.text.length);
           break;
       }
-      chatInput.value = newText.slice(0, MAX_MESSAGE_LENGTH);
     }
+  } else if (data.message) {
+    newText = data.message.slice(0, MAX_MESSAGE_LENGTH);
   } else {
-    chatInput.value = data.message.slice(0, MAX_MESSAGE_LENGTH);
+    return;
+  }
+  
+  // Trim to max length
+  newText = newText.slice(0, MAX_MESSAGE_LENGTH);
+  
+  if (data.userId === currentUserId) {
+    // Save cursor position and focus state
+    const isActive = document.activeElement === chatDiv;
+    let cursorPosition = 0;
+    
+    if (isActive) {
+      const selection = window.getSelection();
+      if (selection.rangeCount > 0) {
+        cursorPosition = getCursorPosition(chatDiv);
+      }
+    }
+    
+    // Update our content
+    chatDiv.innerHTML = '';
+    chatDiv.textContent = newText;
+    replaceEmotes(chatDiv);
+    
+    // Restore cursor position
+    if (isActive) {
+      try {
+        setCursorPosition(chatDiv, Math.min(cursorPosition, newText.length));
+      } catch (e) {
+        console.error("Error restoring cursor position:", e);
+        // Fallback to end
+        placeCursorAtEnd(chatDiv);
+      }
+    }
+    
+    // Update last sent message
+    lastSentMessage = newText;
+  } else {
+    // For other users, just update their display
+    updateOtherUserMessage(chatDiv, newText);
   }
 }
 
@@ -571,6 +1571,76 @@ function isMobile() {
 function adjustLayout() {
   const chatContainer = document.querySelector('.chat-container');
   const chatRows = document.querySelectorAll('.chat-row');
+
+  // Save active element before layout changes
+  const activeElement = document.activeElement;
+  let activeUserId = null;
+  
+  if (activeElement && activeElement.classList.contains('chat-input')) {
+    const chatRow = activeElement.closest('.chat-row');
+    if (chatRow) {
+      activeUserId = chatRow.dataset.userId;
+    }
+  }
+
+  // Add CSS styles for emote handling
+  const style = document.createElement('style');
+  style.textContent = `
+    .emote {
+      display: inline-block;
+      vertical-align: middle;
+      width: 20px;
+      height: 20px;
+      margin: 0 2px;
+    }
+    
+    .chat-input {
+      background-color: black;
+      color: orange;
+      outline: none;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    
+    .emote-autocomplete {
+      position: absolute;
+      z-index: 1000;
+      background-color: #333;
+      border: 1px solid #555;
+      border-radius: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+      width: 250px;
+    }
+    
+    .emote-autocomplete-item {
+      display: flex;
+      align-items: center;
+      padding: 6px 10px;
+      cursor: pointer;
+      color: white;
+    }
+    
+    .emote-autocomplete-item.selected,
+    .emote-autocomplete-item:hover {
+      background-color: #444;
+    }
+    
+    .emote-autocomplete-item img {
+      width: 20px;
+      height: 20px;
+      margin-right: 8px;
+    }
+  `;
+  
+  // Remove any previous style with this content
+  const existingStyle = document.querySelector('style[data-emote-styles]');
+  if (existingStyle) {
+    existingStyle.remove();
+  }
+  
+  style.setAttribute('data-emote-styles', 'true');
+  document.head.appendChild(style);
 
   const effectiveLayout = isMobile() ? 'horizontal' : currentRoomLayout;
 
@@ -586,9 +1656,9 @@ function adjustLayout() {
       row.style.minHeight = '100px';
       row.style.width = '100%';
       const userInfo = row.querySelector('.user-info');
-      const chatInput = row.querySelector('.chat-input');
+      const inputWrapper = row.querySelector('.chat-input-wrapper');
       const inputHeight = chatRowHeight - userInfo.offsetHeight - 2;
-      chatInput.style.height = `${inputHeight}px`;
+      inputWrapper.style.height = `${inputHeight}px`;
     });
   } else {
     chatContainer.style.flexDirection = 'row';
@@ -601,9 +1671,19 @@ function adjustLayout() {
       row.style.width = `${chatColumnWidth}px`;
       row.style.height = '100%';
       const userInfo = row.querySelector('.user-info');
-      const chatInput = row.querySelector('.chat-input');
-      chatInput.style.height = `calc(100% - ${userInfo.offsetHeight}px - 2px)`;
+      const inputWrapper = row.querySelector('.chat-input-wrapper');
+      inputWrapper.style.height = `calc(100% - ${userInfo.offsetHeight}px - 2px)`;
     });
+  }
+  
+  // Restore focus if needed
+  if (activeUserId) {
+    const activeInput = document.querySelector(`.chat-row[data-user-id="${activeUserId}"] .chat-input`);
+    if (activeInput) {
+      setTimeout(() => {
+        activeInput.focus();
+      }, 0);
+    }
   }
 }
 
@@ -632,19 +1712,23 @@ function getDiff(oldStr, newStr) {
   return { type: 'full-replace', text: newStr };
 }
 
-document.querySelector('.chat-container').addEventListener('input', (e) => {
-  if (e.target.classList.contains('chat-input') &&
-      e.target.closest('.chat-row').dataset.userId === currentUserId) {
-    const currentMessage = e.target.value;
-    if (currentMessage.length > MAX_MESSAGE_LENGTH) {
-      e.target.value = currentMessage.slice(0, MAX_MESSAGE_LENGTH);
-      return;
-    }
-    const diff = getDiff(lastSentMessage, currentMessage);
-    if (diff) {
-      socket.emit('chat update', { diff, index: diff.index });
-      lastSentMessage = currentMessage;
-    }
+window.addEventListener('load', () => {
+  initRoom();
+  updateDateTime();
+  adjustLayout();
+  updateInviteLink();
+
+  document.getElementById('copyInviteLink').addEventListener('click', copyInviteLink);
+
+  const savedMuteState = localStorage.getItem('soundEnabled');
+  if (savedMuteState !== null) {
+    soundEnabled = JSON.parse(savedMuteState);
+    updateMuteIcon();
+  }
+  muteToggleButton.addEventListener('click', toggleMute);
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', handleViewportChange);
   }
 });
 
@@ -675,26 +1759,6 @@ function updateDateTime() {
   dateTimeElement.querySelector('.time').textContent = formattedTime;
 }
 setInterval(updateDateTime, 1000);
-
-window.addEventListener('load', () => {
-  initRoom();
-  updateDateTime();
-  adjustLayout();
-  updateInviteLink();
-
-  document.getElementById('copyInviteLink').addEventListener('click', copyInviteLink);
-
-  const savedMuteState = localStorage.getItem('soundEnabled');
-  if (savedMuteState !== null) {
-    soundEnabled = JSON.parse(savedMuteState);
-    updateMuteIcon();
-  }
-  muteToggleButton.addEventListener('click', toggleMute);
-
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', handleViewportChange);
-  }
-});
 
 window.addEventListener('resize', adjustLayout);
 window.addEventListener('resize', handleViewportChange);
