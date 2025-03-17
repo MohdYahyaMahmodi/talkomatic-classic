@@ -32,6 +32,7 @@ let selectedEmoteIndex = -1;
 let filteredEmotes = [];
 let currentEmotePrefix = '';
 let currentEmoteInfo = null;
+let lastClickedEmoteCode = null; // Track last clicked emote for better insertion
 
 // Modal functionality
 const customModal = document.getElementById('customModal');
@@ -346,7 +347,7 @@ function placeCursorAtEnd(element) {
     }
 }
 
-// FIXED: Find emote code at cursor - improved to be more reliable
+// IMPROVED: Find emote code at cursor - now handles more edge cases
 function findEmoteAtCursor() {
     // Only look in the current user's input
     if (!chatInput || document.activeElement !== chatInput) return null;
@@ -406,6 +407,13 @@ function showAutocomplete(prefix) {
     
     if (!emoteAutocomplete) {
         emoteAutocomplete = document.getElementById('emoteAutocomplete');
+        if (!emoteAutocomplete) {
+            // Create autocomplete element if it doesn't exist
+            emoteAutocomplete = document.createElement('div');
+            emoteAutocomplete.id = 'emoteAutocomplete';
+            emoteAutocomplete.className = 'emote-autocomplete';
+            document.body.appendChild(emoteAutocomplete);
+        }
     }
     
     // Get position for dropdown
@@ -467,11 +475,22 @@ function showAutocomplete(prefix) {
         item.appendChild(img);
         item.appendChild(span);
         
-        // FIXED: Click handler to insert emote
+        // FIXED: Improved click handler to fix emote insertion issues
         item.addEventListener('mousedown', (e) => {
             // Prevent default to prevent blur and focus loss
             e.preventDefault();
-            insertEmoteFromAutocomplete(code);
+            e.stopPropagation();
+            
+            // Store the emote code and emote info for insertion
+            lastClickedEmoteCode = code;
+            
+            // Capture emote info now before focus changes
+            const capturedEmoteInfo = {...currentEmoteInfo};
+            
+            // Use setTimeout to ensure this runs after the current event cycle
+            setTimeout(() => {
+                insertEmoteFromAutocompleteClick(code, capturedEmoteInfo);
+            }, 0);
         });
         
         item.addEventListener('mouseover', () => {
@@ -510,7 +529,7 @@ function hideAutocomplete() {
     autocompleteActive = false;
     selectedEmoteIndex = -1;
     currentEmotePrefix = '';
-    currentEmoteInfo = null;
+    // Don't clear currentEmoteInfo here, it's needed for handling clicks
 }
 
 // Improved emote navigation with Tab selecting first emote by default
@@ -573,7 +592,81 @@ function updateSelectedEmote() {
     });
 }
 
-// FIXED: Function specifically for inserting emotes from autocomplete
+// NEW: Separate function specifically for handling click-based emoticon insertion
+function insertEmoteFromAutocompleteClick(emoteCode, capturedEmoteInfo) {
+    // Make sure we have the chatInput reference
+    if (!chatInput) return;
+    
+    // Force focus on chat input to ensure we're inserting in the right place
+    chatInput.focus();
+    
+    // Create the emote image HTML
+    const emoteHtml = `<img src="${emoteList[emoteCode]}" 
+        alt=":${emoteCode}:" 
+        title=":${emoteCode}:" 
+        class="emote" 
+        style="display:inline-block;vertical-align:middle;width:20px;height:20px;margin:0 2px;" 
+        data-emote-code="${emoteCode}">`;
+    
+    try {
+        // Use the captured emote info to replace the typed prefix
+        if (capturedEmoteInfo && capturedEmoteInfo.node && capturedEmoteInfo.node.parentNode) {
+            const selection = window.getSelection();
+            
+            // Create a new range for replacing the emote text
+            const prefixRange = document.createRange();
+            prefixRange.setStart(capturedEmoteInfo.node, capturedEmoteInfo.startPos);
+            prefixRange.setEnd(capturedEmoteInfo.node, capturedEmoteInfo.endPos);
+            
+            // Select this range
+            selection.removeAllRanges();
+            selection.addRange(prefixRange);
+            
+            // Delete the selection and insert the emote
+            document.execCommand('insertHTML', false, emoteHtml);
+        } else {
+            // Just insert at the current cursor position
+            document.execCommand('insertHTML', false, emoteHtml);
+        }
+        
+        // Hide autocomplete
+        hideAutocomplete();
+        
+        // Update the last sent message
+        updateSentMessage();
+        
+        // Reset current emote info after successful insertion
+        currentEmoteInfo = null;
+        
+        // Give time for the DOM to update, then place cursor after the inserted emote
+        setTimeout(() => {
+            chatInput.focus();
+            // Find the emote at cursor after insertion, allowing for future emotes
+            const newEmoteInfo = findEmoteAtCursor();
+            if (!newEmoteInfo) {
+                // If no emote at cursor, show autocomplete again if user starts typing an emote
+                chatInput.addEventListener('input', function checkForEmote() {
+                    const checkEmoteInfo = findEmoteAtCursor();
+                    if (checkEmoteInfo) {
+                        showAutocomplete(checkEmoteInfo.prefix);
+                        chatInput.removeEventListener('input', checkForEmote);
+                    }
+                }, { once: true });
+            }
+        }, 10);
+    } catch (error) {
+        console.error("Error inserting emote:", error);
+        // Try a simple insertion as fallback
+        try {
+            document.execCommand('insertHTML', false, emoteHtml);
+            updateSentMessage();
+        } catch (e) {
+            console.error("Fallback insertion failed:", e);
+        }
+    }
+}
+
+// FIXED: Function specifically for inserting emotes from autocomplete via keyboard
 function insertEmoteFromAutocomplete(emoteCode) {
     // Make sure we have the chatInput reference
     if (!chatInput) return;
@@ -591,19 +684,25 @@ function insertEmoteFromAutocomplete(emoteCode) {
     
     // Use the current emote info to replace the typed prefix
     if (currentEmoteInfo) {
-        const selection = window.getSelection();
-        
-        // Create a new range for replacing the emote text
-        const prefixRange = document.createRange();
-        prefixRange.setStart(currentEmoteInfo.node, currentEmoteInfo.startPos);
-        prefixRange.setEnd(currentEmoteInfo.node, currentEmoteInfo.endPos);
-        
-        // Select this range
-        selection.removeAllRanges();
-        selection.addRange(prefixRange);
-        
-        // Delete the selection and insert the emote
-        document.execCommand('insertHTML', false, emoteHtml);
+        try {
+            const selection = window.getSelection();
+            
+            // Create a new range for replacing the emote text
+            const prefixRange = document.createRange();
+            prefixRange.setStart(currentEmoteInfo.node, currentEmoteInfo.startPos);
+            prefixRange.setEnd(currentEmoteInfo.node, currentEmoteInfo.endPos);
+            
+            // Select this range
+            selection.removeAllRanges();
+            selection.addRange(prefixRange);
+            
+            // Delete the selection and insert the emote
+            document.execCommand('insertHTML', false, emoteHtml);
+        } catch (error) {
+            console.error("Error inserting emote with range:", error);
+            // Fallback to inserting at current position
+            document.execCommand('insertHTML', false, emoteHtml);
+        }
     } else {
         // Just insert at the current cursor position
         document.execCommand('insertHTML', false, emoteHtml);
@@ -615,10 +714,13 @@ function insertEmoteFromAutocomplete(emoteCode) {
     // Update the last sent message
     updateSentMessage();
     
+    // Reset current emote info after successful insertion
+    currentEmoteInfo = null;
+    
     // Keep focus on input and place cursor after the inserted emote
     setTimeout(() => {
         chatInput.focus();
-    }, 0);
+    }, 10);
 }
 
 // FIXED: Generic function to insert emote at cursor (for dropdown menu)
@@ -646,7 +748,7 @@ function insertEmoteAtCursor(emoteCode) {
     // Keep focus on input and place cursor after the inserted emote
     setTimeout(() => {
         chatInput.focus();
-    }, 0);
+    }, 10);
 }
 
 // Update the last sent message with the current content
@@ -731,20 +833,26 @@ function createEmotesDropdown() {
         emoteItem.appendChild(img);
         emoteItem.appendChild(name);
         
-        // FIXED: Click handler for dropdown emoticon selection
+        // FIXED: Improved click handler for dropdown emoticon selection
         emoteItem.addEventListener('mousedown', (e) => {
             // Prevent the default action to avoid focus loss
             e.preventDefault();
             e.stopPropagation();
             
+            // Store the code for insertion
+            const emoteCodeToInsert = code;
+            
             // Close the dropdown
             dropdown.style.display = 'none';
             
-            // Insert the emoticon (ensure chatInput is focused first)
-            if (chatInput) {
-                chatInput.focus();
-                insertEmoteAtCursor(code);
-            }
+            // Insert the emoticon with a small delay to ensure focus handling works correctly
+            setTimeout(() => {
+                // Insert the emoticon (ensure chatInput is focused first)
+                if (chatInput) {
+                    chatInput.focus();
+                    insertEmoteAtCursor(emoteCodeToInsert);
+                }
+            }, 0);
         });
         
         dropdown.appendChild(emoteItem);
@@ -1259,6 +1367,7 @@ function createUserRow(user, container) {
     contentEditableDiv.addEventListener('input', (e) => {
       const emotePrefixInfo = findEmoteAtCursor();
       if (emotePrefixInfo) {
+        currentEmoteInfo = emotePrefixInfo; // Save this for later use
         showAutocomplete(emotePrefixInfo.prefix);
       } else {
         hideAutocomplete();
@@ -1906,6 +2015,16 @@ window.addEventListener('load', () => {
 
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', handleViewportChange);
+  }
+  
+  // Create autocomplete element if it doesn't exist yet
+  if (!document.getElementById('emoteAutocomplete')) {
+    const emoteAutocompleteEl = document.createElement('div');
+    emoteAutocompleteEl.id = 'emoteAutocomplete';
+    emoteAutocompleteEl.className = 'emote-autocomplete';
+    emoteAutocompleteEl.style.display = 'none';
+    document.body.appendChild(emoteAutocompleteEl);
+    emoteAutocomplete = emoteAutocompleteEl;
   }
 });
 
