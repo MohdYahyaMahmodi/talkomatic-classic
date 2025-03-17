@@ -11,44 +11,123 @@
         /* Emote system styles */
         .emote-autocomplete {
             position: absolute;
-            max-height: 200px;
-            overflow-y: auto;
-            background: white;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             z-index: 1000;
+            background-color: #333;
+            border: 1px solid #555;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            width: 200px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.3);
             display: none;
-            width: 250px;
+        }
+        
+        .emote-autocomplete-header {
+            padding: 5px 10px;
+            font-weight: bold;
+            border-bottom: 1px solid #555;
+            color: #eee;
+        }
+        
+        .emote-autocomplete-list {
+            max-height: 250px;
+            overflow-y: auto;
         }
         
         .emote-autocomplete-item {
-            padding: 5px 10px;
-            cursor: pointer;
             display: flex;
             align-items: center;
+            padding: 8px 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #444;
+            color: #fff;
         }
         
+        .emote-autocomplete-item.selected,
         .emote-autocomplete-item:hover {
-            background-color: #f0f0f0;
+            background-color: #555;
         }
         
         .emote-autocomplete-item img {
             width: 20px;
             height: 20px;
-            margin-right: 8px;
+            margin-right: 10px;
+            vertical-align: middle;
         }
         
-        .emote-autocomplete-item.selected {
-            background-color: #e0e0e0;
+        /* Emoticon button */
+        .emotes-button {
+            padding: 5px 10px;
+            background-color: #444;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
         }
         
-        /* Override textarea styles */
+        /* Emoticons dropdown */
+        .emotes-dropdown {
+            background-color: #333;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 10px;
+            z-index: 1000;
+            max-width: 300px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        
+        .emote-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 5px;
+            cursor: pointer;
+            border-radius: 4px;
+            background-color: #444;
+            width: 60px;
+            height: 60px;
+            transition: background-color 0.2s ease;
+        }
+        
+        .emote-item:hover {
+            background-color: #555;
+        }
+        
+        .emote-item img {
+            width: 30px;
+            height: 30px;
+        }
+        
+        .emote-item span {
+            font-size: 10px;
+            color: white;
+            margin-top: 5px;
+            text-align: center;
+            word-break: break-all;
+        }
+        
+        /* Chat input styling */
         .chat-input {
             background-color: black !important;
             color: orange !important;
             overflow-x: hidden !important;
             overflow-y: auto !important;
+            outline: none !important;
+            white-space: pre-wrap !important;
+            word-break: break-word !important;
+        }
+        
+        /* Emoticon styling */
+        .emote {
+            display: inline-block;
+            vertical-align: middle;
+            width: 20px;
+            height: 20px;
+            margin: 0 2px;
         }
     </style>
 </head>
@@ -77,7 +156,7 @@
         </nav>
 
         <div class="second-navbar">
-            <div class="room-type">*</div>
+            <div class="room-type">Public Room</div>
             <div class="room-name">*</div>
             <div class="room-id">*</div>
         </div>
@@ -100,7 +179,7 @@
     </div>
 
     <!-- Emote autocomplete container -->
-    <div class="emote-autocomplete" id="emoteAutocomplete"></div>
+    <div id="emoteAutocomplete" class="emote-autocomplete"></div>
 
     <!-- Custom Modal -->
     <div id="customModal" class="custom-modal">
@@ -123,6 +202,6 @@
     <audio id="leaveSound" src="audio/ding.mp3"></audio>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="js/room-client.js?v=1.0.8"></script>
+    <script src="js/room-client.js?v=1.1.1"></script>
 </body>
 </html>

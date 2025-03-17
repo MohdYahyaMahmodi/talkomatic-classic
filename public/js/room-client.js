@@ -1,5 +1,5 @@
 // ============================================================================
-// room-client.js
+// room-client.js - Improved emote handling with bugfixes
 // ============================================================================
 
 const socket = io(); // Initialize Socket.IO connection
@@ -11,7 +11,7 @@ let currentUserId = '';
 let currentRoomLayout = 'horizontal'; 
 let lastSentMessage = '';
 let currentRoomName = '';
-let chatInput = null;
+let chatInput = null; // Will hold reference to current user's input div
 const mutedUsers = new Set();
 const storedMessagesForMutedUsers = new Map();
 
@@ -61,6 +61,7 @@ async function loadEmotes() {
   }
 }
 
+// Modal functionality
 function showModal(title, message, options = {}) {
     modalTitle.textContent = title;
     modalMessage.textContent = message;
@@ -198,9 +199,9 @@ modalInput.addEventListener('keydown', (e) => {
     }
 });
 
-// === Utility Functions for ContentEditable Handling ===
+// === Improved Utility Functions for ContentEditable Handling ===
 
-// Get plain text from contenteditable
+// Get plain text from contenteditable - properly handles emoticons for copying
 function getPlainText(element) {
     if (!element) return '';
     
@@ -211,6 +212,7 @@ function getPlainText(element) {
             text += node.textContent;
         } else if (node.nodeType === Node.ELEMENT_NODE) {
             if (node.nodeName === 'IMG' && node.dataset.emoteCode) {
+                // Always include the full :code: format for copy/paste
                 text += `:${node.dataset.emoteCode}:`;
             } else if (node.nodeName === 'BR') {
                 text += '\n';
@@ -239,125 +241,93 @@ function getPlainText(element) {
     }
 }
 
-// Replace emote codes with image elements
-// Replace emote codes with image elements
+// Improved emote replacement with better cursor handling
 function replaceEmotes(element) {
   if (!element) return;
   
-  // Save selection and cursor position relative to the end
-  const selection = window.getSelection();
-  let cursorPosition = null;
-  let cursorOffset = 0;
+  // Get current text content and check if there are any potential emotes
+  const text = getPlainText(element);
   
-  if (selection.rangeCount > 0) {
-      const range = selection.getRangeAt(0);
-      
-      // If the selection is in the element we're modifying
-      if (element.contains(range.startContainer)) {
-          // Calculate offset from the end of the content
-          const tempRange = document.createRange();
-          tempRange.selectNodeContents(element);
-          tempRange.setEnd(range.startContainer, range.startOffset);
-          
-          // Get the length of content before the cursor
-          const beforeCursorText = tempRange.toString();
-          cursorPosition = beforeCursorText.length;
-          
-          // Calculate the offset from the end
-          cursorOffset = getPlainText(element).length - cursorPosition;
-      }
-  }
+  // If no colon, no emotes to process
+  if (!text.includes(':')) return;
   
-  const textNodes = [];
-  const walk = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
-  
-  while (walk.nextNode()) {
-      textNodes.push(walk.currentNode);
-  }
-  
+  // Regular expression to find emote patterns
   const emoteRegex = /:([\w]+):/g;
-  let hasReplacements = false;
   
-  // Process each text node
-  for (const node of textNodes) {
-      const text = node.textContent;
-      let match;
-      let lastIndex = 0;
-      let matches = [];
-      
-      // Find all emote matches
-      emoteRegex.lastIndex = 0; // Reset regex state
-      while ((match = emoteRegex.exec(text)) !== null) {
-          const emoteCode = match[1];
-          if (emoteList[emoteCode]) {
-              matches.push({
-                  start: match.index,
-                  end: match.index + match[0].length,
-                  code: emoteCode,
-                  fullMatch: match[0]
-              });
-          }
-      }
-      
-      // Replace emotes if found, in reverse order to not mess up indices
-      if (matches.length > 0) {
-          hasReplacements = true;
-          const fragment = document.createDocumentFragment();
-          let lastIndex = 0;
+  // Check if there are any emote matches
+  if (!emoteRegex.test(text)) return;
+  
+  // Reset regex state
+  emoteRegex.lastIndex = 0;
+  
+  // Save selection state before modification
+  const selection = window.getSelection();
+  let cursorPosition = 0;
+  
+  // Only save if focused on this element
+  const isActive = document.activeElement === element;
+  if (isActive && selection.rangeCount > 0) {
+      cursorPosition = getCursorPosition(element);
+  }
+  
+  // Process the text, replacing emotes with images
+  let resultHTML = '';
+  let lastIndex = 0;
+  let match;
+  let firstEmoteFound = false;
+  let firstEmoteLength = 0;
+  let hasProcessedEmotes = false;
+  
+  while ((match = emoteRegex.exec(text)) !== null) {
+      const emoteCode = match[1];
+      // Only replace if we have this emote
+      if (emoteList[emoteCode]) {
+          hasProcessedEmotes = true;
           
-          // Sort matches by position to process them in order
-          matches.sort((a, b) => a.start - b.start);
-          
-          for (const match of matches) {
-              // Add text before the emote
-              if (match.start > lastIndex) {
-                  fragment.appendChild(document.createTextNode(text.substring(lastIndex, match.start)));
-              }
-              
-              // Create and add the emote image
-              const img = document.createElement('img');
-              img.src = emoteList[match.code];
-              img.alt = match.code;
-              img.title = match.fullMatch;
-              img.className = 'emote';
-              img.style.display = 'inline-block';
-              img.style.verticalAlign = 'middle';
-              img.style.width = '20px';
-              img.style.height = '20px';
-              img.style.margin = '0 2px';
-              img.dataset.emoteCode = match.code;
-              
-              fragment.appendChild(img);
-              lastIndex = match.end;
+          // Track if this is the first emote found (for cursor positioning)
+          if (!firstEmoteFound) {
+              firstEmoteFound = true;
+              firstEmoteLength = match[0].length;
           }
           
-          // Add any remaining text
-          if (lastIndex < text.length) {
-              fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
-          }
+          // Add text before the emote
+          resultHTML += text.substring(lastIndex, match.index);
           
-          // Replace the original text node
-          if (node.parentNode) {
-              node.parentNode.replaceChild(fragment, node);
-          }
+          // Add the image HTML
+          resultHTML += `<img src="${emoteList[emoteCode]}" 
+              alt="${emoteCode}" 
+              title=":${emoteCode}:" 
+              class="emote" 
+              style="display:inline-block;vertical-align:middle;width:20px;height:20px;margin:0 2px;" 
+              data-emote-code="${emoteCode}">`;
+          
+          lastIndex = match.index + match[0].length;
       }
   }
   
-  // Restore cursor position if there were replacements
-  if (hasReplacements && cursorPosition !== null && element.isContentEditable) {
-      try {
-          const newLength = getPlainText(element).length;
-          const newPosition = Math.max(0, newLength - cursorOffset);
-          
-          // Set cursor to the new position
-          setCursorPosition(element, newPosition);
-      } catch (e) {
-          console.error('Error restoring cursor position:', e);
-          // If all else fails, place cursor at end
-          placeCursorAtEnd(element);
+  // Add any remaining text
+  if (lastIndex < text.length) {
+      resultHTML += text.substring(lastIndex);
+  }
+  
+  // Only update if something changed
+  if (hasProcessedEmotes) {
+      // Update the element with the new HTML
+      element.innerHTML = resultHTML;
+      
+      // Handle cursor position
+      if (isActive) {
+          try {
+              // Try to restore cursor position
+              setCursorPosition(element, cursorPosition);
+          } catch (e) {
+              console.error('Error restoring cursor position:', e);
+              placeCursorAtEnd(element);
+          }
       }
   }
 }
+
 // Set cursor position at the end of contenteditable
 function placeCursorAtEnd(element) {
     if (!element) return;
@@ -376,8 +346,11 @@ function placeCursorAtEnd(element) {
     }
 }
 
-// Find emote code at cursor
-function findEmoteAtCursor(element) {
+// Find emote code at cursor - improved to be more reliable
+function findEmoteAtCursor() {
+    // Only look in the current user's input
+    if (!chatInput || document.activeElement !== chatInput) return null;
+    
     const selection = window.getSelection();
     if (selection.rangeCount === 0) return null;
     
@@ -411,8 +384,8 @@ function findEmoteAtCursor(element) {
     return null;
 }
 
-// Autocomplete functions
-function showAutocomplete(input, prefix) {
+// Improved autocomplete functions with better styling
+function showAutocomplete(prefix) {
     if (!prefix || prefix.length < 1) {
         hideAutocomplete();
         return;
@@ -429,12 +402,10 @@ function showAutocomplete(input, prefix) {
     }
     
     // Save current emote info for when user clicks on menu
-    currentEmoteInfo = findEmoteAtCursor(input);
+    currentEmoteInfo = findEmoteAtCursor();
     
     if (!emoteAutocomplete) {
-        emoteAutocomplete = document.createElement('div');
-        emoteAutocomplete.classList.add('emote-autocomplete');
-        document.body.appendChild(emoteAutocomplete);
+        emoteAutocomplete = document.getElementById('emoteAutocomplete');
     }
     
     // Get position for dropdown
@@ -447,32 +418,70 @@ function showAutocomplete(input, prefix) {
     const range = selection.getRangeAt(0);
     const rect = range.getBoundingClientRect();
     
-    // Populate autocomplete
+    // Populate autocomplete with improved styling
     emoteAutocomplete.innerHTML = '';
+    
+    // Add a header
+    const header = document.createElement('div');
+    header.className = 'emote-autocomplete-header';
+    header.textContent = 'Emoticons';
+    header.style.padding = '5px 10px';
+    header.style.fontWeight = 'bold';
+    header.style.borderBottom = '1px solid #555';
+    header.style.color = '#eee';
+    emoteAutocomplete.appendChild(header);
+    
+    // Add a container for the list
+    const listContainer = document.createElement('div');
+    listContainer.className = 'emote-autocomplete-list';
+    listContainer.style.maxHeight = '250px';
+    listContainer.style.overflowY = 'auto';
+    
     filteredEmotes.forEach((code, index) => {
         const item = document.createElement('div');
         item.className = 'emote-autocomplete-item';
+        item.style.display = 'flex';
+        item.style.alignItems = 'center';
+        item.style.padding = '8px 10px';
+        item.style.cursor = 'pointer';
+        item.style.borderBottom = '1px solid #444';
+        item.style.color = '#fff';
+        
         if (index === selectedEmoteIndex) {
             item.classList.add('selected');
+            item.style.backgroundColor = '#555';
         }
         
         const img = document.createElement('img');
         img.src = emoteList[code];
         img.alt = `:${code}:`;
+        img.style.width = '20px';
+        img.style.height = '20px';
+        img.style.marginRight = '10px';
+        img.style.verticalAlign = 'middle';
         
         const span = document.createElement('span');
         span.textContent = code;
+        span.style.fontFamily = 'monospace';
         
         item.appendChild(img);
         item.appendChild(span);
+        
         item.addEventListener('mousedown', (e) => {
             // Prevent default to prevent blur and focus loss
             e.preventDefault();
-            insertEmoteAtCursor(input, code);
+            insertEmoteAtCursor(code);
         });
         
-        emoteAutocomplete.appendChild(item);
+        item.addEventListener('mouseover', () => {
+            selectedEmoteIndex = index;
+            updateSelectedEmote();
+        });
+        
+        listContainer.appendChild(item);
     });
+    
+    emoteAutocomplete.appendChild(listContainer);
     
     // Position dropdown near cursor
     const top = rect.bottom + window.scrollY + 5;
@@ -485,6 +494,12 @@ function showAutocomplete(input, prefix) {
     
     autocompleteActive = true;
     currentEmotePrefix = prefix;
+    
+    // Auto-select first item by default
+    if (filteredEmotes.length > 0 && selectedEmoteIndex < 0) {
+        selectedEmoteIndex = 0;
+        updateSelectedEmote();
+    }
 }
 
 function hideAutocomplete() {
@@ -497,7 +512,8 @@ function hideAutocomplete() {
     currentEmoteInfo = null;
 }
 
-function handleEmoteNavigation(e, input) {
+// Improved emote navigation with Tab selecting first emote by default
+function handleEmoteNavigation(e) {
     if (!autocompleteActive) return false;
     
     switch (e.key) {
@@ -516,9 +532,14 @@ function handleEmoteNavigation(e, input) {
             
         case 'Tab':
         case 'Enter':
+            e.preventDefault();
+            // If no emote is selected, select the first one
+            if (selectedEmoteIndex < 0 && filteredEmotes.length > 0) {
+                selectedEmoteIndex = 0;
+            }
+            
             if (selectedEmoteIndex >= 0 && selectedEmoteIndex < filteredEmotes.length) {
-                e.preventDefault();
-                insertEmoteAtCursor(input, filteredEmotes[selectedEmoteIndex]);
+                insertEmoteAtCursor(filteredEmotes[selectedEmoteIndex]);
                 return true;
             }
             break;
@@ -538,80 +559,97 @@ function updateSelectedEmote() {
     items.forEach((item, index) => {
         if (index === selectedEmoteIndex) {
             item.classList.add('selected');
+            item.style.backgroundColor = '#555';
             // Scroll item into view if needed
-            if (item.offsetTop < emoteAutocomplete.scrollTop || 
-                item.offsetTop + item.offsetHeight > emoteAutocomplete.scrollTop + emoteAutocomplete.offsetHeight) {
+            if (item.offsetTop < item.parentNode.scrollTop || 
+                item.offsetTop + item.offsetHeight > item.parentNode.scrollTop + item.parentNode.offsetHeight) {
                 item.scrollIntoView({ block: 'nearest' });
             }
         } else {
             item.classList.remove('selected');
+            item.style.backgroundColor = '';
         }
     });
 }
 
-// Insert emote at current cursor position
-function insertEmoteAtCursor(input, emoteCode) {
-    // Use either current emote info or find it again
-    const emoteInfo = currentEmoteInfo || findEmoteAtCursor(input);
-    if (!emoteInfo) return;
+// IMPROVED: Fixed insert emote at cursor function
+function insertEmoteAtCursor(emoteCode) {
+    // Make sure we have the chatInput reference and it's in focus
+    if (!chatInput) return;
     
-    // Save selection
+    // Force focus on chat input to ensure we're inserting in the right place
+    chatInput.focus();
+    
+    // Use the current emote info if available, or find it again
+    const emoteInfo = currentEmoteInfo || findEmoteAtCursor();
+    
+    // Insert the emote
     const selection = window.getSelection();
-    if (selection.rangeCount === 0) return;
+    if (selection.rangeCount === 0) {
+        // If no selection, just append at the end
+        placeCursorAtEnd(chatInput);
+    }
     
-    const oldRange = selection.getRangeAt(0).cloneRange();
-    
-    // Create a new range for the emote prefix
-    const prefixRange = document.createRange();
-    prefixRange.setStart(emoteInfo.node, emoteInfo.startPos);
-    prefixRange.setEnd(emoteInfo.node, emoteInfo.endPos);
-    
-    // Delete the prefix
-    prefixRange.deleteContents();
-    
-    // Create and insert the emote image
-    const img = document.createElement('img');
-    img.src = emoteList[emoteCode];
-    img.alt = emoteCode;
-    img.title = `:${emoteCode}:`;
-    img.className = 'emote';
-    img.style.display = 'inline-block';
-    img.style.verticalAlign = 'middle';
-    img.style.width = '20px';
-    img.style.height = '20px';
-    img.style.margin = '0 2px';
-    img.dataset.emoteCode = emoteCode;
-    
-    prefixRange.insertNode(img);
-    
-    // Set cursor after the emote
-    try {
+    // Check if we're in the middle of typing an emote code
+    if (emoteInfo) {
+        // Create a range for the prefix including the colon
+        const prefixRange = document.createRange();
+        prefixRange.setStart(emoteInfo.node, emoteInfo.startPos);
+        prefixRange.setEnd(emoteInfo.node, emoteInfo.endPos);
+        
+        // Delete the prefix
+        prefixRange.deleteContents();
+        
+        // Create and insert the emote image
+        const img = document.createElement('img');
+        img.src = emoteList[emoteCode];
+        img.alt = emoteCode;
+        img.title = `:${emoteCode}:`;
+        img.className = 'emote';
+        img.style.display = 'inline-block';
+        img.style.verticalAlign = 'middle';
+        img.style.width = '20px';
+        img.style.height = '20px';
+        img.style.margin = '0 2px';
+        img.dataset.emoteCode = emoteCode;
+        
+        prefixRange.insertNode(img);
+        
+        // Set cursor after the emote
         const newRange = document.createRange();
         newRange.setStartAfter(img);
         newRange.collapse(true);
         selection.removeAllRanges();
         selection.addRange(newRange);
-    } catch (error) {
-        console.error("Error setting cursor after emote:", error);
-        placeCursorAtEnd(input);
+    } else {
+        // Just insert at the current cursor position
+        document.execCommand('insertHTML', false, 
+            `<img src="${emoteList[emoteCode]}" 
+                alt="${emoteCode}" 
+                title=":${emoteCode}:" 
+                class="emote" 
+                style="display:inline-block;vertical-align:middle;width:20px;height:20px;margin:0 2px;" 
+                data-emote-code="${emoteCode}">`);
     }
     
     // Hide autocomplete
     hideAutocomplete();
     
     // Update the last sent message
-    updateSentMessage(input);
+    updateSentMessage();
     
     // Keep focus on input
     setTimeout(() => {
-        input.focus();
+        chatInput.focus();
     }, 0);
 }
 
 // Update the last sent message with the current content
-function updateSentMessage(input) {
+function updateSentMessage() {
     try {
-        const plainText = getPlainText(input);
+        if (!chatInput) return;
+        
+        const plainText = getPlainText(chatInput);
         const diff = getDiff(lastSentMessage, plainText);
         if (diff) {
             socket.emit('chat update', { diff, index: diff.index });
@@ -622,13 +660,15 @@ function updateSentMessage(input) {
     }
 }
 
+// IMPROVED: Create emoticons dropdown button that replaces room-type
 function createEmotesDropdown() {
-    // Find room-type element and replace it
+    // Find room-type element
     const roomTypeEl = document.querySelector('.room-type');
     if (!roomTypeEl) return;
     
     // Create button
     const button = document.createElement('button');
+    button.id = 'emotesButton';
     button.classList.add('emotes-button');
     button.textContent = 'Emoticons';
     button.style.padding = '5px 10px';
@@ -640,6 +680,7 @@ function createEmotesDropdown() {
     
     // Create dropdown
     const dropdown = document.createElement('div');
+    dropdown.id = 'emotesDropdown';
     dropdown.classList.add('emotes-dropdown');
     dropdown.style.display = 'none';
     dropdown.style.position = 'absolute';
@@ -651,7 +692,6 @@ function createEmotesDropdown() {
     dropdown.style.maxWidth = '300px';
     dropdown.style.maxHeight = '300px';
     dropdown.style.overflowY = 'auto';
-    dropdown.style.display = 'flex';
     dropdown.style.flexWrap = 'wrap';
     dropdown.style.gap = '5px';
     
@@ -686,13 +726,16 @@ function createEmotesDropdown() {
         emoteItem.appendChild(img);
         emoteItem.appendChild(name);
         
-        // Click handler to insert emote
+        // IMPROVED: Click handler to insert emote directly to chat input
         emoteItem.addEventListener('mousedown', (e) => {
             // Prevent the default action to avoid focus loss
             e.preventDefault();
             
             if (chatInput) {
-                // Insert emote at cursor position
+                // First make sure focus is on chatInput
+                chatInput.focus();
+                
+                // Insert emote at cursor position or at end if no selection
                 const selection = window.getSelection();
                 if (selection.rangeCount > 0) {
                     // Create and insert the emote image
@@ -708,21 +751,16 @@ function createEmotesDropdown() {
                     img.style.margin = '0 2px';
                     img.dataset.emoteCode = code;
                     
-                    const range = selection.getRangeAt(0);
-                    range.deleteContents();
-                    range.insertNode(img);
-                    
-                    // Position cursor after image
-                    const newRange = document.createRange();
-                    newRange.setStartAfter(img);
-                    newRange.collapse(true);
-                    selection.removeAllRanges();
-                    selection.addRange(newRange);
+                    // Use execCommand for more reliable insertion
+                    document.execCommand('insertHTML', false, img.outerHTML);
                     
                     // Update sent message
-                    updateSentMessage(chatInput);
+                    updateSentMessage();
                 } else {
                     // If no selection, append at the end
+                    placeCursorAtEnd(chatInput);
+                    
+                    // Then insert
                     const img = document.createElement('img');
                     img.src = emoteList[code];
                     img.alt = code;
@@ -735,17 +773,10 @@ function createEmotesDropdown() {
                     img.style.margin = '0 2px';
                     img.dataset.emoteCode = code;
                     
-                    chatInput.appendChild(img);
-                    
-                    // Position cursor after image
-                    const range = document.createRange();
-                    range.setStartAfter(img);
-                    range.collapse(true);
-                    selection.removeAllRanges();
-                    selection.addRange(range);
+                    document.execCommand('insertHTML', false, img.outerHTML);
                     
                     // Update sent message
-                    updateSentMessage(chatInput);
+                    updateSentMessage();
                 }
                 
                 // Keep focus on input
@@ -783,8 +814,10 @@ function createEmotesDropdown() {
         }
     });
     
-    // Replace room-type with button and add dropdown to body
+    // Replace room-type with button
     roomTypeEl.parentNode.replaceChild(button, roomTypeEl);
+    
+    // Add dropdown to the document body
     document.body.appendChild(dropdown);
 }
 
@@ -820,8 +853,34 @@ function updateVotesUI(votes) {
   document.querySelectorAll('.chat-row').forEach(row => {
     const userId = row.dataset.userId;
     const voteButton = row.querySelector('.vote-button');
+    const votesAgainstUser = Object.values(votes).filter(v => v === userId).length;
+    
+    if (userId === currentUserId) {
+      // Current user - show votes counter in their info area (since their vote button is hidden)
+      let votesCounter = row.querySelector('.votes-counter');
+      if (!votesCounter) {
+        votesCounter = document.createElement('div');
+        votesCounter.classList.add('votes-counter');
+        votesCounter.style.display = 'inline-block';
+        votesCounter.style.marginLeft = '10px';
+        votesCounter.style.padding = '2px 6px';
+        votesCounter.style.backgroundColor = '#333';
+        votesCounter.style.borderRadius = '4px';
+        votesCounter.style.fontSize = '14px';
+        row.querySelector('.user-info').appendChild(votesCounter);
+      }
+      
+      if (votesAgainstUser > 0) {
+        votesCounter.textContent = `👎 ${votesAgainstUser}`;
+        votesCounter.style.color = '#ff6b6b'; // Red color to draw attention
+      } else {
+        votesCounter.textContent = '👎 0';
+        votesCounter.style.color = '#aaa'; // Gray when no votes
+      }
+    }
+    
+    // Update vote button for other users
     if (voteButton) {
-      const votesAgainstUser = Object.values(votes).filter(v => v === userId).length;
       voteButton.innerHTML = `👎 ${votesAgainstUser}`;
       if (votes[currentUserId] === userId) {
         voteButton.classList.add('voted');
@@ -838,7 +897,6 @@ function updateCurrentMessages(messages) {
     if (chatDiv) {
       const messageText = messages[userId].slice(0, MAX_MESSAGE_LENGTH);
       
-      // For contenteditable, we need to handle rich content
       if (userId === currentUserId) {
         // Save current focus state
         const isActive = document.activeElement === chatDiv;
@@ -1124,7 +1182,7 @@ socket.on('room update', (roomData) => {
   adjustLayout();
 });
 
-// Create a user row without affecting the rest of the UI
+// IMPROVED: Create a user row without affecting the rest of the UI
 function createUserRow(user, container) {
   const chatRow = document.createElement('div');
   chatRow.classList.add('chat-row');
@@ -1165,14 +1223,17 @@ function createUserRow(user, container) {
     }
   });
 
-  // Vote button
+  // Vote button - now has a consistent style for all users
   const voteButton = document.createElement('button');
   voteButton.classList.add('vote-button');
   voteButton.innerHTML = '👎 0';
   voteButton.style.display = 'none';
-  voteButton.addEventListener('click', () => {
-    socket.emit('vote', { targetUserId: user.id });
-  });
+  // Only add click handler if not self
+  if (user.id !== currentUserId) {
+    voteButton.addEventListener('click', () => {
+      socket.emit('vote', { targetUserId: user.id });
+    });
+  }
 
   userInfoSpan.appendChild(muteButton);
   userInfoSpan.appendChild(voteButton);
@@ -1223,34 +1284,52 @@ function createUserRow(user, container) {
       document.execCommand('insertText', false, text);
     });
     
-    // Handle input
+    // Handle input events
     contentEditableDiv.addEventListener('input', (e) => {
-      const emotePrefixInfo = findEmoteAtCursor(contentEditableDiv);
+      const emotePrefixInfo = findEmoteAtCursor();
       if (emotePrefixInfo) {
-        showAutocomplete(contentEditableDiv, emotePrefixInfo.prefix);
+        showAutocomplete(emotePrefixInfo.prefix);
       } else {
         hideAutocomplete();
       }
       
-      // Detect and replace any unprocessed emote codes
-      replaceEmotes(contentEditableDiv);
+      // Only check for complete emote patterns to improve performance
+      const text = getPlainText(contentEditableDiv);
+      
+      // Only check for emotes if there's a colon and it contains pattern ":word:"
+      if (text.includes(':') && /:([\w]+):/.test(text)) {
+        // Detect and replace any emote codes
+        replaceEmotes(contentEditableDiv);
+      }
       
       // Update the sent message
-      updateSentMessage(contentEditableDiv);
+      updateSentMessage();
     });
     
     // Handle keydown for special keys
     contentEditableDiv.addEventListener('keydown', (e) => {
-      if (handleEmoteNavigation(e, contentEditableDiv)) {
+      // Handle emote navigation if autocomplete is active
+      if (handleEmoteNavigation(e)) {
         return;
       }
       
-      // Limited to MAX_MESSAGE_LENGTH characters
+      // Do not interfere with keyboard shortcuts
+      if (e.ctrlKey || e.metaKey) {
+        // Let normal keyboard shortcuts work (like Ctrl+A) 
+        return;
+      }
+      
+      // Limit content length (but allow selection/navigation keys)
       if (getPlainText(contentEditableDiv).length >= MAX_MESSAGE_LENGTH && 
           !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
         e.preventDefault();
         return;
       }
+    });
+    
+    // Make sure chat input keeps focus when clicking on it
+    contentEditableDiv.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
     });
     
     // Make sure we can type immediately
@@ -1315,7 +1394,7 @@ socket.on('offensive word detected', (data) => {
   }
 });
 
-// Get cursor position in contenteditable
+// IMPROVED: Get cursor position in contenteditable with better emoticon handling
 function getCursorPosition(element) {
     if (!element) return 0;
     
@@ -1328,27 +1407,61 @@ function getCursorPosition(element) {
         preCaretRange.selectNodeContents(element);
         preCaretRange.setEnd(range.endContainer, range.endOffset);
         
-        return preCaretRange.toString().length;
+        // Count also the length of image emoticons as their text representation length
+        function countTextLength(node) {
+            let length = 0;
+            const walker = document.createTreeWalker(
+                node, 
+                NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, 
+                null, 
+                false
+            );
+            
+            while (walker.nextNode()) {
+                if (walker.currentNode.nodeType === Node.TEXT_NODE) {
+                    length += walker.currentNode.textContent.length;
+                } else if (
+                    walker.currentNode.nodeType === Node.ELEMENT_NODE && 
+                    walker.currentNode.nodeName === 'IMG' && 
+                    walker.currentNode.dataset.emoteCode
+                ) {
+                    // Count emoticon as ":code:" (length of code + 2 for colons)
+                    length += walker.currentNode.dataset.emoteCode.length + 2;
+                }
+            }
+            return length;
+        }
+        
+        return countTextLength(preCaretRange.cloneContents());
     } catch (error) {
         console.error("Error getting cursor position:", error);
         return 0;
     }
 }
 
-// Set cursor position in contenteditable
+// IMPROVED: Set cursor position in contenteditable with better emoticon handling
 function setCursorPosition(element, position) {
     if (!element) return false;
     
     try {
-        // Get all text nodes
-        const textNodes = [];
-        const walk = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+        // First, ensure the element has focus
+        element.focus();
+        
+        // Get all text and element nodes
+        const nodes = [];
+        const walk = document.createTreeWalker(
+            element, 
+            NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, 
+            null, 
+            false
+        );
+        
         while (walk.nextNode()) {
-            textNodes.push(walk.currentNode);
+            nodes.push(walk.currentNode);
         }
         
-        if (textNodes.length === 0) {
-            // If no text nodes, place at beginning
+        if (nodes.length === 0) {
+            // If no nodes, place at beginning
             const range = document.createRange();
             range.setStart(element, 0);
             range.collapse(true);
@@ -1360,26 +1473,53 @@ function setCursorPosition(element, position) {
             return true;
         }
         
-        // Find the right text node
+        // Find the right node and offset
         let currentPos = 0;
-        for (const node of textNodes) {
-            if (currentPos + node.length >= position) {
-                const range = document.createRange();
-                range.setStart(node, position - currentPos);
-                range.collapse(true);
+        for (const node of nodes) {
+            let nodeLength = 0;
+            
+            if (node.nodeType === Node.TEXT_NODE) {
+                nodeLength = node.length;
                 
-                const selection = window.getSelection();
-                selection.removeAllRanges();
-                selection.addRange(range);
+                if (currentPos + nodeLength >= position) {
+                    const range = document.createRange();
+                    range.setStart(node, position - currentPos);
+                    range.collapse(true);
+                    
+                    const selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    
+                    return true;
+                }
+            } else if (
+                node.nodeType === Node.ELEMENT_NODE && 
+                node.nodeName === 'IMG' && 
+                node.dataset.emoteCode
+            ) {
+                // The emoticon counts as ":code:" in position calculations
+                nodeLength = node.dataset.emoteCode.length + 2;
                 
-                return true;
+                if (currentPos + nodeLength > position) {
+                    // If position is inside an emoticon, place cursor after it
+                    const range = document.createRange();
+                    range.setStartAfter(node);
+                    range.collapse(true);
+                    
+                    const selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    
+                    return true;
+                }
             }
-            currentPos += node.length;
+            
+            currentPos += nodeLength;
         }
         
         // If we get here, position was beyond text length, so place at end
         placeCursorAtEnd(element);
-        return false;
+        return true;
     } catch (error) {
         console.error("Error setting cursor position:", error);
         placeCursorAtEnd(element);
@@ -1395,11 +1535,16 @@ function updateRoomInfo(data) {
   if (roomNameElement) {
     roomNameElement.textContent = `Room: ${currentRoomName || data.roomName || data.roomId}`;
   }
-  if (roomTypeElement) {
-    roomTypeElement.textContent = `${data.roomType || 'Public'} Room`;
-  }
+  
+  // We'll handle room-type separately since it gets replaced with the emoticons button
+  
   if (roomIdElement) {
     roomIdElement.textContent = `Room ID: ${data.roomId || currentRoomId}`;
+  }
+  
+  // Recreate the emotes dropdown if needed
+  if (!document.getElementById('emotesButton')) {
+    createEmotesDropdown();
   }
 }
 
@@ -1409,6 +1554,7 @@ function adjustVoteButtonVisibility() {
     const userId = row.dataset.userId;
     const voteButton = row.querySelector('.vote-button');
     if (voteButton) {
+      // Only show vote buttons on other users (not yourself) when there are 3+ users
       if (userCount >= 3 && userId !== currentUserId) {
         voteButton.style.display = 'inline-block';
       } else {
@@ -1543,7 +1689,9 @@ function displayChatMessage(data) {
     // Update our content
     chatDiv.innerHTML = '';
     chatDiv.textContent = newText;
-    replaceEmotes(chatDiv);
+    if (newText.includes(':')) {
+      replaceEmotes(chatDiv);
+    }
     
     // Restore cursor position
     if (isActive) {
@@ -1608,28 +1756,110 @@ function adjustLayout() {
       background-color: #333;
       border: 1px solid #555;
       border-radius: 4px;
-      max-height: 200px;
+      max-height: 300px;
       overflow-y: auto;
-      width: 250px;
+      width: 200px;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    }
+    
+    .emote-autocomplete-header {
+      padding: 5px 10px;
+      font-weight: bold;
+      border-bottom: 1px solid #555;
+      color: #eee;
+    }
+    
+    .emote-autocomplete-list {
+      max-height: 250px;
+      overflow-y: auto;
     }
     
     .emote-autocomplete-item {
       display: flex;
       align-items: center;
-      padding: 6px 10px;
+      padding: 8px 10px;
       cursor: pointer;
-      color: white;
+      border-bottom: 1px solid #444;
+      color: #fff;
     }
     
     .emote-autocomplete-item.selected,
     .emote-autocomplete-item:hover {
-      background-color: #444;
+      background-color: #555;
     }
     
     .emote-autocomplete-item img {
       width: 20px;
       height: 20px;
-      margin-right: 8px;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+    
+    .votes-counter {
+      transition: color 0.3s ease;
+    }
+    
+    .vote-button {
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+    
+    .vote-button.voted {
+      background-color: #5c3d3d !important;
+      color: #ff9090 !important;
+    }
+    
+    .emotes-button {
+      padding: 5px 10px;
+      background-color: #444;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    
+    .emotes-dropdown {
+      background-color: #333;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 10px;
+      z-index: 1000;
+      max-width: 300px;
+      max-height: 300px;
+      overflow-y: auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    
+    .emote-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 5px;
+      cursor: pointer;
+      border-radius: 4px;
+      background-color: #444;
+      width: 60px;
+      height: 60px;
+      transition: background-color 0.2s ease;
+    }
+    
+    .emote-item:hover {
+      background-color: #555;
+    }
+    
+    .emote-item img {
+      width: 30px;
+      height: 30px;
+    }
+    
+    .emote-item span {
+      font-size: 10px;
+      color: white;
+      margin-top: 5px;
+      text-align: center;
+      word-break: break-all;
     }
   `;
   
