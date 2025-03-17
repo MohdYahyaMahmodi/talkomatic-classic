@@ -201,7 +201,7 @@ modalInput.addEventListener('keydown', (e) => {
 
 // === Improved Utility Functions for ContentEditable Handling ===
 
-// Get plain text from contenteditable - properly handles emoticons for copying
+// FIXED: Get plain text from contenteditable - properly handles emoticons for copying WITH colons
 function getPlainText(element) {
     if (!element) return '';
     
@@ -212,7 +212,7 @@ function getPlainText(element) {
             text += node.textContent;
         } else if (node.nodeType === Node.ELEMENT_NODE) {
             if (node.nodeName === 'IMG' && node.dataset.emoteCode) {
-                // Always include the full :code: format for copy/paste
+                // FIXED: Always include the full :code: format with colons for copy/paste
                 text += `:${node.dataset.emoteCode}:`;
             } else if (node.nodeName === 'BR') {
                 text += '\n';
@@ -295,7 +295,7 @@ function replaceEmotes(element) {
           
           // Add the image HTML
           resultHTML += `<img src="${emoteList[emoteCode]}" 
-              alt="${emoteCode}" 
+              alt=":${emoteCode}:" 
               title=":${emoteCode}:" 
               class="emote" 
               style="display:inline-block;vertical-align:middle;width:20px;height:20px;margin:0 2px;" 
@@ -346,7 +346,7 @@ function placeCursorAtEnd(element) {
     }
 }
 
-// Find emote code at cursor - improved to be more reliable
+// FIXED: Find emote code at cursor - improved to be more reliable
 function findEmoteAtCursor() {
     // Only look in the current user's input
     if (!chatInput || document.activeElement !== chatInput) return null;
@@ -384,7 +384,7 @@ function findEmoteAtCursor() {
     return null;
 }
 
-// Improved autocomplete functions with better styling
+// FIXED: Improved autocomplete functions with better styling
 function showAutocomplete(prefix) {
     if (!prefix || prefix.length < 1) {
         hideAutocomplete();
@@ -467,10 +467,11 @@ function showAutocomplete(prefix) {
         item.appendChild(img);
         item.appendChild(span);
         
+        // FIXED: Click handler to insert emote
         item.addEventListener('mousedown', (e) => {
             // Prevent default to prevent blur and focus loss
             e.preventDefault();
-            insertEmoteAtCursor(code);
+            insertEmoteFromAutocomplete(code);
         });
         
         item.addEventListener('mouseover', () => {
@@ -539,7 +540,7 @@ function handleEmoteNavigation(e) {
             }
             
             if (selectedEmoteIndex >= 0 && selectedEmoteIndex < filteredEmotes.length) {
-                insertEmoteAtCursor(filteredEmotes[selectedEmoteIndex]);
+                insertEmoteFromAutocomplete(filteredEmotes[selectedEmoteIndex]);
                 return true;
             }
             break;
@@ -572,64 +573,40 @@ function updateSelectedEmote() {
     });
 }
 
-// IMPROVED: Fixed insert emote at cursor function
-function insertEmoteAtCursor(emoteCode) {
-    // Make sure we have the chatInput reference and it's in focus
+// FIXED: Function specifically for inserting emotes from autocomplete
+function insertEmoteFromAutocomplete(emoteCode) {
+    // Make sure we have the chatInput reference
     if (!chatInput) return;
     
     // Force focus on chat input to ensure we're inserting in the right place
     chatInput.focus();
     
-    // Use the current emote info if available, or find it again
-    const emoteInfo = currentEmoteInfo || findEmoteAtCursor();
+    // Create the emote image HTML
+    const emoteHtml = `<img src="${emoteList[emoteCode]}" 
+        alt=":${emoteCode}:" 
+        title=":${emoteCode}:" 
+        class="emote" 
+        style="display:inline-block;vertical-align:middle;width:20px;height:20px;margin:0 2px;" 
+        data-emote-code="${emoteCode}">`;
     
-    // Insert the emote
-    const selection = window.getSelection();
-    if (selection.rangeCount === 0) {
-        // If no selection, just append at the end
-        placeCursorAtEnd(chatInput);
-    }
-    
-    // Check if we're in the middle of typing an emote code
-    if (emoteInfo) {
-        // Create a range for the prefix including the colon
+    // Use the current emote info to replace the typed prefix
+    if (currentEmoteInfo) {
+        const selection = window.getSelection();
+        
+        // Create a new range for replacing the emote text
         const prefixRange = document.createRange();
-        prefixRange.setStart(emoteInfo.node, emoteInfo.startPos);
-        prefixRange.setEnd(emoteInfo.node, emoteInfo.endPos);
+        prefixRange.setStart(currentEmoteInfo.node, currentEmoteInfo.startPos);
+        prefixRange.setEnd(currentEmoteInfo.node, currentEmoteInfo.endPos);
         
-        // Delete the prefix
-        prefixRange.deleteContents();
-        
-        // Create and insert the emote image
-        const img = document.createElement('img');
-        img.src = emoteList[emoteCode];
-        img.alt = emoteCode;
-        img.title = `:${emoteCode}:`;
-        img.className = 'emote';
-        img.style.display = 'inline-block';
-        img.style.verticalAlign = 'middle';
-        img.style.width = '20px';
-        img.style.height = '20px';
-        img.style.margin = '0 2px';
-        img.dataset.emoteCode = emoteCode;
-        
-        prefixRange.insertNode(img);
-        
-        // Set cursor after the emote
-        const newRange = document.createRange();
-        newRange.setStartAfter(img);
-        newRange.collapse(true);
+        // Select this range
         selection.removeAllRanges();
-        selection.addRange(newRange);
+        selection.addRange(prefixRange);
+        
+        // Delete the selection and insert the emote
+        document.execCommand('insertHTML', false, emoteHtml);
     } else {
         // Just insert at the current cursor position
-        document.execCommand('insertHTML', false, 
-            `<img src="${emoteList[emoteCode]}" 
-                alt="${emoteCode}" 
-                title=":${emoteCode}:" 
-                class="emote" 
-                style="display:inline-block;vertical-align:middle;width:20px;height:20px;margin:0 2px;" 
-                data-emote-code="${emoteCode}">`);
+        document.execCommand('insertHTML', false, emoteHtml);
     }
     
     // Hide autocomplete
@@ -638,7 +615,35 @@ function insertEmoteAtCursor(emoteCode) {
     // Update the last sent message
     updateSentMessage();
     
-    // Keep focus on input
+    // Keep focus on input and place cursor after the inserted emote
+    setTimeout(() => {
+        chatInput.focus();
+    }, 0);
+}
+
+// FIXED: Generic function to insert emote at cursor (for dropdown menu)
+function insertEmoteAtCursor(emoteCode) {
+    // Make sure we have the chatInput reference
+    if (!chatInput) return;
+    
+    // Force focus on chat input to ensure we're inserting in the right place
+    chatInput.focus();
+    
+    // Create the emote image HTML
+    const emoteHtml = `<img src="${emoteList[emoteCode]}" 
+        alt=":${emoteCode}:" 
+        title=":${emoteCode}:" 
+        class="emote" 
+        style="display:inline-block;vertical-align:middle;width:20px;height:20px;margin:0 2px;" 
+        data-emote-code="${emoteCode}">`;
+    
+    // Insert at the current cursor position
+    document.execCommand('insertHTML', false, emoteHtml);
+    
+    // Update the last sent message
+    updateSentMessage();
+    
+    // Keep focus on input and place cursor after the inserted emote
     setTimeout(() => {
         chatInput.focus();
     }, 0);
@@ -688,7 +693,7 @@ function createEmotesDropdown() {
     dropdown.style.border = '1px solid #555';
     dropdown.style.borderRadius = '4px';
     dropdown.style.padding = '10px';
-    dropdown.style.zIndex = '1000';
+    dropdown.style.zIndex = '10000'; // Higher z-index to ensure it's on top
     dropdown.style.maxWidth = '300px';
     dropdown.style.maxHeight = '300px';
     dropdown.style.overflowY = 'auto';
@@ -711,7 +716,7 @@ function createEmotesDropdown() {
         
         const img = document.createElement('img');
         img.src = url;
-        img.alt = code;
+        img.alt = `:${code}:`;
         img.style.width = '30px';
         img.style.height = '30px';
         
@@ -726,67 +731,20 @@ function createEmotesDropdown() {
         emoteItem.appendChild(img);
         emoteItem.appendChild(name);
         
-        // IMPROVED: Click handler to insert emote directly to chat input
+        // FIXED: Click handler for dropdown emoticon selection
         emoteItem.addEventListener('mousedown', (e) => {
             // Prevent the default action to avoid focus loss
             e.preventDefault();
+            e.stopPropagation();
             
-            if (chatInput) {
-                // First make sure focus is on chatInput
-                chatInput.focus();
-                
-                // Insert emote at cursor position or at end if no selection
-                const selection = window.getSelection();
-                if (selection.rangeCount > 0) {
-                    // Create and insert the emote image
-                    const img = document.createElement('img');
-                    img.src = emoteList[code];
-                    img.alt = code;
-                    img.title = `:${code}:`;
-                    img.className = 'emote';
-                    img.style.display = 'inline-block';
-                    img.style.verticalAlign = 'middle';
-                    img.style.width = '20px';
-                    img.style.height = '20px';
-                    img.style.margin = '0 2px';
-                    img.dataset.emoteCode = code;
-                    
-                    // Use execCommand for more reliable insertion
-                    document.execCommand('insertHTML', false, img.outerHTML);
-                    
-                    // Update sent message
-                    updateSentMessage();
-                } else {
-                    // If no selection, append at the end
-                    placeCursorAtEnd(chatInput);
-                    
-                    // Then insert
-                    const img = document.createElement('img');
-                    img.src = emoteList[code];
-                    img.alt = code;
-                    img.title = `:${code}:`;
-                    img.className = 'emote';
-                    img.style.display = 'inline-block';
-                    img.style.verticalAlign = 'middle';
-                    img.style.width = '20px';
-                    img.style.height = '20px';
-                    img.style.margin = '0 2px';
-                    img.dataset.emoteCode = code;
-                    
-                    document.execCommand('insertHTML', false, img.outerHTML);
-                    
-                    // Update sent message
-                    updateSentMessage();
-                }
-                
-                // Keep focus on input
-                setTimeout(() => {
-                    chatInput.focus();
-                }, 0);
-            }
-            
-            // Hide dropdown after selection
+            // Close the dropdown
             dropdown.style.display = 'none';
+            
+            // Insert the emoticon (ensure chatInput is focused first)
+            if (chatInput) {
+                chatInput.focus();
+                insertEmoteAtCursor(code);
+            }
         });
         
         dropdown.appendChild(emoteItem);
@@ -794,22 +752,35 @@ function createEmotesDropdown() {
     
     // Toggle dropdown on button click
     button.addEventListener('click', (e) => {
+        e.preventDefault();
         e.stopPropagation();
-        if (dropdown.style.display === 'none' || dropdown.style.display === '') {
-            dropdown.style.display = 'flex';
-            
+        
+        const isVisible = dropdown.style.display === 'flex';
+        
+        // Close all dropdowns first
+        document.querySelectorAll('.emotes-dropdown').forEach(d => {
+            d.style.display = 'none';
+        });
+        
+        if (!isVisible) {
             // Position dropdown below button
             const rect = button.getBoundingClientRect();
             dropdown.style.top = `${rect.bottom + window.scrollY + 5}px`;
             dropdown.style.left = `${rect.left + window.scrollX}px`;
-        } else {
-            dropdown.style.display = 'none';
+            dropdown.style.display = 'flex';
+            
+            // Make sure chat input keeps focus even when dropdown is open
+            if (chatInput) {
+                setTimeout(() => chatInput.focus(), 0);
+            }
         }
     });
     
     // Close dropdown when clicking elsewhere
     document.addEventListener('click', (e) => {
-        if (!dropdown.contains(e.target) && e.target !== button) {
+        if (dropdown.style.display === 'flex' && 
+            !dropdown.contains(e.target) && 
+            e.target !== button) {
             dropdown.style.display = 'none';
         }
     });
@@ -1529,14 +1500,11 @@ function setCursorPosition(element, position) {
 
 function updateRoomInfo(data) {
   const roomNameElement = document.querySelector('.room-name');
-  const roomTypeElement = document.querySelector('.room-type');
   const roomIdElement = document.querySelector('.room-id');
 
   if (roomNameElement) {
     roomNameElement.textContent = `Room: ${currentRoomName || data.roomName || data.roomId}`;
   }
-  
-  // We'll handle room-type separately since it gets replaced with the emoticons button
   
   if (roomIdElement) {
     roomIdElement.textContent = `Room ID: ${data.roomId || currentRoomId}`;
@@ -1564,19 +1532,6 @@ function adjustVoteButtonVisibility() {
   });
 }
 
-function addUserToRoom(user) {
-  const chatContainer = document.querySelector('.chat-container');
-  if (!chatContainer) return;
-
-  // Check if user already exists
-  if (document.querySelector(`.chat-row[data-user-id="${user.id}"]`)) {
-    return; // Don't add duplicates
-  }
-
-  createUserRow(user, chatContainer);
-  adjustLayout();
-}
-
 function adjustMuteButtonVisibility() {
   document.querySelectorAll('.chat-row').forEach(row => {
     const userId = row.dataset.userId;
@@ -1591,14 +1546,6 @@ function adjustMuteButtonVisibility() {
       }
     }
   });
-}
-
-function removeUserFromRoom(userId) {
-  const chatRow = document.querySelector(`.chat-row[data-user-id="${userId}"]`);
-  if (chatRow) {
-    chatRow.remove();
-    adjustLayout();
-  }
 }
 
 function updateRoomUI(roomData) {
