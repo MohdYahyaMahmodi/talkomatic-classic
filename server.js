@@ -4,9 +4,7 @@
  * Enhanced with better support for custom frontends
  * Last updated: 2025
  **********************************/
-
 require('dotenv').config(); // Loads environment vars from .env
-
 // Core dependencies
 const express = require('express');
 const http = require('http');
@@ -24,6 +22,8 @@ const xss = require('xss-clean');
 const hpp = require('hpp');
 const crypto = require('crypto');
 const WordFilter = require('./public/js/word-filter.js');
+// Add WebSocket flood protection dependencies
+const { RateLimiterMemory } = require('rate-limiter-flexible');
 
 /********************************* 
  * CONFIGURATION & CONSTANTS
@@ -35,7 +35,14 @@ const CONFIG = {
     MAX_LOCATION_LENGTH: 12,
     MAX_ROOM_NAME_LENGTH: 20,
     MAX_MESSAGE_LENGTH: 5000,
-    MAX_ROOM_CAPACITY: 5
+    MAX_ROOM_CAPACITY: 5,
+    // WebSocket flood protection config
+    MAX_CONNECTIONS_PER_IP: 15,
+    SOCKET_MAX_REQUESTS_WINDOW: 1, // 1 second
+    SOCKET_MAX_REQUESTS_PER_WINDOW: 50, // 50 requests per second
+    CHAT_UPDATE_RATE_LIMIT: 20, // Max 20 updates per second
+    TYPING_RATE_LIMIT: 10, // Max 10 typing events per second
+    CONNECTION_DELAY: 1000 // 1000ms delay between connection attempts
   },
   FEATURES: {
     ENABLE_WORD_FILTER: true
@@ -76,6 +83,22 @@ const users = new Map();
 const roomDeletionTimers = new Map();
 const typingTimeouts = new Map();
 const userMessageBuffers = new Map();
+
+// Connection and rate limiting trackers
+const ipConnections = new Map();
+const ipLastConnectionTime = new Map();
+const socketRateLimiter = new RateLimiterMemory({
+  points: CONFIG.LIMITS.SOCKET_MAX_REQUESTS_PER_WINDOW,
+  duration: CONFIG.LIMITS.SOCKET_MAX_REQUESTS_WINDOW
+});
+const chatUpdateLimiter = new RateLimiterMemory({
+  points: CONFIG.LIMITS.CHAT_UPDATE_RATE_LIMIT,
+  duration: 1
+});
+const typingLimiter = new RateLimiterMemory({
+  points: CONFIG.LIMITS.TYPING_RATE_LIMIT,
+  duration: 1
+});
 
 // Create express app and server
 const app = express();
@@ -189,6 +212,7 @@ const limiter = rateLimit({
     }
   }
 });
+
 app.use(limiter);
 
 // Session config
@@ -202,9 +226,10 @@ const sessionMiddleware = session({
     maxAge: 14 * 24 * 60 * 60 * 1000,
   }
 });
+
 app.use(sessionMiddleware);
 
-// Socket.io setup with shared session
+// Socket.io setup with shared session and flood protection
 const io = socketIo(server, {
   cors: {
     origin: function(origin, callback) {
@@ -231,6 +256,65 @@ const io = socketIo(server, {
     credentials: true
   }
 });
+
+// Socket middleware for flood protection
+io.use((socket, next) => {
+  try {
+    // Get client IP
+    const clientIp = socket.handshake.headers['x-forwarded-for'] || 
+                     socket.handshake.address;
+    
+    // Connection rate limiting - prevent rapid reconnection attempts
+    const now = Date.now();
+    const lastConnectionTime = ipLastConnectionTime.get(clientIp) || 0;
+    if (now - lastConnectionTime < CONFIG.LIMITS.CONNECTION_DELAY) {
+      return next(new Error('Rate limit exceeded: Too many connection attempts'));
+    }
+    ipLastConnectionTime.set(clientIp, now);
+    
+    // Connection count limiting - max connections per IP
+    if (!ipConnections.has(clientIp)) {
+      ipConnections.set(clientIp, 0);
+    }
+    
+    const connectionsCount = ipConnections.get(clientIp);
+    if (connectionsCount >= CONFIG.LIMITS.MAX_CONNECTIONS_PER_IP) {
+      return next(new Error('Too many connections from this IP'));
+    }
+    
+    // Increment connection count
+    ipConnections.set(clientIp, connectionsCount + 1);
+    
+    // Store IP in socket for cleanup on disconnect
+    socket.clientIp = clientIp;
+    
+    // Add global rate limiter for all socket events
+    socket.use(async (packet, nextMiddleware) => {
+      try {
+        const eventName = packet[0];
+        // Skip rate limiting for some internal events
+        if (['error', 'connect', 'disconnect'].includes(eventName)) {
+          return nextMiddleware();
+        }
+        
+        await socketRateLimiter.consume(socket.id);
+        nextMiddleware();
+      } catch (err) {
+        // Rate limit exceeded
+        socket.emit('error', createErrorResponse(
+          ERROR_CODES.RATE_LIMITED,
+          'Rate limit exceeded: Too many requests'
+        ));
+      }
+    });
+    
+    next();
+  } catch (err) {
+    console.error('Socket middleware error:', err);
+    next(new Error('Internal server error'));
+  }
+});
+
 io.use(sharedsession(sessionMiddleware, { autoSave: true }));
 
 // Serve static files
@@ -371,7 +455,6 @@ function getUserRoomsCount(userId) {
 function getUsernameLocationRoomsCount(username, location) {
   const userLower = normalize(username);
   const locLower = normalize(location);
-
   let count = 0;
   for (const [, room] of rooms) {
     for (const u of room.users) {
@@ -389,12 +472,15 @@ function getUsernameLocationRoomsCount(username, location) {
 function enforceCharacterLimit(message) {
   return typeof message === 'string' ? message.slice(0, CONFIG.LIMITS.MAX_MESSAGE_LENGTH) : message;
 }
+
 function enforceUsernameLimit(username) {
   return username.slice(0, CONFIG.LIMITS.MAX_USERNAME_LENGTH);
 }
+
 function enforceLocationLimit(location) {
   return location.slice(0, CONFIG.LIMITS.MAX_LOCATION_LENGTH);
 }
+
 function enforceRoomNameLimit(roomName) {
   return roomName.slice(0, CONFIG.LIMITS.MAX_ROOM_NAME_LENGTH);
 }
@@ -508,7 +594,6 @@ async function leaveRoom(socket, userId) {
     if (room) {
       room.users = room.users.filter(user => user.id !== userId);
       room.lastActiveTime = Date.now();
-
       // Remove any votes from or for this user
       if (room.votes) {
         delete room.votes[userId];
@@ -519,22 +604,18 @@ async function leaveRoom(socket, userId) {
         }
         io.to(socket.roomId).emit('update votes', room.votes);
       }
-
       socket.leave(socket.roomId);
       io.to(socket.roomId).emit('user left', userId);
       updateRoom(socket.roomId);
-
       if (room.users.length === 0) {
         startRoomDeletionTimer(socket.roomId);
       }
     }
-
     // Clean up validated access codes when leaving a room
     if (socket.handshake.session.validatedRooms && 
         socket.handshake.session.validatedRooms[socket.roomId]) {
       delete socket.handshake.session.validatedRooms[socket.roomId];
     }
-
     socket.roomId = null;
     socket.handshake.session.currentRoom = null;
     await new Promise((resolve) => {
@@ -558,26 +639,21 @@ function joinRoom(socket, roomId, userId) {
     socket.emit('error', createErrorResponse(ERROR_CODES.NOT_FOUND, 'Room not found'));
     return;
   }
-
   const room = rooms.get(roomId);
   if (!room) {
     socket.emit('error', createErrorResponse(ERROR_CODES.NOT_FOUND, 'Room not found'));
     return;
   }
-
   // Check if user is banned
   if (room.bannedUserIds && room.bannedUserIds.has(userId)) {
     socket.emit('error', createErrorResponse(ERROR_CODES.FORBIDDEN, 'You have been banned from rejoining this room.'));
     return;
   }
-
   let { username, location } = socket.handshake.session;
   const userLower = normalize(username);
   const locLower = normalize(location);
-
   const isAnonymous =
     userLower === 'anonymous' && locLower === 'on the web';
-
   // Only enforce checks if not anonymous
   if (!isAnonymous) {
     // Check how many rooms this session is in
@@ -589,7 +665,6 @@ function joinRoom(socket, roomId, userId) {
       ));
       return;
     }
-
     // Check how many rooms exist with same (username, location)
     const sameNameLocCount = getUsernameLocationRoomsCount(username, location);
     if (sameNameLocCount >= 2) {
@@ -600,18 +675,14 @@ function joinRoom(socket, roomId, userId) {
       return;
     }
   }
-
   if (!room.users) room.users = [];
   if (!room.votes) room.votes = {};
-
   if (room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY) {
     socket.emit('room full', createErrorResponse(ERROR_CODES.ROOM_FULL, 'This room is full'));
     return;
   }
-
   // Remove if they're already in (avoid duplicates)
   room.users = room.users.filter(user => user.id !== userId);
-
   socket.join(roomId);
   room.users.push({
     id: userId,
@@ -632,7 +703,6 @@ function joinRoom(socket, roomId, userId) {
     
     updateRoom(roomId);
     updateLobby();
-
     const currentMessages = getCurrentMessages(room.users);
     socket.emit('room joined', {
       roomId: roomId,
@@ -647,7 +717,6 @@ function joinRoom(socket, roomId, userId) {
       currentMessages: currentMessages
     });
     socket.leave('lobby');
-
     if (roomDeletionTimers.has(roomId)) {
       clearTimeout(roomDeletionTimers.get(roomId));
       roomDeletionTimers.delete(roomId);
@@ -681,7 +750,6 @@ loadRooms();
 /********************************* 
  * NEW REST API ENDPOINTS
  *********************************/
-
 // GET /api/v1/config - Get server configuration
 app.get(`/api/${CONFIG.VERSIONS.API}/config`, (req, res) => {
   res.json({
@@ -836,7 +904,6 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, limiter, apiAuth, (req, res) => {
         validationErrors
       );
     }
-
     let roomName = enforceRoomNameLimit(data.name);
     if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
       const roomNameCheck = wordFilter.checkText(roomName);
@@ -849,15 +916,12 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, limiter, apiAuth, (req, res) => {
         );
       }
     }
-
     let roomType = data.type;
     let layout = data.layout;
-
     let roomId;
     do {
       roomId = generateRoomId();
     } while (rooms.has(roomId));
-
     const newRoom = {
       id: roomId,
       name: roomName,
@@ -882,7 +946,6 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, limiter, apiAuth, (req, res) => {
     
     updateLobby();
     saveRooms();
-
     return res.json({ success: true, roomId });
   } catch (err) {
     console.error('Error in /api/v1/rooms POST:', err);
@@ -1000,7 +1063,6 @@ io.on('connection', (socket) => {
       // Normalize user inputs
       let username = enforceUsernameLimit(data.username || '');
       let location = enforceLocationLimit(data.location || 'On The Web');
-
       if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
         const usernameCheck = wordFilter.checkText(username);
         if (usernameCheck.hasOffensiveWord) {
@@ -1019,12 +1081,10 @@ io.on('connection', (socket) => {
           return;
         }
       }
-
       const userId = socket.handshake.sessionID;
       socket.handshake.session.username = username;
       socket.handshake.session.location = location;
       socket.handshake.session.userId = userId;
-
       socket.handshake.session.save((err) => {
         if (!err) {
           users.set(userId, { id: userId, username, location });
@@ -1065,7 +1125,6 @@ io.on('connection', (socket) => {
         ));
         return;
       }
-
       // Validate input
       const validationErrors = validateObject(data, {
         name: { rule: 'roomName' },
@@ -1081,11 +1140,9 @@ io.on('connection', (socket) => {
         socket.emit('validation_error', validationErrors);
         return;
       }
-
       let { username, location } = socket.handshake.session;
       const userLower = normalize(username);
       const locLower = normalize(location);
-
       // 1) If user is anonymous -> cannot create rooms
       const isAnonymous =
         userLower === 'anonymous' && locLower === 'on the web';
@@ -1096,7 +1153,6 @@ io.on('connection', (socket) => {
         ));
         return;
       }
-
       // 2) If the same user+location is already in >=2 rooms, do not allow creation
       const sameNameLocCount = getUsernameLocationRoomsCount(username, location);
       if (sameNameLocCount >= 2) {
@@ -1106,7 +1162,6 @@ io.on('connection', (socket) => {
         ));
         return;
       }
-
       // 3) If the session is already in >=2 rooms, do not allow creation
       const userRoomsCount = getUserRoomsCount(userId);
       if (userRoomsCount >= 2) {
@@ -1116,7 +1171,6 @@ io.on('connection', (socket) => {
         ));
         return;
       }
-
       // 4) Rate-limiting creation
       const now = Date.now();
       const lastCreationTime = lastRoomCreationTimes.get(userId) || 0;
@@ -1127,12 +1181,10 @@ io.on('connection', (socket) => {
         ));
         return;
       }
-
       // 5) Validate provided data
       let roomName = enforceRoomNameLimit(data.name || 'Just Chatting');
       let roomType = data.type;
       let layout = data.layout;
-
       if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
         const roomNameCheck = wordFilter.checkText(roomName);
         if (roomNameCheck.hasOffensiveWord) {
@@ -1143,14 +1195,11 @@ io.on('connection', (socket) => {
           return;
         }
       }
-
       lastRoomCreationTimes.set(userId, now);
-
       let roomId;
       do {
         roomId = generateRoomId();
       } while (rooms.has(roomId));
-
       const newRoom = {
         id: roomId,
         name: roomName,
@@ -1163,7 +1212,6 @@ io.on('connection', (socket) => {
         lastActiveTime: Date.now(),
       };
       rooms.set(roomId, newRoom);
-
       // If this is a semi-private room, store the access code in the session
       if (roomType === 'semi-private' && data.accessCode) {
         if (!socket.handshake.session.validatedRooms) {
@@ -1172,7 +1220,6 @@ io.on('connection', (socket) => {
         socket.handshake.session.validatedRooms[roomId] = data.accessCode;
         socket.handshake.session.save();
       }
-
       socket.emit('room created', roomId);
       updateLobby();
       saveRooms();
@@ -1272,7 +1319,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('vote', (data) => {
+  socket.on('vote', async (data) => {
     try {
       if (!data || typeof data !== 'object') {
         socket.emit('error', createErrorResponse(
@@ -1289,23 +1336,18 @@ io.on('connection', (socket) => {
         ));
         return;
       }
-
       const userId = socket.handshake.session.userId;
       const roomId = socket.roomId;
       if (!roomId) return;
-
       const room = rooms.get(roomId);
       if (!room) return;
-
       // Must be in the room
       if (!room.users.find(u => u.id === userId)) return;
       // Cannot vote against yourself
       if (userId === targetUserId) return;
-
       if (!room.votes) {
         room.votes = {};
       }
-
       // TOGGLE the vote
       if (room.votes[userId] === targetUserId) {
         // User is un-voting (removing their vote)
@@ -1315,7 +1357,6 @@ io.on('connection', (socket) => {
         // Cast/change the vote
         room.votes[userId] = targetUserId;
         io.to(roomId).emit('update votes', room.votes);
-
         // Check for majority only after a new vote
         const votesAgainstTarget = Object.values(room.votes).filter(v => v === targetUserId).length;
         const totalUsers = room.users.length;
@@ -1353,17 +1394,27 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('chat update', (data) => {
+  socket.on('chat update', async (data) => {
     try {
       if (!socket.roomId) return;
       const userId = socket.handshake.session.userId;
       const username = socket.handshake.session.username;
-
+      
+      // Rate limiting for chat updates
+      try {
+        await chatUpdateLimiter.consume(userId);
+      } catch (err) {
+        socket.emit('error', createErrorResponse(
+          ERROR_CODES.RATE_LIMITED,
+          'Rate limit exceeded: Too many chat updates'
+        ));
+        return;
+      }
+      
       if (!userMessageBuffers.has(userId)) {
         userMessageBuffers.set(userId, '');
       }
       let userMessage = userMessageBuffers.get(userId);
-
       if (!data || typeof data !== 'object') {
         socket.emit('error', createErrorResponse(
           ERROR_CODES.BAD_REQUEST,
@@ -1373,11 +1424,9 @@ io.on('connection', (socket) => {
       }
       let diff = data.diff;
       if (!diff) return;
-
       if (diff.text) {
         diff.text = enforceCharacterLimit(diff.text);
       }
-
       switch (diff.type) {
         case 'full-replace':
           userMessage = diff.text;
@@ -1403,16 +1452,13 @@ io.on('connection', (socket) => {
           ));
           return;
       }
-
       userMessageBuffers.set(userId, userMessage);
-
       if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
         const filterResult = wordFilter.checkText(userMessage);
         if (filterResult.hasOffensiveWord) {
           // Replace the text in their buffer
           userMessage = wordFilter.filterText(userMessage);
           userMessageBuffers.set(userId, userMessage);
-
           // Alert the room that we filtered it
           io.to(socket.roomId).emit('offensive word detected', {
             userId,
@@ -1443,11 +1489,20 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('typing', (data) => {
+  socket.on('typing', async (data) => {
     try {
       if (!socket.roomId) return;
       const userId = socket.handshake.session.userId;
       const username = socket.handshake.session.username;
+      
+      // Rate limiting for typing events
+      try {
+        await typingLimiter.consume(userId);
+      } catch (err) {
+        // Silently drop excessive typing events
+        return;
+      }
+      
       if (!data || typeof data.isTyping !== 'boolean') {
         return;
       }
@@ -1505,6 +1560,16 @@ io.on('connection', (socket) => {
       await leaveRoom(socket, userId);
       userMessageBuffers.delete(userId);
       users.delete(userId);
+      
+      // Clean up IP connection tracking
+      if (socket.clientIp) {
+        const currentCount = ipConnections.get(socket.clientIp) || 0;
+        if (currentCount > 0) {
+          ipConnections.set(socket.clientIp, currentCount - 1);
+        } else {
+          ipConnections.delete(socket.clientIp);
+        }
+      }
     } catch (err) {
       console.error('Error on disconnect:', err);
     }
