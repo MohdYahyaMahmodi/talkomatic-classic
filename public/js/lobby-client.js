@@ -4,13 +4,14 @@
 
 // Immediately-invoked function for custom modal initialization
 (function() {
+  // Avoid re-initializing if this script is included multiple times
   if (window.modalFunctionsInitialized) {
     console.log("Custom modal already initialized");
     return;
   }
   window.modalFunctionsInitialized = true;
 
-  // Get modal DOM references
+  // Grab modal DOM references
   const customModal = document.getElementById('customModal');
   const modalTitle = document.getElementById('modalTitle');
   const modalMessage = document.getElementById('modalMessage');
@@ -23,11 +24,13 @@
 
   let currentModalCallback = null;
 
+  // Show a generic modal with optional input
   function showModal(title, message, options = {}) {
     modalTitle.textContent = title;
-    modalMessage.innerHTML = message; // Accept HTML (for <br>, etc.)
+    // Using innerHTML so we can include <br> in messages
+    modalMessage.innerHTML = message;
 
-    // Reset input container
+    // Reset input elements
     modalInputContainer.style.display = 'none';
     modalInput.value = '';
     modalInputError.style.display = 'none';
@@ -42,12 +45,15 @@
 
     modalCancelBtn.textContent = options.cancelText || 'Cancel';
     modalConfirmBtn.textContent = options.confirmText || 'Confirm';
+    // Show or hide cancel button
     modalCancelBtn.style.display = options.showCancel !== false ? 'block' : 'none';
 
+    // Store callback to be invoked on confirm/cancel
     currentModalCallback = options.callback || null;
 
+    // Show the modal
     customModal.classList.add('show');
-    document.body.style.overflow = 'hidden'; // Prevent background scroll
+    document.body.style.overflow = 'hidden'; // Prevent scrolling behind the modal
   }
 
   function hideCustomModal() {
@@ -56,12 +62,19 @@
     currentModalCallback = null;
   }
 
+  // Expose some modal convenience functions
   window.showErrorModal = function(message) {
-    showModal('Error', message, { showCancel: false, confirmText: 'OK' });
+    showModal('Error', message, {
+      showCancel: false,
+      confirmText: 'OK'
+    });
   };
 
   window.showInfoModal = function(message) {
-    showModal('Information', message, { showCancel: false, confirmText: 'OK' });
+    showModal('Information', message, {
+      showCancel: false,
+      confirmText: 'OK'
+    });
   };
 
   window.showConfirmModal = function(message, callback) {
@@ -84,7 +97,7 @@
           if (validationResult !== true) {
             modalInputError.textContent = validationResult;
             modalInputError.style.display = 'block';
-            return false; // prevent modal from closing
+            return false; // prevent closing
           }
         }
         callback(confirmed, inputValue);
@@ -93,11 +106,13 @@
     });
   };
 
-  // Modal button events
+  // Modal button handlers
   modalConfirmBtn.addEventListener('click', () => {
     if (currentModalCallback) {
       const shouldClose = currentModalCallback(true, modalInput.value);
-      if (shouldClose !== false) hideCustomModal();
+      if (shouldClose !== false) {
+        hideCustomModal();
+      }
     } else {
       hideCustomModal();
     }
@@ -112,19 +127,19 @@
 
   closeModalBtn.addEventListener('click', hideCustomModal);
 
-  // Close modal when clicking outside the content
+  // Click outside the content => close
   customModal.addEventListener('click', (e) => {
     if (e.target === customModal) {
       hideCustomModal();
     }
   });
 
-  // Only numeric input in the modal
+  // Only numeric input for the input field
   modalInput.addEventListener('input', (e) => {
     e.target.value = e.target.value.replace(/[^0-9]/g, '');
   });
 
-  // Escape closes modal
+  // Escape => close the modal
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && customModal.classList.contains('show')) {
       hideCustomModal();
@@ -145,42 +160,113 @@
 const socket = io();
 
 // DOM references
-const logForm          = document.getElementById('logform');
-const createRoomForm   = document.getElementById('lobbyForm');
-const roomListContainer= document.querySelector('.roomList');
-const dynamicRoomList  = document.getElementById('dynamicRoomList');
+const logForm        = document.getElementById('logform');
+const createRoomForm = document.getElementById('lobbyForm');
+const roomListContainer = document.querySelector('.roomList');
+const dynamicRoomList   = document.getElementById('dynamicRoomList');
 
-const usernameInput    = document.getElementById('aprilFoolsNameInput');
-const locationInput    = document.getElementById('aprilFoolsLocationInput');
-const signInButton     = document.getElementById('aprilFoolsSignInButton');
+const usernameInput  = document.getElementById('aprilFoolsNameInput');
+const locationInput  = document.getElementById('aprilFoolsLocationInput');
+const signInButton   = document.getElementById('aprilFoolsSignInButton');
 
-const roomNameInput    = createRoomForm.querySelector('input[placeholder="Room Name"]');
-const goChatButton     = createRoomForm.querySelector('.go-chat-button');
-const signInMessage    = document.getElementById('signInMessage');
-const noRoomsMessage   = document.getElementById('noRoomsMessage');
-const accessCodeInput  = document.getElementById('accessCodeInput');
-const roomTypeRadios   = document.querySelectorAll('input[name="roomType"]');
+const roomNameInput  = createRoomForm.querySelector('input[placeholder="Room Name"]');
+const goChatButton   = createRoomForm.querySelector('.go-chat-button');
+const signInMessage  = document.getElementById('signInMessage');
+const noRoomsMessage = document.getElementById('noRoomsMessage');
+const accessCodeInput= document.getElementById('accessCodeInput');
+const roomTypeRadios = document.querySelectorAll('input[name="roomType"]');
 
-let currentUsername    = '';
-let currentLocation    = '';
-let currentUserId      = '';
-let isSignedIn         = false;
-let lastUsedAccessCode = null;
+let currentUsername   = '';
+let currentLocation   = '';
+let currentUserId     = '';
+let isSignedIn        = false;
+let lastUsedAccessCode= null;
 
-const MAX_USERNAME_LENGTH   = 12;
-const MAX_LOCATION_LENGTH   = 12;
-const MAX_ROOM_NAME_LENGTH  = 20;
+// Limits
+const MAX_USERNAME_LENGTH = 12;
+const MAX_LOCATION_LENGTH = 12;
+const MAX_ROOM_NAME_LENGTH= 20;
 
-// For comedic disclaimers
-const funnyNameComments = { /* ... your dictionary ... */ };
-const funnyLocationComments = { /* ... your dictionary ... */ };
+/** 
+ * COMEDIC DICTIONARIES
+ * 
+ * Paste your dictionary objects below 
+ */
+const funnyNameComments = {
+  "RizzReject": "charm? never met her",
+  "NPCNoob": "thinks 2+2 is vibes",
+  "LKing": "crown of losses",
+  "CringeCzar": "rules the awkward",
+  "AuraAllergy": "vibes make you sneeze",
+  "FlopFame": "10 likes, 9 are bots",
+  "RatioRoach": "crawls in own Ls",
+  "BaitBaby": "fell for clickbait",
+  "CapCorn": "lies pop like kernels",
+  "MogMeat": "ground up by alphas",
+  "TrendTramp": "chases dead fads",
+  "FypFossil": "scrolls ancient TikToks",
+  "SimpSack": "carries e-girl bags",
+  "GlowGoner": "shine left in 2023",
+  "StanStink": "fanboy breath reeks",
+  "BetaBlob": "spineless and soggy",
+  "DripDummy": "wears Shein drip",
+  "VibeVirus": "infects with lame",
+  "TokTwerp": "dances for 3 views",
+  "YeetYam": "throws self into Ls",
+  "CloutCarcass": "fame rotted away",
+  "RageRunt": "mad but 5’2”",
+  "NoWinners": "trophy case empty",
+  "FlexFraud": "gym pic, no gains",
+  "ZoomZombie": "brain dead on calls",
+  "SkibidiSkimp": "brainrot on a budget",
+  "LadLeak": "drips with failure",
+  "MemeMaggot": "lives in dead posts",
+  "ChatChump": "muted in Discord",
+  "RizzRubble": "charm’s a ruin"
+};
 
-// Show comedic modal if username/location is "funny"
+const funnyLocationComments = {
+  "RizzRubble": "where charm crumbles",
+  "NPCCubicle": "desk for drones",
+  "LThrone": "sit on your losses",
+  "CringeCastl": "awkward kingdom",
+  "AuraAttic": "vibes collect dust",
+  "FlopFoyer": "fame’s front door",
+  "RatioRanch": "owned by numbers",
+  "BaitBench": "sit and get tricked",
+  "CapCage": "locked in lies",
+  "MogMud": "sunk by better bois",
+  "TrendTrash": "yesterday’s dump",
+  "FypFridge": "cold scroll storage",
+  "SimpStool": "kneel for e-queens",
+  "GlowGrave": "bury your shine",
+  "StanStall": "fanboy restroom",
+  "BetaBunk": "weakling dorm",
+  "DripDitch": "style’s drainage",
+  "VibeVault": "locked lame vibes",
+  "TokToilet": "flush your dances",
+  "YeetYoke": "chained to chaos",
+  "CloutCliff": "fall off fame",
+  "RageRoof": "scream at clouds",
+  "WinWreck": "victory crashed",
+  "FlexFlop": "muscle mirage",
+  "ZoomZoo": "cage of blank stares",
+  "SkibidiShed": "brainrot shack",
+  "LadLagoon": "swim in Ls",
+  "MemeMush": "rotten post pile",
+  "ChatChoke": "silenced server",
+  "RubbleRink": "skate on ruins"
+};
+
+// If comedic name => show comedic modal
 function maybeShowFunnyModal(funnyName, funnyLocation) {
   const nameComment = funnyNameComments[funnyName] || "";
   const locComment  = funnyLocationComments[funnyLocation] || "";
 
-  if (!nameComment && !locComment) return;
+  if (!nameComment && !locComment) {
+    // Not in the dictionary => not "funny"
+    return;
+  }
 
   const message = `
     <b>⚠️ System Notice:</b><br><br>
@@ -195,13 +281,12 @@ function maybeShowFunnyModal(funnyName, funnyLocation) {
     depending on how cringe you remain.<br><br>
     Thank you for your cooperation (not that you had a choice).
   `;
-
   window.showInfoModal(message);
 }
 
-// *** APRIL FOOLS TRICKS ***
+// *** APRIL FOOLS PRANKS ***
 
-// 1) Flip the page upside down for 5s
+// Flip page upside down for 5s
 function aprilFoolsFlipPage() {
   document.body.classList.add('april-fools-upside-down');
   setTimeout(() => {
@@ -209,25 +294,25 @@ function aprilFoolsFlipPage() {
   }, 5000);
 }
 
-// 2) Clown cursor + color-cycle hover
+// Clown cursor, color-cycling
 function aprilFoolsApplyStyles() {
   document.body.classList.add('april-fools-cursor');
   document.body.classList.add('april-fools-crazy');
 }
 
-// 3) Confetti (falling clown emojis)
+// Falling clown emoji confetti
 function aprilFoolsConfetti(emoji = "🤡", count = 20) {
   for (let i = 0; i < count; i++) {
     const elem = document.createElement('div');
     elem.textContent = emoji;
     elem.style.position = 'fixed';
-    elem.style.left = (Math.random()*100) + '%';
-    elem.style.top = '-50px';
+    elem.style.left = (Math.random() * 100) + '%';
+    elem.style.top  = '-50px';
     elem.style.fontSize = '2rem';
     elem.style.zIndex = 999999;
     document.body.appendChild(elem);
 
-    const duration = 3000 + Math.random()*3000;
+    const duration = 3000 + Math.random() * 3000;
     elem.animate([
       { transform: 'translateY(0px)', opacity: 1 },
       { transform: `translateY(${window.innerHeight + 100}px)`, opacity: 0 }
@@ -238,47 +323,44 @@ function aprilFoolsConfetti(emoji = "🤡", count = 20) {
   }
 }
 
-// 4) Make signInButton move away on mouseover (only 2 times)
+// Make signInButton move away on mouseover (only 2 times)
 function aprilFoolsMoveSignInButton() {
   let moveCount = 0;
   signInButton.addEventListener('mouseover', () => {
     if (moveCount < 2) {
       signInButton.style.position = 'absolute';
-      signInButton.style.left = Math.random() * 250 + 'px';
-      signInButton.style.top  = (Math.random()*100 + 50) + 'px';
+      signInButton.style.left = (Math.random() * 250) + 'px';
+      signInButton.style.top  = (Math.random() * 100 + 50) + 'px';
       moveCount++;
     }
   });
 }
 
-// 5) “Impossible to click” after user already has a name
-//    Mouseover => reposition
-//    If user DOES click => comedic modal + reposition
+// After user has a name, the next "Change" becomes impossible
 function aprilFoolsMakeChangeButtonImpossible() {
-  // Random clown emojis in text
-  const clownEmojis = ["🤡", "🎪", "🤪", "🎈", "🃏", "🎉"];
+  // Periodically flash random clown emojis in text
+  const clownEmojis = ["🤡","🎪","🤪","🎈","🃏","🎉"];
+  // If you want the text to never revert, store interval
   setInterval(() => {
     const randomClown = clownEmojis[Math.floor(Math.random()*clownEmojis.length)];
     signInButton.textContent = `Change ${randomClown}`;
-  }, 600);
+  }, 700);
 
-  // Reposition on mouseover
-  signInButton.addEventListener('mouseover', (e) => {
-    // Keep them from easily hovering
+  // On mouseover, reposition
+  signInButton.addEventListener('mouseover', () => {
     signInButton.style.position = 'absolute';
-    signInButton.style.left = (Math.random()*300) + 'px';
-    signInButton.style.top  = (Math.random()*100 + 50) + 'px';
+    signInButton.style.left = (Math.random() * 300) + 'px';
+    signInButton.style.top  = (Math.random() * 100 + 50) + 'px';
 
-    const randomScale = 0.5 + Math.random()*1.5;
+    const randomScale = 0.5 + Math.random() * 1.5;
     const randomRotation = Math.floor(Math.random()*30 - 15);
     signInButton.style.transform = `scale(${randomScale}) rotate(${randomRotation}deg)`;
   });
 
-  // If user DOES manage to click => comedic modal + reposition
+  // If user manages to click => show comedic modal + confetti
   signInButton.addEventListener('click', (e) => {
-    e.preventDefault(); // prevent form submission or any real “Change” action
-
-    // Show comedic modal about their name
+    e.preventDefault();
+    // Show comedic modal re: their name
     const nameComment = funnyNameComments[currentUsername] || "";
     const locComment  = funnyLocationComments[currentLocation] || "";
 
@@ -295,9 +377,13 @@ function aprilFoolsMakeChangeButtonImpossible() {
       depending on how cringe you remain.<br><br>
       Thank you for your cooperation (not that you had a choice).
     `;
-    window.showInfoModal(message);
 
-    // Then reposition again
+    // Show modal
+    window.showInfoModal(message);
+    // Also do clown confetti for comedic effect
+    aprilFoolsConfetti("🤡", 20);
+
+    // Teleport again
     signInButton.style.position = 'absolute';
     signInButton.style.left = (Math.random()*300) + 'px';
     signInButton.style.top  = (Math.random()*100 + 50) + 'px';
@@ -310,10 +396,13 @@ function aprilFoolsMakeChangeButtonImpossible() {
 
 // For dev testing => always true
 function isAprilFoolsDayClient() {
+  // In real usage, you'd check the date:
+  // const now = new Date();
+  // return (now.getMonth() === 3 && now.getDate() === 1);
   return true;
 }
 
-// If user picks "semi-private", show Access Code input
+// Show/hide Access Code input for semi-private
 roomTypeRadios.forEach(radio => {
   radio.addEventListener('change', () => {
     if (radio.value === 'semi-private') {
@@ -324,7 +413,7 @@ roomTypeRadios.forEach(radio => {
   });
 });
 
-// Sign in form
+// Sign in form submission
 logForm.addEventListener('submit', (e) => {
   e.preventDefault();
 
@@ -336,29 +425,29 @@ logForm.addEventListener('submit', (e) => {
     return;
   }
 
+  // If we already had a name => "Change" scenario
   if (currentUsername) {
-    // Already had a name => "Change"
     signInButton.textContent = 'Changed';
     setTimeout(() => {
       signInButton.textContent = 'Change ';
-      const img = document.createElement('img');
-      img.src = 'images/icons/pencil.png';
-      img.alt = 'Arrow';
-      img.classList.add('arrow-icon');
-      signInButton.appendChild(img);
+      const pencilIcon = document.createElement('img');
+      pencilIcon.src = 'images/icons/pencil.png';
+      pencilIcon.alt = 'Arrow';
+      pencilIcon.classList.add('arrow-icon');
+      signInButton.appendChild(pencilIcon);
 
-      // Make it truly impossible now
+      // Now it becomes "impossible to click"
       aprilFoolsMakeChangeButtonImpossible();
     }, 2000);
 
   } else {
-    // First sign in
+    // First time sign in
     signInButton.textContent = 'Change ';
-    const img = document.createElement('img');
-    img.src = 'images/icons/pencil.png';
-    img.alt = 'Arrow';
-    img.classList.add('arrow-icon');
-    signInButton.appendChild(img);
+    const pencilIcon = document.createElement('img');
+    pencilIcon.src = 'images/icons/pencil.png';
+    pencilIcon.alt = 'Arrow';
+    pencilIcon.classList.add('arrow-icon');
+    signInButton.appendChild(pencilIcon);
 
     createRoomForm.classList.remove('hidden');
   }
@@ -373,13 +462,14 @@ logForm.addEventListener('submit', (e) => {
     location: currentLocation
   });
 
-  // Confetti each time
+  // Confetti to celebrate sign-in
   aprilFoolsConfetti("🤡", 30);
 
+  // Show the list of rooms
   showRoomList();
 });
 
-// "Create Room" button
+// Create Room button
 goChatButton.addEventListener('click', () => {
   const roomName   = roomNameInput.value.trim().slice(0, MAX_ROOM_NAME_LENGTH);
   const roomType   = document.querySelector('input[name="roomType"]:checked')?.value;
@@ -399,6 +489,7 @@ goChatButton.addEventListener('click', () => {
     lastUsedAccessCode = accessCode;
   }
   
+  // Request room creation from server
   socket.emit('create room', {
     name: roomName,
     type: roomType,
@@ -407,7 +498,7 @@ goChatButton.addEventListener('click', () => {
   });
 });
 
-// Clicking "Enter" on a listed room
+// Clicking "Enter" on listed rooms
 dynamicRoomList.addEventListener('click', (e) => {
   if (e.target.classList.contains('enter-button') && !e.target.disabled) {
     const roomElement = e.target.closest('.room');
@@ -422,7 +513,7 @@ dynamicRoomList.addEventListener('click', (e) => {
   }
 });
 
-// Prompt user for the semi-private access code
+// Prompt for the semi-private code
 function promptAccessCode(roomId) {
   window.showInputModal(
     'Access Code Required',
@@ -451,13 +542,17 @@ function joinRoom(roomId, accessCode = null) {
   socket.emit('join room', { roomId, accessCode });
 }
 
-// Socket events
+// Socket events from server
+
+// 1) After sign-in status is returned
 socket.on('signin status', (data) => {
   if (!data.isSignedIn) {
     signInMessage.style.display = 'block';
     roomListContainer.style.display = 'none';
     return;
   }
+
+  // Possibly replaced by server with a "funny" name
   currentUsername = data.username;
   currentLocation = data.location;
   currentUserId   = data.userId;
@@ -466,14 +561,14 @@ socket.on('signin status', (data) => {
   usernameInput.value = currentUsername;
   locationInput.value = currentLocation;
 
+  // If we haven't used this form yet
   if (!currentUsername) {
-    // Possibly handle if you want to show "Change" button
     signInButton.textContent = 'Change ';
-    const img = document.createElement('img');
-    img.src = 'images/icons/pencil.png';
-    img.alt = 'Arrow';
-    img.classList.add('arrow-icon');
-    signInButton.appendChild(img);
+    const pencilIcon = document.createElement('img');
+    pencilIcon.src = 'images/icons/pencil.png';
+    pencilIcon.alt = 'Arrow';
+    pencilIcon.classList.add('arrow-icon');
+    signInButton.appendChild(pencilIcon);
 
     createRoomForm.classList.remove('hidden');
   }
@@ -485,24 +580,32 @@ socket.on('signin status', (data) => {
   showRoomList();
 });
 
+// 2) After "room joined"
 socket.on('room joined', (data) => {
+  // Possibly show comedic modal again if it's a funny name
   maybeShowFunnyModal(data.username, data.location);
+
   if (lastUsedAccessCode) {
+    // If user needed an access code, store in URL
     window.location.href = `/room.html?roomId=${data.roomId}&accessCode=${lastUsedAccessCode}`;
     lastUsedAccessCode = null;
   } else {
+    // Otherwise just roomId
     window.location.href = `/room.html?roomId=${data.roomId}`;
   }
 });
 
+// 3) After "lobby update"
 socket.on('lobby update', (rooms) => {
   updateLobby(rooms);
 });
 
+// 4) "initial rooms"
 socket.on('initial rooms', (rooms) => {
   updateLobby(rooms);
 });
 
+// 5) "room created"
 socket.on('room created', (roomId) => {
   if (lastUsedAccessCode) {
     window.location.href = `/room.html?roomId=${roomId}&accessCode=${lastUsedAccessCode}`;
@@ -512,13 +615,18 @@ socket.on('room created', (roomId) => {
   }
 });
 
-socket.on('error', (error) => {
-  window.showErrorModal(`An error occurred: ${error}`);
+// 6) Error
+socket.on('error', (errorMsg) => {
+  window.showErrorModal(`An error occurred: ${errorMsg}`);
 });
 
+/** 
+ * Helpers to show/hide room list 
+ */
 function showRoomList() {
   signInMessage.style.display = 'none';
   roomListContainer.style.display = 'block';
+  // Ask server for updated rooms
   socket.emit('get rooms');
 }
 
@@ -540,7 +648,7 @@ function updateLobby(rooms) {
   }
 }
 
-// Build the DOM element for each public/semi-public room
+// Build DOM element for each public or semi-private room
 function createRoomElement(room) {
   const roomElement = document.createElement('div');
   roomElement.classList.add('room');
@@ -581,6 +689,7 @@ function createRoomElement(room) {
   const usersDetailDiv = document.createElement('div');
   usersDetailDiv.classList.add('users-detail');
 
+  // List current users
   room.users.forEach((user, index) => {
     const userDiv = document.createElement('div');
 
@@ -610,14 +719,16 @@ function createRoomElement(room) {
   return roomElement;
 }
 
+// Initialize on page load
 function initLobby() {
+  // Default radio selections
   document.querySelector('input[name="roomType"][value="public"]').checked = true;
   document.querySelector('input[name="roomLayout"][value="horizontal"]').checked = true;
 
-  // Check with server
+  // Ask server: is user already signed in?
   socket.emit('check signin status');
 
-  // If it's "April Fools" day, do pranks
+  // If it's April Fools, do the extra pranks
   if (isAprilFoolsDayClient()) {
     aprilFoolsFlipPage();
     aprilFoolsApplyStyles();
