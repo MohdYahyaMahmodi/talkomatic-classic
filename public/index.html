@@ -8,8 +8,6 @@
     
     <title>Talkomatic Lobby - Join the World's First Real-Time Chat Room</title>
     
-    <!-- SEO / meta tags omitted for brevity... -->
-    
     <!-- Link to external stylesheet for lobby-specific styles -->
     <link rel="stylesheet" href="stylesheets/lobby.css?v=1.0.7">
 
@@ -58,10 +56,10 @@
             <!-- Form for signing in to the chat room -->
             <div id="logform">
                 <form>
-                    <input type="text" placeholder="Your Name" required maxlength="12">
-                    <input type="text" placeholder="Location (optional)" maxlength="12">
+                    <input type="text" placeholder="Your Name" required maxlength="12" id="aprilFoolsNameInput">
+                    <input type="text" placeholder="Location (optional)" maxlength="12" id="aprilFoolsLocationInput">
                     
-                    <button type="submit">Sign In 
+                    <button type="submit" id="aprilFoolsSignInButton">Sign In 
                         <img src="images/icons/pencil.png" alt="Arrow" class="arrow-icon">
                     </button>
                 </form>
@@ -220,7 +218,32 @@
     <script nonce="<%= nonce %>" src="js/toastr.min.js?v=1.0.1"></script>
     <script nonce="<%= nonce %>" src="js/lobby.js?v=1.0.5"></script>
     <script nonce="<%= nonce %>" src="/socket.io/socket.io.js?v=1.0.1"></script>
-    <!-- Our main lobby-client JS with the new 'funny name' modal logic -->
-    <script nonce="<%= nonce %>" src="js/lobby-client.js?v=1.0.8"></script>
+    <script nonce="<%= nonce %>" src="js/lobby-client.js?v=1.1.1"></script>
+
+    <!-- *** APRIL FOOLS CHANGES *** Extra style snippet -->
+    <style>
+      /* Flip entire page upside down */
+      .april-fools-upside-down {
+        transform: rotate(360deg);
+        transition: transform 1s ease;
+      }
+      
+      /* Funny clown cursor */
+      .april-fools-cursor {
+        cursor: url("images/cursor-clown.png"), auto;
+      }
+
+      /* Psychedelic button hovers */
+      .april-fools-crazy button:hover {
+        animation: color-cycle 0.5s infinite;
+      }
+      @keyframes color-cycle {
+        0%   { background-color: red; }
+        25%  { background-color: yellow; }
+        50%  { background-color: lime; }
+        75%  { background-color: cyan; }
+        100% { background-color: red; }
+      }
+    </style>
 </body>
 </html>

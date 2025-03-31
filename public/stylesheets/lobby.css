@@ -11,22 +11,28 @@
 */
 
 /* Font Declarations */
-/* Define custom fonts used throughout the lobby */
-@font-face {
-  font-family: 'talkoSS'; /* Main font family for general text */
-  src: url('../fonts/Sansation_Light.ttf'); /* Light version of the font */
-}
 
+/* Comic Sans MS — native, works on most systems */
 @font-face {
   font-family: 'talkoSS';
-  src: url('../fonts/Sansation_Bold.ttf'); /* Bold version for emphasis */
+  src: local('Comic Sans MS'), local('ComicSansMS');
+}
+
+/* Impact — another native meme font */
+@font-face {
+  font-family: 'talkoSS';
+  src: local('Impact');
   font-weight: bold;
 }
 
+/* Lobster — absurdly curly font from Google Fonts */
 @font-face {
-  font-family: 'talkoText'; /* Special font for specific text elements */
-  src: url('../fonts/dited.otf');
+  font-family: 'talkoText';
+  src: url('https://fonts.gstatic.com/s/lobster/v28/neILzCirqoswsqX9_oWsMqEzSJQ.woff2') format('woff2');
 }
+
+
+
 
 /* Global Styles */
 /* Set default styles for the HTML and body elements */
@@ -35,7 +41,7 @@ body, html {
   padding: 0; /* Remove default padding */
   height: 100%; /* Ensure body takes up full viewport height */
   overflow: hidden; /* Hide overflow to prevent unwanted scroll bars */
-  font-family: talkoSS, Arial, sans-serif; /* Use custom font, fallback to Arial */
+  font-family: 'Comic Sans MS', cursive, sans-serif !important;
   background-color: #202020; /* Dark background color */
 }
 
