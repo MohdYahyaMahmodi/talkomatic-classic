@@ -37,8 +37,70 @@
     <!-- Ensures proper scaling on mobile devices by setting the viewport properties -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <!-- Title of the webpage that appears in the browser tab -->
-    <title>Talkomatic Lobby</title>
+    <!-- SEO Enhanced Title -->
+    <title>Talkomatic Lobby - Join the World's First Real-Time Chat Room</title>
+    
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Talkomatic is the world's first multi-user chat room, offering real-time character-by-character communication. Create or join chat rooms and experience the original chat technology from 1973.">
+    <meta name="keywords" content="Talkomatic, chat room, real-time chat, online communication, character-by-character chat, original chat room, PLATO system">
+    <meta name="author" content="Mohd Mahmodi">
+    <meta name="robots" content="index, follow">
+    <meta name="language" content="English">
+    
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://talkomatic.co/index.html">
+    
+    <!-- Open Graph Meta Tags for social sharing -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://talkomatic.co/index.html">
+    <meta property="og:title" content="Talkomatic - The First Multi-User Chat Room Since 1973">
+    <meta property="og:description" content="Join Talkomatic, the world's original chat room from 1973. Create rooms, chat in real-time, and see messages as they're typed character by character.">
+    <meta property="og:image" content="https://talkomatic.co/images/talkomatic-social-share.png">
+    <meta property="og:site_name" content="Talkomatic">
+    
+    <!-- Twitter Card Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Talkomatic - The First Multi-User Chat Room Since 1973">
+    <meta name="twitter:description" content="Join Talkomatic, the world's original chat room from 1973. Create rooms, chat in real-time, and see messages as they're typed character by character.">
+    <meta name="twitter:image" content="https://talkomatic.co/images/talkomatic-social-share.png">
+    <meta name="twitter:creator" content="@mohdmahmodi">
+    
+    <!-- Schema.org JSON-LD for structured data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Talkomatic",
+        "url": "https://talkomatic.co",
+        "description": "The world's first multi-user chat room created in 1973, offering real-time character-by-character text communication.",
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://talkomatic.co/search?q={search_term_string}",
+            "query-input": "required name=search_term_string"
+        }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Talkomatic",
+        "applicationCategory": "CommunicationApplication",
+        "operatingSystem": "Web",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        },
+        "datePublished": "2024-06-14",
+        "softwareVersion": "Open Source Edition",
+        "author": {
+            "@type": "Person",
+            "name": "Mohd Mahmodi"
+        },
+        "description": "The world's first multi-user chat room created in 1973, offering real-time character-by-character text communication."
+    }
+    </script>
     
     <!-- Link to external stylesheet for lobby-specific styles -->
     <link rel="stylesheet" href="stylesheets/lobby.css?v=1.0.7">
@@ -51,6 +113,9 @@
     
     <!-- Favicon icon for the website, displayed in the browser tab -->
     <link rel="icon" type="image/png" href="images/icons/favicon.png">
+    
+    <!-- Preconnect to external domains -->
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
 </head>
 
 <!-- Body Section: Main content and layout of the page -->
@@ -73,12 +138,17 @@
                 <span class="lobby">Lobby</span>
             </div>
 
-            <!-- External links section -->
             <div class="external-links">
-                <!-- Links to external websites providing information about Talkomatic -->
-                <a href="https://talkomatic.co/donate.html" target="_blank" rel="noopener noreferrer">Donate</a>
-                <a href="https://discord.gg/N7tJznESrE" target="_blank" rel="noopener noreferrer">Discord Server</a>
-                <a href="documentation.html" target="_blank" rel="noopener noreferrer">Documentations</a>
+                <table class="retro-link-table">
+                    <tr>
+                        <td><a href="https://classic.talkomatic.co/sponsors.html" target="_blank" rel="noopener noreferrer"><span class="bullet"></span> Sponsors</a></td>
+                        <td><a href="https://classic.talkomatic.co/contributors.html" target="_blank" rel="noopener noreferrer"><span class="bullet"></span> Contributors</a></td>
+                    </tr>
+                    <tr>
+                        <td><a href="https://classic.talkomatic.co/about.html" target="_blank" rel="noopener noreferrer"><span class="bullet"></span> About</a></td>
+                        <td><a href="https://discord.gg/N7tJznESrE" target="_blank" rel="noopener noreferrer"><span class="bullet"></span> Discord</a></td>
+                    </tr>
+                </table>
             </div>
             
             <!-- Section where users can provide a name to be known as in the chat -->
