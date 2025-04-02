@@ -25,94 +25,6 @@ const WordFilter = require('./public/js/word-filter.js');
 // Add WebSocket flood protection dependencies
 const { RateLimiterMemory } = require('rate-limiter-flexible');
 
-/**
- * APRIL FOOLS' PRANK (April 1st, 2025)
- * Replace user-entered usernames and locations with funny alternatives
- * REMEMBER TO REMOVE THIS CODE ON APRIL 2nd!
- */
-// Arrays of funny usernames and locations
-const funnyUsernames = [
-  "RizzReject",     // "charm? never met her"
-  "NPCNoob",        // "thinks 2+2 is vibes"
-  "LKing",          // "crown of losses"
-  "CringeCzar",     // "rules the awkward"
-  "AuraAllergy",    // "vibes make you sneeze"
-  "FlopFame",       // "10 likes, 9 are bots"
-  "RatioRoach",     // "crawls in own Ls"
-  "BaitBaby",       // "fell for clickbait"
-  "CapCorn",        // "lies pop like kernels"
-  "MogMeat",        // "ground up by alphas"
-  "TrendTramp",     // "chases dead fads"
-  "FypFossil",      // "scrolls ancient TikToks"
-  "SimpSack",       // "carries e-girl bags"
-  "GlowGoner",      // "shine left in 2023"
-  "StanStink",      // "fanboy breath reeks"
-  "BetaBlob",       // "spineless and soggy"
-  "DripDummy",      // "wears Shein drip"
-  "VibeVirus",      // "infects with lame"
-  "TokTwerp",       // "dances for 3 views"
-  "YeetYam",        // "throws self into Ls"
-  "CloutCarcass",   // "fame rotted away"
-  "RageRunt",       // "mad but 5’2”"
-  "NoWinners",      // "trophy case empty"
-  "FlexFraud",      // "gym pic, no gains"
-  "ZoomZombie",     // "brain dead on calls"
-  "SkibidiSkimp",   // "brainrot on a budget"
-  "LadLeak",        // "drips with failure"
-  "MemeMaggot",     // "lives in dead posts"
-  "ChatChump",      // "muted in Discord"
-  "RizzRubble"      // "charm’s a ruin"
-];
-
-const funnyLocations = [
-  "RizzRubble",     // "where charm crumbles"
-  "NPCCubicle",     // "desk for drones"
-  "LThrone",        // "sit on your losses"
-  "CringeCastl",    // "awkward kingdom"
-  "AuraAttic",      // "vibes collect dust"
-  "FlopFoyer",      // "fame’s front door"
-  "RatioRanch",     // "owned by numbers"
-  "BaitBench",      // "sit and get tricked"
-  "CapCage",        // "locked in lies"
-  "MogMud",         // "sunk by better bois"
-  "TrendTrash",     // "yesterday’s dump"
-  "FypFridge",      // "cold scroll storage"
-  "SimpStool",      // "kneel for e-queens"
-  "GlowGrave",      // "bury your shine"
-  "StanStall",      // "fanboy restroom"
-  "BetaBunk",       // "weakling dorm"
-  "DripDitch",      // "style’s drainage"
-  "VibeVault",      // "locked lame vibes"
-  "TokToilet",      // "flush your dances"
-  "YeetYoke",       // "chained to chaos"
-  "CloutCliff",     // "fall off fame"
-  "RageRoof",       // "scream at clouds"
-  "WinWreck",       // "victory crashed"
-  "FlexFlop",       // "muscle mirage"
-  "ZoomZoo",        // "cage of blank stares"
-  "SkibidiShed",    // "brainrot shack"
-  "LadLagoon",      // "swim in Ls"
-  "MemeMush",       // "rotten post pile"
-  "ChatChoke",      // "silenced server"
-  "RubbleRink"      // "skate on ruins"
-];
-
-
-// Create a map to persistently assign funny identities to users
-const userFunnyIdentities = new Map();
-
-function getAprilFoolsIdentity() {
-
-  const username = funnyUsernames[Math.floor(Math.random() * funnyUsernames.length)];
-  const location = funnyLocations[Math.floor(Math.random() * funnyLocations.length)];
-  return { username, location };
-}
-
-// Check if today is April Fools' Day
-function isAprilFoolsDay() {
-  return true; // FOR TESTING ONLY
-}
-
 /********************************* 
  * CONFIGURATION & CONSTANTS
  *********************************/
@@ -145,6 +57,7 @@ const CONFIG = {
     SERVER: '1.1.0'
   }
 };
+
 // Error codes for standardized error handling
 const ERROR_CODES = {
   VALIDATION_ERROR: 'VALIDATION_ERROR',
@@ -157,10 +70,12 @@ const ERROR_CODES = {
   BAD_REQUEST: 'BAD_REQUEST',
   FORBIDDEN: 'FORBIDDEN'
 };
+
 // Load word filter
 const wordFilter = new WordFilter(
   path.join(__dirname, 'public', 'js', 'offensive_words.json')
 );
+
 // State management
 const lastRoomCreationTimes = new Map();
 let rooms = new Map();
@@ -168,6 +83,7 @@ const users = new Map();
 const roomDeletionTimers = new Map();
 const typingTimeouts = new Map();
 const userMessageBuffers = new Map();
+
 // Connection and rate limiting trackers
 const ipConnections = new Map();
 const ipLastConnectionTime = new Map();
@@ -183,9 +99,11 @@ const typingLimiter = new RateLimiterMemory({
   points: CONFIG.LIMITS.TYPING_RATE_LIMIT,
   duration: 1
 });
+
 // Create express app and server
 const app = express();
 const server = http.createServer(app);
+
 /********************************* 
  * MIDDLEWARE & SECURITY SETUP
  *********************************/
@@ -195,6 +113,7 @@ const allowedOrigins = [
   'http://127.0.0.1:3000',
   'https://classic.talkomatic.co'
 ];
+
 // CORS config with support for all GitHub Pages domains
 const corsOptions = {
   origin: function (origin, callback) {
@@ -221,15 +140,18 @@ const corsOptions = {
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
 };
+
 // Parse JSON bodies for the REST API
 app.use(express.json());
 app.use(cors(corsOptions));
 app.use(cookieParser());
+
 // Setup a nonce for each request for CSP
 app.use((req, res, next) => {
   res.locals.nonce = crypto.randomBytes(16).toString('base64');
   next();
 });
+
 // Helmet config for improved security
 app.use(
   helmet({
@@ -274,8 +196,10 @@ app.use(
     crossOriginOpenerPolicy: false
   })
 );
+
 app.use(xss());
 app.use(hpp());
+
 // Rate limit: 1000 requests per 15 minutes
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -288,7 +212,9 @@ const limiter = rateLimit({
     }
   }
 });
+
 app.use(limiter);
+
 // Session config
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || '723698977cc31aaf8e84...',
@@ -300,7 +226,9 @@ const sessionMiddleware = session({
     maxAge: 14 * 24 * 60 * 60 * 1000,
   }
 });
+
 app.use(sessionMiddleware);
+
 // Socket.io setup with shared session and flood protection
 const io = socketIo(server, {
   cors: {
@@ -328,6 +256,7 @@ const io = socketIo(server, {
     credentials: true
   }
 });
+
 // Socket middleware for flood protection
 io.use((socket, next) => {
   try {
@@ -385,7 +314,9 @@ io.use((socket, next) => {
     next(new Error('Internal server error'));
   }
 });
+
 io.use(sharedsession(sessionMiddleware, { autoSave: true }));
+
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
@@ -398,6 +329,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
     }
   }
 }));
+
 /********************************* 
  * UTILITY FUNCTIONS
  *********************************/
@@ -418,12 +350,14 @@ function createErrorResponse(code, message, details = null) {
   
   return response;
 }
+
 /**
  * Send a standardized error response
  */
 function sendErrorResponse(res, code, message, status = 400, details = null) {
   return res.status(status).json(createErrorResponse(code, message, details));
 }
+
 /**
  * Validation rules for various inputs
  */
@@ -468,6 +402,7 @@ const validationRules = {
     return null;
   }
 };
+
 /**
  * Validate input against a specific rule
  */
@@ -477,6 +412,7 @@ function validate(field, value, context = {}) {
   }
   return null;
 }
+
 /**
  * Validate a complete object against multiple validation rules
  */
@@ -492,12 +428,14 @@ function validateObject(obj, rules) {
   }
   return Object.keys(errors).length > 0 ? errors : null;
 }
+
 /**
  * Convert strings to lower-case for consistent checks
  */
 function normalize(str) {
   return (str || '').trim().toLowerCase();
 }
+
 /**
  * Count how many rooms a given session (by userId) is in
  */
@@ -510,6 +448,7 @@ function getUserRoomsCount(userId) {
   }
   return count;
 }
+
 /**
  * Count how many rooms have the same (username, location) *case-insensitive*
  */
@@ -526,21 +465,26 @@ function getUsernameLocationRoomsCount(username, location) {
   }
   return count;
 }
+
 /**
  * Enforce character limit on different input types
  */
 function enforceCharacterLimit(message) {
   return typeof message === 'string' ? message.slice(0, CONFIG.LIMITS.MAX_MESSAGE_LENGTH) : message;
 }
+
 function enforceUsernameLimit(username) {
   return username.slice(0, CONFIG.LIMITS.MAX_USERNAME_LENGTH);
 }
+
 function enforceLocationLimit(location) {
   return location.slice(0, CONFIG.LIMITS.MAX_LOCATION_LENGTH);
 }
+
 function enforceRoomNameLimit(roomName) {
   return roomName.slice(0, CONFIG.LIMITS.MAX_ROOM_NAME_LENGTH);
 }
+
 /**
  * Save rooms to disk
  */
@@ -553,6 +497,7 @@ async function saveRooms() {
     console.error('Error saving rooms:', error);
   }
 }
+
 /**
  * Load rooms from disk
  */
@@ -570,12 +515,14 @@ async function loadRooms() {
     }
   }
 }
+
 /**
  * Generate a random room ID
  */
 function generateRoomId() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
+
 /**
  * Start a timer to delete a room after it's been empty for a while
  */
@@ -592,6 +539,7 @@ function startRoomDeletionTimer(roomId) {
   }, CONFIG.TIMING.ROOM_DELETION_TIMEOUT);
   roomDeletionTimers.set(roomId, timer);
 }
+
 /**
  * Update all clients in the lobby with the latest room list
  */
@@ -605,36 +553,13 @@ function updateLobby() {
     }));
   io.to('lobby').emit('lobby update', publicRooms);
 }
+
 /**
  * Update all clients in a room with the latest room state
  */
 function updateRoom(roomId) {
   const room = rooms.get(roomId);
   if (room) {
-    // APRIL FOOLS PRANK: Ensure all users in the room have funny identities in the room object
-    if (isAprilFoolsDay()) {
-      // Update each user in the room with funny username/location
-      for (let user of room.users) {
-        const funnyIdentity = getAprilFoolsIdentity(user.id);
-        
-        // Only log if we're changing something
-        if (user.username !== funnyIdentity.username || user.location !== funnyIdentity.location) {
-          console.log(`[APRIL FOOLS] Updating user in room ${roomId}: ${user.username} -> ${funnyIdentity.username}`);
-        }
-        
-        // Update the user in the room object
-        user.username = funnyIdentity.username;
-        user.location = funnyIdentity.location;
-        
-        // Also update users map
-        users.set(user.id, {
-          id: user.id,
-          username: funnyIdentity.username,
-          location: funnyIdentity.location
-        });
-      }
-    }
-    
     io.to(roomId).emit('room update', {
       id: room.id,
       name: room.name,
@@ -646,6 +571,7 @@ function updateRoom(roomId) {
     });
   }
 }
+
 /**
  * Get all the current message content for all users in a room
  */
@@ -658,6 +584,7 @@ function getCurrentMessages(users) {
   }
   return messages;
 }
+
 /**
  * Handle a user leaving a room
  */
@@ -699,6 +626,7 @@ async function leaveRoom(socket, userId) {
   updateLobby();
   await saveRooms();
 }
+
 /**
  * Join room logic:
  *  - If user is anonymous (case-insensitive 'anonymous'/'on the web'),
@@ -721,24 +649,7 @@ function joinRoom(socket, roomId, userId) {
     socket.emit('error', createErrorResponse(ERROR_CODES.FORBIDDEN, 'You have been banned from rejoining this room.'));
     return;
   }
-  
-  // Get username and location from session
   let { username, location } = socket.handshake.session;
-  
-  // APRIL FOOLS PRANK: Replace username and location with funny alternatives when joining a room
-  if (isAprilFoolsDay()) {
-    const funnyIdentity = getAprilFoolsIdentity();
-    username = enforceUsernameLimit(funnyIdentity.username);
-    location = enforceLocationLimit(funnyIdentity.location);
-    
-    // Update session with the funny identity
-    socket.handshake.session.username = username;
-    socket.handshake.session.location = location;
-    socket.handshake.session.save();
-    
-    console.log(`[APRIL FOOLS] User ${userId} joining room ${roomId} with funny identity: ${username} / ${location}`);
-  }
-  
   const userLower = normalize(username);
   const locLower = normalize(location);
   const isAnonymous =
@@ -813,6 +724,7 @@ function joinRoom(socket, roomId, userId) {
   });
   saveRooms();
 }
+
 /**
  * Handle typing indicators
  */
@@ -831,8 +743,10 @@ function handleTyping(socket, userId, username, isTyping) {
     typingTimeouts.delete(userId);
   }
 }
+
 // Initialize by loading rooms from disk
 loadRooms();
+
 /********************************* 
  * NEW REST API ENDPOINTS
  *********************************/
@@ -844,6 +758,7 @@ app.get(`/api/${CONFIG.VERSIONS.API}/config`, (req, res) => {
     versions: CONFIG.VERSIONS
   });
 });
+
 // GET /api/v1/health - Health check endpoint
 app.get(`/api/${CONFIG.VERSIONS.API}/health`, (req, res) => {
   res.json({
@@ -853,38 +768,23 @@ app.get(`/api/${CONFIG.VERSIONS.API}/health`, (req, res) => {
     version: CONFIG.VERSIONS.SERVER
   });
 });
+
 // GET /api/v1/me - Get current user session info
 app.get(`/api/${CONFIG.VERSIONS.API}/me`, (req, res) => {
   const { username, location, userId } = req.session;
   
   if (username && location && userId) {
-    // APRIL FOOLS: Replace with funny identity in API responses too
-    if (isAprilFoolsDay() && userId) {
-      const funnyIdentity = getAprilFoolsIdentity();
-      
-      // Update session with funny identity
-      req.session.username = funnyIdentity.username;
-      req.session.location = funnyIdentity.location;
-      req.session.save();
-      
-      res.json({
-        isSignedIn: true,
-        username: funnyIdentity.username,
-        location: funnyIdentity.location,
-        userId
-      });
-    } else {
-      res.json({
-        isSignedIn: true,
-        username,
-        location,
-        userId
-      });
-    }
+    res.json({
+      isSignedIn: true,
+      username,
+      location,
+      userId
+    });
   } else {
     res.json({ isSignedIn: false });
   }
 });
+
 // Serve emojiList.json - Add this after your other static file serving middleware
 app.get('/js/emojiList.json', async (req, res) => {
   try {
@@ -898,6 +798,7 @@ app.get('/js/emojiList.json', async (req, res) => {
     res.status(404).json({ error: 'Emoji list not found' });
   }
 });
+
 // GET /api/v1/docs/rooms - Room documentation
 app.get(`/api/${CONFIG.VERSIONS.API}/docs/rooms`, (req, res) => {
   res.json({
@@ -925,6 +826,7 @@ app.get(`/api/${CONFIG.VERSIONS.API}/docs/rooms`, (req, res) => {
     }
   });
 });
+
 /********************************* 
  * EXISTING REST API ENDPOINTS
  *********************************/
@@ -941,57 +843,25 @@ function apiAuth(req, res, next) {
   }
   next();
 }
+
 // GET /api/v1/rooms - list non-private rooms
 app.get(`/api/${CONFIG.VERSIONS.API}/rooms`, limiter, apiAuth, (req, res) => {
-  // April Fools: Make sure all usernames and locations are funny in API responses too
-  if (isAprilFoolsDay()) {
-    // Deep clone rooms to avoid modifying the original data
-    const roomsClone = new Map(rooms);
-    
-    // Apply funny identities to all users in all rooms
-    for (const [roomId, room] of roomsClone.entries()) {
-      if (room.users) {
-        for (const user of room.users) {
-          const funnyIdentity = getAprilFoolsIdentity(user.id);
-          user.username = funnyIdentity.username;
-          user.location = funnyIdentity.location;
-        }
-      }
-    }
-    
-    // Return the modified rooms
-    const publicRooms = Array.from(roomsClone.values())
-      .filter(room => room.type !== 'private')
-      .map(room => ({
-        id: room.id,
-        name: room.name,
-        type: room.type,
-        users: room.users.map(u => ({
-          id: u.id,
-          username: u.username,
-          location: u.location
-        })),
-        isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
-      }));
-    return res.json(publicRooms);
-  } else {
-    // Normal behavior
-    const publicRooms = Array.from(rooms.values())
-      .filter(room => room.type !== 'private')
-      .map(room => ({
-        id: room.id,
-        name: room.name,
-        type: room.type,
-        users: room.users.map(u => ({
-          id: u.id,
-          username: u.username,
-          location: u.location
-        })),
-        isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
-      }));
-    return res.json(publicRooms);
-  }
+  const publicRooms = Array.from(rooms.values())
+    .filter(room => room.type !== 'private')
+    .map(room => ({
+      id: room.id,
+      name: room.name,
+      type: room.type,
+      users: room.users.map(u => ({
+        id: u.id,
+        username: u.username,
+        location: u.location
+      })),
+      isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
+    }));
+  return res.json(publicRooms);
 });
+
 // GET /api/v1/rooms/:id - detail about a specific room
 app.get(`/api/${CONFIG.VERSIONS.API}/rooms/:id`, limiter, apiAuth, (req, res) => {
   const roomId = req.params.id;
@@ -999,40 +869,16 @@ app.get(`/api/${CONFIG.VERSIONS.API}/rooms/:id`, limiter, apiAuth, (req, res) =>
   if (!room) {
     return sendErrorResponse(res, ERROR_CODES.NOT_FOUND, 'Room not found', 404);
   }
-  
-  // April Fools: Make sure all usernames and locations are funny in API responses too
-  if (isAprilFoolsDay()) {
-    // Deep clone the room to avoid modifying the original data
-    const roomClone = JSON.parse(JSON.stringify(room));
-    
-    // Apply funny identities to all users in the room
-    if (roomClone.users) {
-      for (const user of roomClone.users) {
-        const funnyIdentity = getAprilFoolsIdentity(user.id);
-        user.username = funnyIdentity.username;
-        user.location = funnyIdentity.location;
-      }
-    }
-    
-    // Return the modified room
-    return res.json({
-      id: roomClone.id,
-      name: roomClone.name,
-      type: roomClone.type,
-      users: roomClone.users.map(u => ({ id: u.id, username: u.username, location: u.location })),
-      isFull: roomClone.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
-    });
-  } else {
-    // Normal behavior
-    return res.json({
-      id: room.id,
-      name: room.name,
-      type: room.type,
-      users: room.users.map(u => ({ id: u.id, username: u.username, location: u.location })),
-      isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
-    });
-  }
+  // Hide access code
+  return res.json({
+    id: room.id,
+    name: room.name,
+    type: room.type,
+    users: room.users.map(u => ({ id: u.id, username: u.username, location: u.location })),
+    isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
+  });
 });
+
 // POST /api/v1/rooms - create a new room (REST API version)
 app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, limiter, apiAuth, (req, res) => {
   try {
@@ -1111,6 +957,7 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, limiter, apiAuth, (req, res) => {
     );
   }
 });
+
 // POST /api/v1/rooms/:id/join - simple check for capacity & access code
 app.post(`/api/${CONFIG.VERSIONS.API}/rooms/:id/join`, limiter, apiAuth, (req, res) => {
   try {
@@ -1165,10 +1012,12 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms/:id/join`, limiter, apiAuth, (req, r
     return sendErrorResponse(res, ERROR_CODES.SERVER_ERROR, 'Internal server error', 500);
   }
 });
+
 // Example test route
 app.get(`/api/${CONFIG.VERSIONS.API}/protected/ping`, limiter, apiAuth, (req, res) => {
   return res.json({ message: 'pong', time: Date.now() });
 });
+
 /********************************* 
  * SOCKET.IO EVENT HANDLERS
  *********************************/
@@ -1176,45 +1025,20 @@ io.on('connection', (socket) => {
   socket.on('check signin status', () => {
     const { username, location, userId } = socket.handshake.session;
     if (username && location && userId) {
-      // APRIL FOOLS PRANK: Apply the funny identity during signin status check
-      if (isAprilFoolsDay()) {
-        const funnyIdentity = getAprilFoolsIdentity();
-        const displayUsername = enforceUsernameLimit(funnyIdentity.username);
-        const displayLocation = enforceLocationLimit(funnyIdentity.location);
-        
-        // Update the session permanently
-        socket.handshake.session.username = displayUsername;
-        socket.handshake.session.location = displayLocation;
-        socket.handshake.session.save(() => {
-          // Update the in-memory user data
-          users.set(userId, { id: userId, username: displayUsername, location: displayLocation });
-          
-          console.log(`[APRIL FOOLS] User ${userId} signin status with funny identity: ${displayUsername} / ${displayLocation}`);
-          
-          socket.emit('signin status', {
-            isSignedIn: true,
-            username: displayUsername,
-            location: displayLocation,
-            userId
-          });
-          socket.join('lobby');
-          updateLobby();
-        });
-      } else {
-        socket.emit('signin status', {
-          isSignedIn: true,
-          username,
-          location,
-          userId
-        });
-        socket.join('lobby');
-        users.set(userId, { id: userId, username, location });
-        updateLobby();
-      }
+      socket.emit('signin status', {
+        isSignedIn: true,
+        username,
+        location,
+        userId
+      });
+      socket.join('lobby');
+      users.set(userId, { id: userId, username, location });
+      updateLobby();
     } else {
       socket.emit('signin status', { isSignedIn: false });
     }
   });
+
   socket.on('join lobby', (data) => {
     try {
       if (!data) {
@@ -1239,17 +1063,6 @@ io.on('connection', (socket) => {
       // Normalize user inputs
       let username = enforceUsernameLimit(data.username || '');
       let location = enforceLocationLimit(data.location || 'On The Web');
-      
-      // APRIL FOOLS PRANK: Replace username and location with funny alternatives
-      if (isAprilFoolsDay()) {
-        const userId = socket.handshake.sessionID; // Get userId early to maintain consistent identities
-        const funnyIdentity = getAprilFoolsIdentity();
-        username = enforceUsernameLimit(funnyIdentity.username);
-        location = enforceLocationLimit(funnyIdentity.location);
-        
-        console.log(`[APRIL FOOLS] User ${userId} joining lobby with funny identity: ${username} / ${location}`);
-      }
-      
       if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
         const usernameCheck = wordFilter.checkText(username);
         if (usernameCheck.hasOffensiveWord) {
@@ -1293,6 +1106,7 @@ io.on('connection', (socket) => {
       ));
     }
   });
+
   socket.on('create room', (data) => {
     try {
       if (!data) {
@@ -1326,23 +1140,7 @@ io.on('connection', (socket) => {
         socket.emit('validation_error', validationErrors);
         return;
       }
-      
       let { username, location } = socket.handshake.session;
-      
-      // APRIL FOOLS PRANK: Ensure we're using the funny identity when creating a room
-      if (isAprilFoolsDay()) {
-        const funnyIdentity = getAprilFoolsIdentity();
-        username = funnyIdentity.username;
-        location = funnyIdentity.location;
-        
-        // Update session
-        socket.handshake.session.username = username;
-        socket.handshake.session.location = location;
-        socket.handshake.session.save();
-        
-        console.log(`[APRIL FOOLS] User ${userId} creating room with funny identity: ${username} / ${location}`);
-      }
-      
       const userLower = normalize(username);
       const locLower = normalize(location);
       // 1) If user is anonymous -> cannot create rooms
@@ -1433,6 +1231,7 @@ io.on('connection', (socket) => {
       ));
     }
   });
+
   socket.on('join room', (data) => {
     try {
       if (!data || !data.roomId) {
@@ -1505,17 +1304,6 @@ io.on('connection', (socket) => {
         socket.handshake.session.location = location;
         socket.handshake.session.userId = userId;
       }
-      
-      // APRIL FOOLS PRANK: Apply the funny identity when joining a room directly
-      if (isAprilFoolsDay()) {
-        const funnyIdentity = getAprilFoolsIdentity();
-        username = enforceUsernameLimit(funnyIdentity.username);
-        location = enforceLocationLimit(funnyIdentity.location);
-        socket.handshake.session.username = username;
-        socket.handshake.session.location = location;
-        
-        console.log(`[APRIL FOOLS] User ${userId} joining room ${data.roomId} with funny identity: ${username} / ${location}`);
-      }
   
       socket.handshake.session.save((err) => {
         if (!err) {
@@ -1530,6 +1318,7 @@ io.on('connection', (socket) => {
       ));
     }
   });
+
   socket.on('vote', async (data) => {
     try {
       if (!data || typeof data !== 'object') {
@@ -1591,6 +1380,7 @@ io.on('connection', (socket) => {
       ));
     }
   });
+
   socket.on('leave room', async () => {
     try {
       const userId = socket.handshake.session.userId;
@@ -1603,17 +1393,12 @@ io.on('connection', (socket) => {
       ));
     }
   });
+
   socket.on('chat update', async (data) => {
     try {
       if (!socket.roomId) return;
       const userId = socket.handshake.session.userId;
-      
-      // Get username - make sure we're using the funny one on April Fool's
-      let username = socket.handshake.session.username;
-      if (isAprilFoolsDay()) {
-        const funnyIdentity = getAprilFoolsIdentity();
-        username = funnyIdentity.username;
-      }
+      const username = socket.handshake.session.username;
       
       // Rate limiting for chat updates
       try {
@@ -1703,17 +1488,12 @@ io.on('connection', (socket) => {
       ));
     }
   });
+
   socket.on('typing', async (data) => {
     try {
       if (!socket.roomId) return;
       const userId = socket.handshake.session.userId;
-      
-      // Get username - make sure we're using the funny one on April Fool's
-      let username = socket.handshake.session.username;
-      if (isAprilFoolsDay()) {
-        const funnyIdentity = getAprilFoolsIdentity();
-        username = funnyIdentity.username;
-      }
+      const username = socket.handshake.session.username;
       
       // Rate limiting for typing events
       try {
@@ -1731,47 +1511,18 @@ io.on('connection', (socket) => {
       console.error('Error in typing handler:', err);
     }
   });
+
   socket.on('get rooms', () => {
-    // Apply April Fools names to users in room list too
-    if (isAprilFoolsDay()) {
-      // Clone rooms to avoid modifying original
-      const roomsClone = new Map();
-      
-      for (const [roomId, room] of rooms.entries()) {
-        const roomClone = JSON.parse(JSON.stringify(room));
-        
-        // Apply funny identities to users
-        if (roomClone.users) {
-          for (const user of roomClone.users) {
-            const funnyIdentity = getAprilFoolsIdentity(user.id);
-            user.username = funnyIdentity.username;
-            user.location = funnyIdentity.location;
-          }
-        }
-        
-        roomsClone.set(roomId, roomClone);
-      }
-      
-      socket.emit('initial rooms', Array.from(roomsClone.values())
-        .filter(room => room.type !== 'private')
-        .map(room => ({
-          ...room,
-          accessCode: undefined, // Hide the access code
-          isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
-        }))
-      );
-    } else {
-      // Normal behavior
-      socket.emit('initial rooms', Array.from(rooms.values())
-        .filter(room => room.type !== 'private')
-        .map(room => ({
-          ...room,
-          accessCode: undefined, // Hide the access code
-          isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
-        }))
-      );
-    }
+    socket.emit('initial rooms', Array.from(rooms.values())
+      .filter(room => room.type !== 'private')
+      .map(room => ({
+        ...room,
+        accessCode: undefined, // Hide the access code
+        isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
+      }))
+    );
   });
+
   // NEW: Get room state
   socket.on('get room state', (roomId) => {
     if (!roomId) {
@@ -1791,44 +1542,18 @@ io.on('connection', (socket) => {
       return;
     }
     
-    // For April Fools, make sure room state shows funny names
-    if (isAprilFoolsDay()) {
-      // Create a deep clone to avoid modifying the original
-      const roomClone = JSON.parse(JSON.stringify(room));
-      
-      // Apply funny identities to users
-      if (roomClone.users) {
-        for (const user of roomClone.users) {
-          const funnyIdentity = getAprilFoolsIdentity(user.id);
-          user.username = funnyIdentity.username;
-          user.location = funnyIdentity.location;
-        }
-      }
-      
-      socket.emit('room state', {
-        id: roomClone.id,
-        name: roomClone.name,
-        type: roomClone.type,
-        layout: roomClone.layout,
-        users: roomClone.users,
-        votes: roomClone.votes,
-        currentMessages: getCurrentMessages(room.users),
-        isFull: roomClone.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
-      });
-    } else {
-      // Normal behavior
-      socket.emit('room state', {
-        id: room.id,
-        name: room.name,
-        type: room.type,
-        layout: room.layout,
-        users: room.users,
-        votes: room.votes,
-        currentMessages: getCurrentMessages(room.users),
-        isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
-      });
-    }
+    socket.emit('room state', {
+      id: room.id,
+      name: room.name,
+      type: room.type,
+      layout: room.layout,
+      users: room.users,
+      votes: room.votes,
+      currentMessages: getCurrentMessages(room.users),
+      isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY
+    });
   });
+
   socket.on('disconnect', async () => {
     try {
       const userId = socket.handshake.session.userId;
@@ -1850,6 +1575,7 @@ io.on('connection', (socket) => {
     }
   });
 });
+
 // Periodic cleanup for empty rooms
 setInterval(() => {
   for (const [roomId, room] of rooms.entries()) {
@@ -1865,15 +1591,10 @@ setInterval(() => {
     }
   }
 }, 10000);
+
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Talkomatic server is running on port ${PORT}`);
   console.log(`Server version: ${CONFIG.VERSIONS.SERVER}`);
-  
-  // Log if April Fools mode is active
-  if (isAprilFoolsDay()) {
-    console.log('🎭 APRIL FOOLS MODE ACTIVATED! 🎭');
-    console.log('All usernames and locations will be replaced with funny alternatives');
-  }
 });
