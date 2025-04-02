@@ -127,24 +127,64 @@ body, html {
 
 /* External links section in the left panel */
 .external-links {
-  display: flex;
-  flex-direction: column; /* Stack links vertically */
-  align-items: center; /* Center align the links */
   margin-bottom: 10px;
+  width: 100%;
+  padding: 5px;
+}
+
+/* Retro table for 2x2 grid */
+.retro-link-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 8px;
+  font-family: monospace; /* Retro feel */
+}
+
+.retro-link-table td {
+  padding: 0;
+  text-align: left;
+  vertical-align: top;
 }
 
 /* Style for external links */
 .external-links a {
-  color: white; /* White text */
-  text-decoration: underline; /* Underline for visibility */
-  margin-bottom: 5px;
+  color: white;
+  text-decoration: none;
   font-size: 15px;
-  transition: color 0.3s ease; /* Smooth transition on hover */
+  transition: all 0.2s ease;
+  display: block;
+  letter-spacing: 0.5px;
+  background-color: #444;
+  padding: 5px 10px;
+  border-radius: 3px;
+}
+
+/* Non-underlined bullet point */
+.bullet {
+  text-decoration: none;
+  display: inline-block;
+}
+
+/* Hover effect - darker background */
+.external-links a:hover {
+  background-color: #1b1b1b;
 }
 
 /* Ensure visited links remain white */
 .external-links a:visited {
   color: white;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 480px) {
+  .retro-link-table {
+    border-spacing: 4px;
+  }
+  
+  .external-links a {
+    font-size: 14px;
+    padding: 4px 8px;
+  }
 }
 
 /* Known-as section with a light background */
