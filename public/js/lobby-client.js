@@ -169,8 +169,40 @@
   });
 })();
 
-// Socket.io initialization
-const socket = io();
+// Add connection status indicator
+const connectionStatus = document.createElement('div');
+connectionStatus.id = 'connectionStatus';
+connectionStatus.style.position = 'fixed';
+connectionStatus.style.bottom = '10px';
+connectionStatus.style.right = '10px';
+connectionStatus.style.padding = '5px 10px';
+connectionStatus.style.borderRadius = '5px';
+connectionStatus.style.fontSize = '12px';
+connectionStatus.style.fontWeight = 'bold';
+connectionStatus.style.zIndex = '1000';
+document.body.appendChild(connectionStatus);
+
+// Update connection status display
+function updateConnectionStatus() {
+  if (socket.connected) {
+    connectionStatus.textContent = 'Connected';
+    connectionStatus.style.backgroundColor = '#070707';
+    connectionStatus.style.color = 'white';
+  } else {
+    connectionStatus.textContent = 'Disconnected';
+    connectionStatus.style.backgroundColor = '#F44336';
+    connectionStatus.style.color = 'white';
+  }
+}
+
+// Socket.io initialization with robust connection settings
+const socket = io({
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000,
+  timeout: 20000,
+  autoConnect: true,
+  withCredentials: true
+});
 
 // DOM elements
 const logForm = document.getElementById('logform'); 
@@ -192,14 +224,68 @@ let currentUsername = '';
 let currentLocation = '';
 let isSignedIn = false;
 let lastUsedAccessCode = null;  // Store the last access code used from the lobby
+let connectionRetryCount = 0;
+const MAX_RETRIES = 3;
 
 const MAX_USERNAME_LENGTH = 12;
 const MAX_LOCATION_LENGTH = 12;
 const MAX_ROOM_NAME_LENGTH = 20;
 
 function checkSignInStatus() {
-  socket.emit('check signin status');
+  if (socket.connected) {
+    socket.emit('check signin status');
+  } else {
+    // If not connected, wait for connection and then check
+    socket.once('connect', () => {
+      socket.emit('check signin status');
+    });
+  }
 }
+
+// Socket connection event handlers
+socket.on('connect', () => {
+  console.log('Socket connected successfully');
+  connectionRetryCount = 0;
+  updateConnectionStatus();
+});
+
+socket.on('disconnect', (reason) => {
+  console.log(`Socket disconnected: ${reason}`);
+  updateConnectionStatus();
+  
+  if (reason === 'io server disconnect') {
+    // If the server deliberately disconnected us, try to reconnect
+    socket.connect();
+  }
+});
+
+socket.on('connect_error', (error) => {
+  console.error('Connection error:', error);
+  updateConnectionStatus();
+  
+  if (connectionRetryCount < MAX_RETRIES) {
+    connectionRetryCount++;
+    console.log(`Retrying connection (${connectionRetryCount}/${MAX_RETRIES})...`);
+    
+    // If we get a connection error, try to reconnect with a clean session
+    if (socket.disconnected) {
+      setTimeout(() => {
+        console.log('Attempting reconnection with clean session...');
+        socket.io.opts.query = { clean: 'true' };
+        socket.connect();
+      }, 1000 * connectionRetryCount); // Exponential backoff
+    }
+  } else {
+    window.showErrorModal('Unable to connect to the server. Please refresh the page and try again.', 'SERVER_ERROR');
+  }
+});
+
+socket.on('reconnect', (attemptNumber) => {
+  console.log(`Reconnected after ${attemptNumber} attempts`);
+  updateConnectionStatus();
+  // Re-check sign-in status after reconnection
+  checkSignInStatus();
+});
 
 // Show/hide access code field
 roomTypeRadios.forEach(radio => {
@@ -218,6 +304,10 @@ logForm.addEventListener('submit', (e) => {
   const newLocation = locationInput.value.trim().slice(0, MAX_LOCATION_LENGTH) || 'On The Web';
 
   if (newUsername) {
+    // Save to localStorage for persistent sign-in
+    localStorage.setItem('talkomaticUsername', newUsername);
+    localStorage.setItem('talkomaticLocation', newLocation);
+    
     if (currentUsername) {
       signInButton.textContent = 'Changed';
       setTimeout(() => {
@@ -241,10 +331,21 @@ logForm.addEventListener('submit', (e) => {
     currentLocation = newLocation;
     isSignedIn = true;
 
-    socket.emit('join lobby', {
-      username: currentUsername,
-      location: currentLocation
-    });
+    if (socket.connected) {
+      socket.emit('join lobby', {
+        username: currentUsername,
+        location: currentLocation
+      });
+    } else {
+      // If socket isn't connected, wait for connection
+      socket.once('connect', () => {
+        socket.emit('join lobby', {
+          username: currentUsername,
+          location: currentLocation
+        });
+      });
+    }
+    
     showRoomList();
   } else {
     window.showErrorModal('Please enter a username.');
@@ -252,6 +353,11 @@ logForm.addEventListener('submit', (e) => {
 });
 
 goChatButton.addEventListener('click', () => {
+  if (!socket.connected) {
+    window.showErrorModal('Not connected to server. Please wait for connection or refresh the page.', 'SERVER_ERROR');
+    return;
+  }
+  
   const roomName = roomNameInput.value.trim().slice(0, MAX_ROOM_NAME_LENGTH);
   const roomType = document.querySelector('input[name="roomType"]:checked')?.value;
   const roomLayout = document.querySelector('input[name="roomLayout"]:checked')?.value;
@@ -281,6 +387,11 @@ goChatButton.addEventListener('click', () => {
 
 dynamicRoomList.addEventListener('click', (e) => {
   if (e.target.classList.contains('enter-button') && !e.target.disabled) {
+    if (!socket.connected) {
+      window.showErrorModal('Not connected to server. Please wait for connection or refresh the page.', 'SERVER_ERROR');
+      return;
+    }
+    
     const roomElement = e.target.closest('.room');
     const roomId = roomElement.dataset.roomId;
     const roomType = roomElement.dataset.roomType;
@@ -314,6 +425,11 @@ function promptAccessCode(roomId) {
 }
 
 function joinRoom(roomId, accessCode = null) {
+  if (!socket.connected) {
+    window.showErrorModal('Not connected to server. Please wait for connection or refresh the page.', 'SERVER_ERROR');
+    return;
+  }
+  
   const data = { roomId, accessCode };
   socket.emit('join room', data);
 }
@@ -342,6 +458,10 @@ socket.on('signin status', (data) => {
     isSignedIn = true;
     usernameInput.value = currentUsername;
     locationInput.value = currentLocation;
+    
+    // Save server-confirmed credentials to localStorage
+    localStorage.setItem('talkomaticUsername', currentUsername);
+    localStorage.setItem('talkomaticLocation', currentLocation);
 
     signInButton.textContent = 'Change ';
     const img = document.createElement('img');
@@ -352,10 +472,44 @@ socket.on('signin status', (data) => {
     createRoomForm.classList.remove('hidden');
     showRoomList();
   } else {
+    // If server says not signed in, but we have localStorage credentials,
+    // the previous session expired. We've already tried to sign in with 
+    // stored credentials in initLobby(), so just show the message
     signInMessage.style.display = 'block';
     roomListContainer.style.display = 'none';
   }
 });
+
+// Add this function to your code
+function signOut() {
+  // Clear localStorage
+  localStorage.removeItem('talkomaticUsername');
+  localStorage.removeItem('talkomaticLocation');
+  
+  // Reset UI state
+  currentUsername = '';
+  currentLocation = '';
+  isSignedIn = false;
+  usernameInput.value = '';
+  locationInput.value = '';
+  
+  signInButton.textContent = 'Sign In';
+  while (signInButton.firstChild) {
+    signInButton.removeChild(signInButton.firstChild);
+  }
+  
+  createRoomForm.classList.add('hidden');
+  signInMessage.style.display = 'block';
+  roomListContainer.style.display = 'none';
+  
+  // Tell server the user is signed out
+  if (socket.connected) {
+    socket.emit('leave lobby');
+  }
+}
+
+// Add an event listener for your sign-out button if you have one
+// document.getElementById('signOutButton').addEventListener('click', signOut);
 
 socket.on('lobby update', (rooms) => {
   updateLobby(rooms);
@@ -372,7 +526,7 @@ socket.on('room created', (roomId) => {
 });
 
 socket.on('error', (error) => {
-  console.log(error)
+  console.log(error);
   window.showErrorModal((error.error.replaceDefaultText?'':`An error occurred: `)+error.error.message,error.error.code);
 });
 
@@ -465,13 +619,74 @@ function updateLobby(rooms) {
 function showRoomList() {
   signInMessage.style.display = 'none';
   roomListContainer.style.display = 'block';
-  socket.emit('get rooms');
+  
+  if (socket.connected) {
+    socket.emit('get rooms');
+  } else {
+    socket.once('connect', () => {
+      socket.emit('get rooms');
+    });
+  }
 }
 
 function initLobby() {
   document.querySelector('input[name="roomType"][value="public"]').checked = true;
   document.querySelector('input[name="roomLayout"][value="horizontal"]').checked = true;
-  socket.emit('check signin status');
+  
+  // Initialization needs to be delayed slightly to ensure socket is properly set up
+  setTimeout(() => {
+    // Check localStorage for saved credentials
+    const savedUsername = localStorage.getItem('talkomaticUsername');
+    const savedLocation = localStorage.getItem('talkomaticLocation');
+    
+    if (savedUsername) {
+      // Fill the form with saved credentials
+      usernameInput.value = savedUsername;
+      locationInput.value = savedLocation || 'On The Web';
+      
+      // Update UI to show signed-in state
+      currentUsername = savedUsername;
+      currentLocation = savedLocation || 'On The Web';
+      isSignedIn = true;
+      
+      signInButton.textContent = 'Change ';
+      const img = document.createElement('img');
+      img.src = 'images/icons/pencil.png';
+      img.alt = 'Arrow';
+      img.classList.add('arrow-icon');
+      signInButton.appendChild(img);
+      createRoomForm.classList.remove('hidden');
+      
+      // Auto sign-in with saved credentials - but wait for connection if needed
+      if (socket.connected) {
+        socket.emit('join lobby', {
+          username: savedUsername,
+          location: savedLocation || 'On The Web'
+        });
+        showRoomList();
+      } else {
+        socket.once('connect', () => {
+          socket.emit('join lobby', {
+            username: savedUsername,
+            location: savedLocation || 'On The Web'
+          });
+          showRoomList();
+        });
+      }
+    } else {
+      // If no saved credentials, check with server as usual
+      if (socket.connected) {
+        socket.emit('check signin status');
+      } else {
+        socket.once('connect', () => {
+          socket.emit('check signin status');
+        });
+      }
+    }
+  }, 500); // Short delay to ensure socket is initialized
+  
+  // Initialize connection status
+  updateConnectionStatus();
 }
 
 window.addEventListener('load', () => {
