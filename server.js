@@ -32,9 +32,10 @@ const { RateLimiterMemory } = require('rate-limiter-flexible');
 const CONFIG = {
   LIMITS: {
     MAX_USERNAME_LENGTH: 12,
+    MAX_AFK_TIME:200000,
     MAX_LOCATION_LENGTH: 12,
     MAX_ROOM_NAME_LENGTH: 20,
-    MAX_MESSAGE_LENGTH: 5000,
+    MAX_MESSAGE_LENGTH: 10000,
     MAX_ROOM_CAPACITY: 5,
     // WebSocket flood protection config
     MAX_CONNECTIONS_PER_IP: 15,
@@ -336,11 +337,12 @@ app.use(express.static(path.join(__dirname, 'public'), {
 /**
  * Create a standardized error response
  */
-function createErrorResponse(code, message, details = null) {
+function createErrorResponse(code, message, details = null, replaceDefaultText = false) {
   const response = {
     error: {
       code,
-      message
+      message,
+      replaceDefaultText
     }
   };
   
@@ -1021,7 +1023,20 @@ app.get(`/api/${CONFIG.VERSIONS.API}/protected/ping`, limiter, apiAuth, (req, re
 /********************************* 
  * SOCKET.IO EVENT HANDLERS
  *********************************/
+function onAFKTimeExceeded(socket) {
+  console.log("Disconnected "+socket.id+" for inactivity")
+  socket.emit("error",createErrorResponse(ERROR_CODES.ACCESS_DENIED,"Disconnected due to inactivity",null))
+  socket.disconnect();
+}
+
 io.on('connection', (socket) => {
+  let AFK_TIMEOUT = setTimeout(onAFKTimeExceeded,CONFIG.LIMITS.MAX_AFK_TIME,socket);
+
+  socket.onAny(() => {
+    clearTimeout(AFK_TIMEOUT);
+    AFK_TIMEOUT = setTimeout(onAFKTimeExceeded,CONFIG.LIMITS.MAX_AFK_TIME,socket);
+  })
+
   socket.on('check signin status', () => {
     const { username, location, userId } = socket.handshake.session;
     if (username && location && userId) {
