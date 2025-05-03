@@ -67,8 +67,19 @@
   }
   
   // Expose public methods to window
-  window.showErrorModal = function(message) {
-    showModal('Error', message, {
+  let ERROR_CODES = {
+    VALIDATION_ERROR: 'Validation Error',
+    SERVER_ERROR: 'Server Error',
+    UNAUTHORIZED: 'Unauthorized',
+    NOT_FOUND: 'Not Found',
+    RATE_LIMITED: 'Rate Limited',
+    ROOM_FULL: 'Room Full',
+    ACCESS_DENIED: 'Access Denied',
+    BAD_REQUEST: 'Bad Request',
+    FORBIDDEN: 'Forbidden'
+  } 
+  window.showErrorModal = function(message,title) {
+    showModal(ERROR_CODES[title]??"Error", message, {
       showCancel: false,
       confirmText: 'OK'
     });
@@ -361,7 +372,8 @@ socket.on('room created', (roomId) => {
 });
 
 socket.on('error', (error) => {
-  window.showErrorModal(`An error occurred: ${error}`);
+  console.log(error)
+  window.showErrorModal((error.error.replaceDefaultText?'':`An error occurred: `)+error.error.message,error.error.code);
 });
 
 function createRoomElement(room) {

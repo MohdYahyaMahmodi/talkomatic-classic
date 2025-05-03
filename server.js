@@ -32,7 +32,7 @@ const { RateLimiterMemory } = require('rate-limiter-flexible');
 const CONFIG = {
   LIMITS: {
     MAX_USERNAME_LENGTH: 12,
-    MAX_AFK_TIME:20000,
+    MAX_AFK_TIME:200000,
     MAX_LOCATION_LENGTH: 12,
     MAX_ROOM_NAME_LENGTH: 20,
     MAX_MESSAGE_LENGTH: 10000,
@@ -337,11 +337,12 @@ app.use(express.static(path.join(__dirname, 'public'), {
 /**
  * Create a standardized error response
  */
-function createErrorResponse(code, message, details = null) {
+function createErrorResponse(code, message, details = null, replaceDefaultText = false) {
   const response = {
     error: {
       code,
-      message
+      message,
+      replaceDefaultText
     }
   };
   
@@ -1024,7 +1025,7 @@ app.get(`/api/${CONFIG.VERSIONS.API}/protected/ping`, limiter, apiAuth, (req, re
  *********************************/
 function onAFKTimeExceeded(socket) {
   console.log("Disconnected "+socket.id+" for inactivity")
-  socket.emit("error",createErrorResponse(ERROR_CODES.ACCESS_DENIED,"Disconnected due to inactivity"))
+  socket.emit("error",createErrorResponse(ERROR_CODES.ACCESS_DENIED,"Disconnected due to inactivity",null))
   socket.disconnect();
 }
 
