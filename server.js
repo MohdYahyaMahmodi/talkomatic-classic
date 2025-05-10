@@ -17,13 +17,13 @@ const WordFilter = require('./public/js/word-filter.js');
 const util = require('util');
 const { RateLimiterMemory } = require('rate-limiter-flexible');
 
-// Enhanced global error handlers with graceful recovery
+// Global error handlers - last line of defense
 process.on('unhandledRejection', (reason, promise) => {
   console.error('=== UNHANDLED PROMISE REJECTION ===');
   console.error('Reason:', reason);
+  console.error('Promise:', promise);
   console.error('Stack:', reason instanceof Error ? reason.stack : 'No stack trace available');
   console.error('=====================================');
-  // Don't crash the server, keep running
 });
 
 process.on('uncaughtException', (error) => {
@@ -31,7 +31,6 @@ process.on('uncaughtException', (error) => {
   console.error('Error:', error.message);
   console.error('Stack:', error.stack);
   console.error('===========================');
-  // Don't crash the server, keep running
 });
 
 // Configuration
@@ -43,12 +42,12 @@ const CONFIG = {
     MAX_ROOM_NAME_LENGTH: 20,
     MAX_MESSAGE_LENGTH: 5000, // Reduced from 10000
     MAX_ROOM_CAPACITY: 5,
-    MAX_CONNECTIONS_PER_IP: 10, 
+    MAX_CONNECTIONS_PER_IP: 5, // Reduced from 15
     SOCKET_MAX_REQUESTS_WINDOW: 1,
-    SOCKET_MAX_REQUESTS_PER_WINDOW: 30, // Reduced from 50
+    SOCKET_MAX_REQUESTS_PER_WINDOW: 20, // Reduced from 50
     CHAT_UPDATE_RATE_LIMIT: 20, 
     TYPING_RATE_LIMIT: 15,
-    CONNECTION_DELAY: 2000, // Increased from 1000ms to 2000ms
+    CONNECTION_DELAY: 1000,
     MAX_ID_GEN_ATTEMPTS: 100,
     BATCH_SIZE_LIMIT: 20 // Maximum number of diffs to process in a single batch
   },
@@ -63,18 +62,10 @@ const CONFIG = {
   },
   VERSIONS: {
     API: 'v1',
-    SERVER: '1.3.0' // Updated version with DoS protection
-  },
-  // New circuit breaker configuration
-  CIRCUIT_BREAKER: {
-    MAX_CONNECTIONS_PER_ROOM: 10,
-    ROOM_COOLDOWN_PERIOD: 30000, // 30 seconds
-    CONNECTION_THRESHOLD: 15,     // 15 connections in cooldown triggers circuit
-    CIRCUIT_RESET_TIME: 60000     // 1 minute
+    SERVER: '1.2.1' // Updated version with batching
   }
 };
 
-// Enhanced error codes
 const ERROR_CODES = {
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   SERVER_ERROR: 'SERVER_ERROR',
@@ -85,8 +76,7 @@ const ERROR_CODES = {
   ACCESS_DENIED: 'ACCESS_DENIED',
   BAD_REQUEST: 'BAD_REQUEST',
   FORBIDDEN: 'FORBIDDEN',
-  CIRCUIT_OPEN: 'CIRCUIT_OPEN',
-  MAINTENANCE_MODE: 'MAINTENANCE_MODE' // New error code for high load situations
+  CIRCUIT_OPEN: 'CIRCUIT_OPEN'
 };
 
 // Load word filter
@@ -119,27 +109,10 @@ const chatCircuitState = {
   isOpen: false
 };
 
-// Room circuit breakers for DoS protection
-const roomCircuitBreakers = new Map();
-
 // Connection and rate limiting trackers
 const ipConnections = new Map();
 const ipLastConnectionTime = new Map();
 const blockedIPs = new Map();
-
-// New connection tracking
-const connectionTimestamps = new Map();
-const connectionCounts = new Map();
-
-// System state monitoring
-let systemState = {
-  isHighLoad: false,
-  highLoadSince: 0,
-  memoryWarningLevel: 0, // 0=normal, 1=warning, 2=critical
-  lastMemoryCheck: Date.now(),
-  connectionsDropped: 0,
-  lastReportTime: Date.now()
-};
 
 // Rate limiters
 const socketRateLimiter = new RateLimiterMemory({
@@ -159,11 +132,10 @@ const typingLimiter = new RateLimiterMemory({
   duration: 1
 });
 
-// Enhanced IP rate limiter
 const ipRateLimiter = new RateLimiterMemory({
-  points: 3,             // Reduced from 5 to 3 connection attempts
+  points: 5,             // 5 connection attempts
   duration: 10,          // Per 10 seconds
-  blockDuration: 300     // Block for 300 seconds (5 minutes) if exceeded
+  blockDuration: 30      // Block for 30 seconds if exceeded
 });
 
 const app = express();
@@ -300,88 +272,6 @@ const io = socketIo(server, {
   transports: ["websocket", "polling"]
 });
 
-// New function to block IPs with progressive blocking
-function blockIP(clientIp, duration) {
-  const now = Date.now();
-  const existingBlock = blockedIPs.get(clientIp);
-  
-  // If already blocked, double the duration (progressive penalty)
-  const blockDuration = existingBlock ? Math.min(duration * 2, 3600000) : duration; // Max 1 hour
-  
-  blockedIPs.set(clientIp, {
-    expiry: now + blockDuration,
-    count: (existingBlock?.count || 0) + 1
-  });
-  
-  console.warn(`Blocked IP ${clientIp} for ${blockDuration/1000} seconds`);
-}
-
-// New WebSocket pre-connection guard
-io.engine.on('connection', (socket) => {
-  const clientIp = socket.request.headers['x-forwarded-for']?.split(',')[0].trim() || 
-                  socket.request.connection.remoteAddress;
-  
-  // High load protection
-  if (systemState.memoryWarningLevel >= 2) {
-    // During critical memory situations, only accept connections from users with existing sessions
-    if (socket.request.session && !socket.request.session.userId) {
-      socket.disconnect(true);
-      systemState.connectionsDropped++;
-      return;
-    }
-  }
-  
-  // Track connection timestamps
-  const now = Date.now();
-  if (!connectionTimestamps.has(clientIp)) {
-    connectionTimestamps.set(clientIp, []);
-  }
-  
-  const timestamps = connectionTimestamps.get(clientIp);
-  timestamps.push(now);
-  
-  // Keep only last 10 timestamps for memory efficiency
-  if (timestamps.length > 10) {
-    timestamps.shift();
-  }
-  
-  // Count connections in the last second
-  const recentConnections = timestamps.filter(ts => now - ts < 1000).length;
-  
-  // Increment total connection counter
-  connectionCounts.set(clientIp, (connectionCounts.get(clientIp) || 0) + 1);
-  
-  // If connecting too rapidly, drop the connection immediately
-  if (recentConnections >= 8) { // 3+ connections in a second
-    console.warn(`Rapid connections detected from IP: ${clientIp}, closing connection`);
-    socket.disconnect(true);
-    
-    // Block for a longer period
-    blockIP(clientIp, 600000); // 10 minutes
-    
-    // Clean up
-    if (ipConnections.has(clientIp)) {
-      ipConnections.set(clientIp, Math.max(0, ipConnections.get(clientIp) - 1));
-    }
-    
-    return;
-  }
-  
-  // Check for excessive total connections (potential attack pattern)
-  if (connectionCounts.get(clientIp) > 20) {
-    const countPercentile = connectionCounts.get(clientIp) % 10;
-    // Only log occasionally to prevent log flooding
-    if (countPercentile === 0) {
-      console.warn(`Excessive connections from IP: ${clientIp}, count: ${connectionCounts.get(clientIp)}`);
-    }
-    
-    // Every 50 connections, increase block duration
-    if (connectionCounts.get(clientIp) % 50 === 0) {
-      blockIP(clientIp, 3600000); // 1 hour
-    }
-  }
-});
-
 // Socket.IO middleware for connection control and rate limiting
 io.use((socket, next) => {
   try {
@@ -396,15 +286,6 @@ io.use((socket, next) => {
         return next(new Error('IP temporarily blocked due to abuse detection'));
       } else {
         blockedIPs.delete(clientIp);
-      }
-    }
-    
-    // High load protection
-    if (systemState.isHighLoad) {
-      // During high load, only accept connections from users with existing sessions
-      const hasSession = socket.handshake.session && socket.handshake.session.userId;
-      if (!hasSession) {
-        return next(new Error('Server is experiencing high load. Please try again later.'));
       }
     }
     
@@ -571,7 +452,7 @@ function getUsernameLocationRoomsCount(username, location) {
   const locLower = normalize(location);
   let count = 0;
   
-  for (const [, room] of rooms.entries()) {
+  for (const [, room] of rooms) {
     for (const u of room.users) {
       if (normalize(u.username) === userLower && normalize(u.location) === locLower) count++;
     }
@@ -594,57 +475,6 @@ function enforceLocationLimit(location) {
 
 function enforceRoomNameLimit(roomName) {
   return typeof roomName === 'string' ? roomName.slice(0, CONFIG.LIMITS.MAX_ROOM_NAME_LENGTH) : '';
-}
-
-// New function to check room circuit breaker
-function checkRoomCircuit(roomId) {
-  if (!roomId) return true; // No room to check
-  
-  const now = Date.now();
-  if (!roomCircuitBreakers.has(roomId)) {
-    roomCircuitBreakers.set(roomId, {
-      connections: 1,
-      lastReset: now,
-      isOpen: false
-    });
-    return true;
-  }
-  
-  const circuitData = roomCircuitBreakers.get(roomId);
-  
-  // Reset circuit after timeout
-  if (circuitData.isOpen && now - circuitData.lastTrip > CONFIG.CIRCUIT_BREAKER.CIRCUIT_RESET_TIME) {
-    circuitData.isOpen = false;
-    circuitData.connections = 1;
-    circuitData.lastReset = now;
-    console.log(`Circuit breaker reset for room ${roomId}`);
-    return true;
-  }
-  
-  // If circuit is open, reject connections
-  if (circuitData.isOpen) {
-    return false;
-  }
-  
-  // Reset counter after cooldown period
-  if (now - circuitData.lastReset > CONFIG.CIRCUIT_BREAKER.ROOM_COOLDOWN_PERIOD) {
-    circuitData.connections = 1;
-    circuitData.lastReset = now;
-    return true;
-  }
-  
-  // Increment connection counter
-  circuitData.connections++;
-  
-  // Trip circuit breaker if too many connections
-  if (circuitData.connections > CONFIG.CIRCUIT_BREAKER.CONNECTION_THRESHOLD) {
-    circuitData.isOpen = true;
-    circuitData.lastTrip = now;
-    console.warn(`Circuit breaker tripped for room ${roomId} - too many connections`);
-    return false;
-  }
-  
-  return true;
 }
 
 // Process pending chat updates with batching
@@ -774,12 +604,6 @@ let saveRoomsPending = false;
 
 async function saveRooms() {
   try {
-    // Skip save during high system load
-    if (systemState.memoryWarningLevel >= 2) {
-      console.log('Skipping room save due to high memory usage');
-      return;
-    }
-    
     const roomsData = JSON.stringify(Array.from(rooms.entries()));
     const tempFilePath = path.join(__dirname, 'rooms.json.tmp');
     const finalFilePath = path.join(__dirname, 'rooms.json');
@@ -972,13 +796,6 @@ async function leaveRoom(socket, userId) {
 
 function joinRoom(socket, roomId, userId) {
   try {
-    // Check circuit breaker first
-    if (!checkRoomCircuit(roomId)) {
-      socket.emit('error', createErrorResponse(ERROR_CODES.CIRCUIT_OPEN, 
-        'This room is temporarily unavailable due to unusual traffic. Please try again in a minute.'));
-      return;
-    }
-    
     if (!roomId || typeof roomId !== 'string' || roomId.length !== 6) {
       socket.emit('error', createErrorResponse(ERROR_CODES.NOT_FOUND, 'Room not found (invalid ID format).'));
       return;
@@ -1124,111 +941,7 @@ app.get(`/api/${CONFIG.VERSIONS.API}/config`, (req, res) => {
 });
 
 app.get(`/api/${CONFIG.VERSIONS.API}/health`, (req, res) => {
-  const memUsage = process.memoryUsage();
-  const heapUsage = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
-  const healthStatus = systemState.memoryWarningLevel > 0 ? 'degraded' : 'ok';
-  
-  res.json({ 
-    status: healthStatus, 
-    uptime: process.uptime(), 
-    timestamp: Date.now(), 
-    version: CONFIG.VERSIONS.SERVER,
-    memory: {
-      usage: heapUsage,
-      allocated: Math.round(memUsage.heapTotal / 1024 / 1024),
-      used: Math.round(memUsage.heapUsed / 1024 / 1024)
-    },
-    connections: io.sockets.sockets.size,
-    highLoad: systemState.isHighLoad
-  });
-});
-
-// Add a status page that people can refresh to see server status
-app.get('/status', (req, res) => {
-  const memUsage = process.memoryUsage();
-  const heapUsage = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
-  const activeRooms = rooms.size;
-  const activeConnections = io.sockets.sockets.size;
-  
-  const html = `
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <title>Talkomatic Server Status</title>
-    <meta http-equiv="refresh" content="5">
-    <style>
-      body { font-family: Arial, sans-serif; margin: 20px; }
-      .status { padding: 10px; border-radius: 5px; margin-bottom: 10px; }
-      .ok { background-color: #d4edda; }
-      .warning { background-color: #fff3cd; }
-      .danger { background-color: #f8d7da; }
-      table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-      th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-      th { background-color: #f2f2f2; }
-      .meter { height: 20px; background: #e0e0e0; border-radius: 10px; padding: 0; position: relative; }
-      .meter > span { display: block; height: 100%; border-radius: 10px; position: relative; overflow: hidden; }
-      .meter > span.green { background-color: #4CAF50; }
-      .meter > span.yellow { background-color: #FFC107; }
-      .meter > span.red { background-color: #F44336; }
-    </style>
-  </head>
-  <body>
-    <h1>Talkomatic Server Status</h1>
-    <div class="status ${systemState.memoryWarningLevel === 0 ? 'ok' : systemState.memoryWarningLevel === 1 ? 'warning' : 'danger'}">
-      <h2>Server Status: ${systemState.memoryWarningLevel === 0 ? 'Normal' : systemState.memoryWarningLevel === 1 ? 'Warning' : 'High Load'}</h2>
-      <p>The server is ${systemState.isHighLoad ? 'under high load' : 'operating normally'}.</p>
-    </div>
-    
-    <h3>System Resource Usage</h3>
-    <div>
-      <p>Memory Usage: ${heapUsage}%</p>
-      <div class="meter">
-        <span class="${heapUsage < 70 ? 'green' : heapUsage < 85 ? 'yellow' : 'red'}" style="width: ${heapUsage}%"></span>
-      </div>
-      <p>Heap Memory: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB / ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB</p>
-    </div>
-    
-    <table>
-      <tr>
-        <th>Metric</th>
-        <th>Value</th>
-      </tr>
-      <tr>
-        <td>Server Version</td>
-        <td>${CONFIG.VERSIONS.SERVER}</td>
-      </tr>
-      <tr>
-        <td>Uptime</td>
-        <td>${Math.floor(process.uptime() / 60)} minutes</td>
-      </tr>
-      <tr>
-        <td>Active Connections</td>
-        <td>${activeConnections}</td>
-      </tr>
-      <tr>
-        <td>Active Rooms</td>
-        <td>${activeRooms}</td>
-      </tr>
-      <tr>
-        <td>Connection Mode</td>
-        <td>${systemState.isHighLoad ? 'Restricted (high load)' : 'Normal'}</td>
-      </tr>
-      <tr>
-        <td>Memory Warning Level</td>
-        <td>${systemState.memoryWarningLevel}</td>
-      </tr>
-      <tr>
-        <td>Connections Dropped</td>
-        <td>${systemState.connectionsDropped}</td>
-      </tr>
-    </table>
-    
-    <p><small>Last updated: ${new Date().toLocaleString()}</small></p>
-  </body>
-  </html>
-  `;
-  
-  res.send(html);
+  res.json({ status: 'ok', uptime: process.uptime(), timestamp: Date.now(), version: CONFIG.VERSIONS.SERVER });
 });
 
 app.get(`/api/${CONFIG.VERSIONS.API}/me`, (req, res) => {
@@ -1302,11 +1015,6 @@ app.get(`/api/${CONFIG.VERSIONS.API}/rooms/:id`, apiAuth, (req, res) => {
 
 app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
   try {
-    // During high load, reject creating new rooms via API
-    if (systemState.memoryWarningLevel >= 2) {
-      return sendErrorResponse(res, ERROR_CODES.MAINTENANCE_MODE, 'Server is under high load. Please try again later.', 503);
-    }
-    
     const data = req.body;
     const validationErrors = validateObject(data, {
       name: { rule: 'roomName' }, type: { rule: 'roomType' }, layout: { rule: 'layout' },
@@ -1366,12 +1074,6 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms/:id/join`, apiAuth, async (req, res)
     const room = rooms.get(roomId);
     
     if (!room) return sendErrorResponse(res, ERROR_CODES.NOT_FOUND, 'Room not found', 404);
-    
-    // Check room circuit breaker
-    if (!checkRoomCircuit(roomId)) {
-      return sendErrorResponse(res, ERROR_CODES.CIRCUIT_OPEN, 
-        'This room is temporarily unavailable due to unusual traffic.', 429);
-    }
     
     if (room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY) {
       return sendErrorResponse(res, ERROR_CODES.ROOM_FULL, 'Room is full', 400);
@@ -1521,13 +1223,6 @@ io.on('connection', (socket) => {
       return;
     }
     
-    // Reject new room creation during critical memory situations
-    if (systemState.memoryWarningLevel >= 2) {
-      socket.emit('error', createErrorResponse(ERROR_CODES.MAINTENANCE_MODE, 
-        'Server is under high load. Creating new rooms temporarily disabled.'));
-      return;
-    }
-    
     const userId = socket.handshake.session ? socket.handshake.session.userId : null;
     if (!userId) {
       socket.emit('error', createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'You must be signed in to create a room.'));
@@ -1624,13 +1319,6 @@ io.on('connection', (socket) => {
     const room = rooms.get(data.roomId);
     if (!room) {
       socket.emit('room not found', createErrorResponse(ERROR_CODES.NOT_FOUND, 'Room not found.'));
-      return;
-    }
-    
-    // Check room circuit breaker
-    if (!checkRoomCircuit(data.roomId)) {
-      socket.emit('error', createErrorResponse(ERROR_CODES.CIRCUIT_OPEN, 
-        'This room is temporarily unavailable due to unusual traffic. Please try again in a minute.'));
       return;
     }
     
@@ -1732,7 +1420,7 @@ io.on('connection', (socket) => {
     if (userId) await leaveRoom(socket, userId);
   }));
   
-  // Updated 'chat update' event handler with batching and circuit breaker
+  // Updated 'chat update' event handler with batching
   socket.on('chat update', safe(async (data) => {
     // Circuit breaker check
     if (!checkChatCircuit()) {
@@ -1928,147 +1616,40 @@ setInterval(() => {
   }
 }, 300000); // Every 5 minutes
 
-// Enhanced server crash protection monitor
+// Server crash protection monitor
 setInterval(() => {
   try {
     const memoryUsage = process.memoryUsage();
     const heapUsedPercentage = Math.round((memoryUsage.heapUsed / memoryUsage.heapTotal) * 100);
-    const now = Date.now();
     
-    // Update memory warning level
     if (heapUsedPercentage > 90) {
-      systemState.memoryWarningLevel = 2; // Critical
-      console.warn(`MEMORY CRITICAL: Heap usage at ${heapUsedPercentage}%`);
-    } else if (heapUsedPercentage > 80) {
-      systemState.memoryWarningLevel = 1; // Warning
       console.warn(`MEMORY WARNING: Heap usage at ${heapUsedPercentage}%`);
-    } else {
-      systemState.memoryWarningLevel = 0; // Normal
+      
+      // Emergency cleanup of large message buffers
+      if (heapUsedPercentage > 95) {
+        console.warn("EMERGENCY MEMORY CLEANUP: Clearing large message buffers");
+        for (const [userId, message] of userMessageBuffers.entries()) {
+          if (message.length > 1000) {
+            userMessageBuffers.set(userId, message.substring(0, 1000) + "... [truncated for system stability]");
+          }
+        }
+      }
     }
     
-    // Set high load flag based on memory and connection count
+    // Log connected clients count
     const connectedClients = io.sockets.sockets.size;
-    const isHighLoad = (heapUsedPercentage > 85) || (connectedClients > 100);
+    console.log(`Server status: ${connectedClients} connected clients, heap usage: ${heapUsedPercentage}%`);
     
-    if (isHighLoad && !systemState.isHighLoad) {
-      systemState.isHighLoad = true;
-      systemState.highLoadSince = now;
-      console.warn(`HIGH LOAD MODE ACTIVATED: ${connectedClients} clients, ${heapUsedPercentage}% heap usage`);
-    } else if (!isHighLoad && systemState.isHighLoad && (now - systemState.highLoadSince > 60000)) {
-      // Only exit high load mode after it's been normal for at least 1 minute
-      systemState.isHighLoad = false;
-      console.log(`HIGH LOAD MODE DEACTIVATED: ${connectedClients} clients, ${heapUsedPercentage}% heap usage`);
-    }
-    
-    // Emergency cleanup of large message buffers during critical memory situations
-    if (systemState.memoryWarningLevel === 2) {
-      console.warn("EMERGENCY MEMORY CLEANUP: Clearing large message buffers");
-      for (const [userId, message] of userMessageBuffers.entries()) {
-        if (message.length > 1000) {
-          userMessageBuffers.set(userId, message.substring(0, 1000) + "... [truncated for system stability]");
-        }
-      }
-      
-      // Force garbage collection if possible
-      if (global.gc) {
-        console.log("Forcing garbage collection");
-        global.gc();
-      }
-    }
-    
-    // Periodic status report (only log every minute to avoid log spam)
-    if (now - systemState.lastReportTime > 60000) {
-      console.log(`Server status: ${connectedClients} connected clients, heap usage: ${heapUsedPercentage}%, memory warning level: ${systemState.memoryWarningLevel}`);
-      systemState.lastReportTime = now;
-      
-      // Check for IP addresses with excessive connections
-      let suspiciousIPs = 0;
-      for (const [ip, count] of ipConnections.entries()) {
-        if (count > CONFIG.LIMITS.MAX_CONNECTIONS_PER_IP * 0.8) {
-          console.warn(`IP warning: ${ip} has ${count} connections (max: ${CONFIG.LIMITS.MAX_CONNECTIONS_PER_IP})`);
-          suspiciousIPs++;
-        }
-      }
-      
-      if (suspiciousIPs > 0) {
-        console.warn(`${suspiciousIPs} suspicious IPs detected with high connection counts`);
-      }
-      
-      // Clean up tracking for rate limiting
-      if (roomCircuitBreakers.size > 100) {
-        const oldCircuits = [...roomCircuitBreakers.entries()]
-          .filter(([_, data]) => now - data.lastReset > 3600000 && !data.isOpen)
-          .map(([roomId]) => roomId);
-          
-        for (const roomId of oldCircuits) {
-          roomCircuitBreakers.delete(roomId);
-        }
-        
-        console.log(`Cleaned up ${oldCircuits.length} old room circuit breakers`);
-      }
-      
-      // Clean up old connection tracking
-      if (connectionTimestamps.size > 1000) {
-        const entriesToRemove = [...connectionTimestamps.entries()]
-          .filter(([_, timestamps]) => timestamps.length === 0 || 
-                                      (timestamps.length > 0 && now - Math.max(...timestamps) > 3600000))
-          .map(([ip]) => ip);
-        
-        for (const ip of entriesToRemove) {
-          connectionTimestamps.delete(ip);
-          connectionCounts.delete(ip);
-        }
-        
-        console.log(`Cleaned up connection tracking for ${entriesToRemove.length} IPs`);
-      }
-      
-      // Clean up expired IP blocks
-      const expiredBlocks = [...blockedIPs.entries()]
-        .filter(([_, data]) => now > data.expiry)
-        .map(([ip]) => ip);
-      
-      for (const ip of expiredBlocks) {
-        blockedIPs.delete(ip);
-      }
-      
-      if (expiredBlocks.length > 0) {
-        console.log(`Removed ${expiredBlocks.length} expired IP blocks`);
+    // Check for IP addresses with excessive connections
+    for (const [ip, count] of ipConnections.entries()) {
+      if (count > CONFIG.LIMITS.MAX_CONNECTIONS_PER_IP * 0.8) {
+        console.warn(`IP warning: ${ip} has ${count} connections (max: ${CONFIG.LIMITS.MAX_CONNECTIONS_PER_IP})`);
       }
     }
   } catch (err) {
     console.error("Error in server monitor:", err);
   }
-}, 15000); // Every 15 seconds
-
-// Monitor for persistent attackers
-setInterval(() => {
-  try {
-    const now = Date.now();
-    
-    // Check for persistent connection attempts
-    for (const [ip, timestamps] of connectionTimestamps.entries()) {
-      // Clean up old timestamps
-      const recentTimestamps = timestamps.filter(ts => now - ts < 60000); // Last minute
-      connectionTimestamps.set(ip, recentTimestamps);
-      
-      // If still actively connecting despite being blocked
-      if (blockedIPs.has(ip) && recentTimestamps.length > 5) {
-        const blockData = blockedIPs.get(ip);
-        
-        // Extend block for persistent offenders
-        const newExpiry = now + 3600000; // 1 hour
-        blockedIPs.set(ip, {
-          expiry: Math.max(blockData.expiry, newExpiry),
-          count: blockData.count + 1
-        });
-        
-        console.warn(`Extended block for persistent offender IP: ${ip}`);
-      }
-    }
-  } catch (err) {
-    console.error("Error in persistent attacker monitor:", err);
-  }
-}, 30000); // Every 30 seconds
+}, 60000); // Every minute
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

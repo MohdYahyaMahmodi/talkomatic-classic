@@ -2,12 +2,7 @@
 // room-client.js - Improved emote handling with bugfixes
 // ============================================================================
 
-setTimeout(() => {
-  const socket = io({
-    withCredentials: true,
-    transports: ['websocket']
-  });
-}, 400);
+const socket = io(); // Initialize Socket.IO connection
 
 let currentUsername = '';
 let currentLocation = '';
