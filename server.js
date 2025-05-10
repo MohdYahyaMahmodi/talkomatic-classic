@@ -1030,11 +1030,13 @@ function onAFKTimeExceeded(socket) {
 }
 
 io.on('connection', (socket) => {
-  let AFK_TIMEOUT = setTimeout(onAFKTimeExceeded,CONFIG.LIMITS.MAX_AFK_TIME,socket);
+  let AFK_TIMEOUT = null;
 
   socket.onAny(() => {
     clearTimeout(AFK_TIMEOUT);
-    AFK_TIMEOUT = setTimeout(onAFKTimeExceeded,CONFIG.LIMITS.MAX_AFK_TIME,socket);
+    if (socket.roomId) { // ensure the user is in a room and not in the lobby
+      AFK_TIMEOUT = setTimeout(onAFKTimeExceeded,CONFIG.LIMITS.MAX_AFK_TIME,socket);
+    }
   })
 
   socket.on('check signin status', () => {
@@ -1323,6 +1325,7 @@ io.on('connection', (socket) => {
       socket.handshake.session.save((err) => {
         if (!err) {
           joinRoom(socket, data.roomId, userId);
+          AFK_TIMEOUT = setTimeout(onAFKTimeExceeded,CONFIG.LIMITS.MAX_AFK_TIME,socket);
         }
       });
     } catch (err) {
@@ -1400,6 +1403,7 @@ io.on('connection', (socket) => {
     try {
       const userId = socket.handshake.session.userId;
       await leaveRoom(socket, userId);
+      clearTimeout(AFK_TIMEOUT);
     } catch (err) {
       console.error('Error in leave room:', err);
       socket.emit('error', createErrorResponse(
