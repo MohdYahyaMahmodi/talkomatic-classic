@@ -1471,6 +1471,7 @@ io.on('connection', (socket) => {
           ));
           return;
       }
+      userMessage = userMessage.replaceAll('\r', ''); // To prevent the carriage return filter bypass
       userMessageBuffers.set(userId, userMessage);
       if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
         const filterResult = wordFilter.checkText(userMessage);
