@@ -440,8 +440,26 @@ h2 {
 
 .copyright-info .version {
   color: var(--primary-color);
+  text-decoration: none;
+  transition: all 0.2s ease;
   margin-right: 5px;
 }
+
+.copyright-info .version:visited {
+  color: var(--primary-color);
+}
+
+.copyright-info .version:hover {
+  text-decoration: underline;
+  color: #d78202;
+}
+
+.copyright-info .version:focus {
+  outline: 2px solid #0066cc;
+  outline-offset: 2px;
+  text-decoration: underline;
+}
+
 
 .copyright-info .dot {
   margin: 0 5px;
@@ -464,7 +482,7 @@ h2 {
 
 .creator-link:hover {
   text-decoration: underline;
-  color: var(--primary-color);
+  color: #c7c7c7;
 }
 
 .creator-link:focus {
