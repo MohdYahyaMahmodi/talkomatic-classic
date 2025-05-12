@@ -228,7 +228,7 @@ let connectionRetryCount = 0;
 const MAX_RETRIES = 3;
 
 const MAX_USERNAME_LENGTH = 15;
-const MAX_LOCATION_LENGTH = 29;
+const MAX_LOCATION_LENGTH = 20;
 const MAX_ROOM_NAME_LENGTH = 25;
 
 function checkSignInStatus() {
