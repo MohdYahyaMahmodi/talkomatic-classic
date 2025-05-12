@@ -65,7 +65,7 @@ const CONFIG = {
   },
   VERSIONS: {
     API: "v1",
-    SERVER: "1.2.1", // Updated version with batching
+    SERVER: "1.2.2", // Updated version with batching
   },
 };
 
@@ -776,16 +776,21 @@ async function loadRooms() {
     if (Array.isArray(loadedRoomsArray)) {
       rooms = new Map(
         loadedRoomsArray.map((item) => {
-          if (
-            item[1] &&
-            item[1].bannedUserIds &&
-            !(item[1].bannedUserIds instanceof Set)
-          ) {
-            item[1].bannedUserIds = new Set(
-              item[1].bannedUserIds.values || item[1].bannedUserIds
-            );
-          } else if (item[1] && !item[1].bannedUserIds) {
-            item[1].bannedUserIds = new Set();
+          if (item[1]) {
+            if (item[1].bannedUserIds) {
+              if (item[1].bannedUserIds instanceof Set) {
+              } else if (Array.isArray(item[1].bannedUserIds)) {
+                item[1].bannedUserIds = new Set(item[1].bannedUserIds);
+              } else if (typeof item[1].bannedUserIds === "object") {
+                item[1].bannedUserIds = new Set(
+                  Object.values(item[1].bannedUserIds)
+                );
+              } else {
+                item[1].bannedUserIds = new Set();
+              }
+            } else {
+              item[1].bannedUserIds = new Set();
+            }
           }
           return item;
         })

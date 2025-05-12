@@ -160,10 +160,10 @@
             <div id="logform">
                 <form>
                     <!-- Text input for the user's name, required field -->
-                    <input type="text" placeholder="Your Name" required maxlength="12">
+                    <input type="text" placeholder="Your Name" required maxlength="15">
                     
                     <!-- Optional text input for the user's location -->
-                    <input type="text" placeholder="Location (optional)" maxlength="12">
+                    <input type="text" placeholder="Location (optional)" maxlength="20">
                     
                     <!-- Submit button with an icon for signing in -->
                     <button type="submit">Sign In 
@@ -181,7 +181,7 @@
             <!-- Form for specifying room details (room name, type, layout) -->
             <div id="lobbyForm">
                 <!-- Input field for the room name (max length: 20 characters) -->
-                <input type="text" placeholder="Room Name" maxlength="20">
+                <input type="text" placeholder="Room Name" maxlength="25">
                 
                 <!-- Radio buttons for selecting the type of room (public, semi-private, private) -->
                 <div class="radio-group">
@@ -332,6 +332,6 @@
     <script nonce="<%= nonce %>" src="js/toastr.min.js?v=1.0.1"></script>
     <script nonce="<%= nonce %>" src="js/lobby.js?v=1.0.5"></script>
     <script nonce="<%= nonce %>" src="/socket.io/socket.io.js?v=1.0.1"></script>
-    <script nonce="<%= nonce %>" src="js/lobby-client.js?v=1.1.8"></script>
+    <script nonce="<%= nonce %>" src="js/lobby-client.js?v=1.1.9"></script>
 </body>
 </html>
