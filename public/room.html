@@ -1,181 +1,262 @@
 <!DOCTYPE html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Talkomatic Room</title>
-    <link rel="stylesheet" href="stylesheets/room.css?v=1.0.7">
-    <link rel="icon" type="image/png" href="images/icons/favicon.png">
+    <link rel="stylesheet" href="stylesheets/room.css?v=1.0.7" />
+    <link rel="icon" type="image/png" href="images/icons/favicon.png" />
     <style>
-        /* Emote system styles */
-        .emote-autocomplete {
-            position: absolute;
-            z-index: 1000;
-            background-color: #333;
-            border: 1px solid #555;
-            border-radius: 4px;
-            max-height: 300px;
-            overflow-y: auto;
-            width: 200px;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.3);
-            display: none;
-        }
-        
-        .emote-autocomplete-header {
-            padding: 5px 10px;
-            font-weight: bold;
-            border-bottom: 1px solid #555;
-            color: #eee;
-        }
-        
-        .emote-autocomplete-list {
-            max-height: 250px;
-            overflow-y: auto;
-        }
-        
-        .emote-autocomplete-item {
-            display: flex;
-            align-items: center;
-            padding: 8px 10px;
-            cursor: pointer;
-            border-bottom: 1px solid #444;
-            color: #fff;
-        }
-        
-        .emote-autocomplete-item.selected,
-        .emote-autocomplete-item:hover {
-            background-color: #555;
-        }
-        
-        .emote-autocomplete-item img {
-            width: 20px;
-            height: 20px;
-            margin-right: 10px;
-            vertical-align: middle;
-        }
-        
-        /* Emoticon button */
-        .emotes-button {
-            padding: 5px 10px;
-            background-color: #444;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        
-        /* Emoticons dropdown */
-        .emotes-dropdown {
-            background-color: #333;
-            border: 1px solid #555;
-            border-radius: 4px;
-            padding: 10px;
-            z-index: 1000;
-            max-width: 300px;
-            max-height: 300px;
-            overflow-y: auto;
-            display: none;
-            flex-wrap: wrap;
-            gap: 5px;
-        }
-        
-        .emote-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 5px;
-            cursor: pointer;
-            border-radius: 4px;
-            background-color: #444;
-            width: 60px;
-            height: 60px;
-            transition: background-color 0.2s ease;
-        }
-        
-        .emote-item:hover {
-            background-color: #555;
-        }
-        
-        .emote-item img {
-            width: 30px;
-            height: 30px;
-        }
-        
-        .emote-item span {
-            font-size: 10px;
-            color: white;
-            margin-top: 5px;
-            text-align: center;
-            word-break: break-all;
-        }
-        
-        /* Chat input styling */
-        .chat-input {
-            background-color: black !important;
-            color: orange !important;
-            overflow-x: hidden !important;
-            overflow-y: auto !important;
-            outline: none !important;
-            white-space: pre-wrap !important;
-            word-break: break-word !important;
-        }
-        
-        /* Emoticon styling */
-        .emote {
-            display: inline-block;
-            vertical-align: middle;
-            width: 20px;
-            height: 20px;
-            margin: 0 2px;
-        }
+      /* Emote system styles */
+      .emote-autocomplete {
+        position: absolute;
+        z-index: 1000;
+        background-color: #333;
+        border: 1px solid #555;
+        border-radius: 4px;
+        max-height: 300px;
+        overflow-y: auto;
+        width: 200px;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+        display: none;
+      }
+
+      .emote-autocomplete-header {
+        padding: 5px 10px;
+        font-weight: bold;
+        border-bottom: 1px solid #555;
+        color: #eee;
+      }
+
+      .emote-autocomplete-list {
+        max-height: 250px;
+        overflow-y: auto;
+      }
+
+      .emote-autocomplete-item {
+        display: flex;
+        align-items: center;
+        padding: 8px 10px;
+        cursor: pointer;
+        border-bottom: 1px solid #444;
+        color: #fff;
+      }
+
+      .emote-autocomplete-item.selected,
+      .emote-autocomplete-item:hover {
+        background-color: #555;
+      }
+
+      .emote-autocomplete-item img {
+        width: 20px;
+        height: 20px;
+        margin-right: 10px;
+        vertical-align: middle;
+      }
+
+      /* Emoticon button */
+      .emotes-button {
+        padding: 5px 10px;
+        background-color: #444;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      /* Emoticons dropdown */
+      .emotes-dropdown {
+        background-color: #333;
+        border: 1px solid #555;
+        border-radius: 4px;
+        padding: 10px;
+        z-index: 1000;
+        max-width: 300px;
+        max-height: 300px;
+        overflow-y: auto;
+        display: none;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+
+      .emote-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 5px;
+        cursor: pointer;
+        border-radius: 4px;
+        background-color: #444;
+        width: 60px;
+        height: 60px;
+        transition: background-color 0.2s ease;
+      }
+
+      .emote-item:hover {
+        background-color: #555;
+      }
+
+      .emote-item img {
+        width: 30px;
+        height: 30px;
+      }
+
+      .emote-item span {
+        font-size: 10px;
+        color: white;
+        margin-top: 5px;
+        text-align: center;
+        word-break: break-all;
+      }
+
+      /* Chat input styling */
+      .chat-input {
+        background-color: black !important;
+        color: orange !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        outline: none !important;
+        white-space: pre-wrap !important;
+        word-break: break-word !important;
+      }
+
+      /* Emoticon styling */
+      .emote {
+        display: inline-block;
+        vertical-align: middle;
+        width: 20px;
+        height: 20px;
+        margin: 0 2px;
+      }
+
+      /* Control panel styles */
+      .control-panel {
+        position: fixed;
+        right: -370px;
+        top: 100px;
+        width: 250px;
+        background-color: #333;
+        border-radius: 8px 0 0 8px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        z-index: 1000;
+        transition: right 0.3s ease;
+        padding: 15px;
+        color: white;
+      }
+
+      .control-panel.open {
+        right: 0;
+      }
+
+      .control-panel-toggle {
+        position: absolute;
+        left: -90px;
+        top: 10px;
+        width: 40px;
+        height: 40px;
+        background-color: #333;
+        border: none;
+        border-radius: 8px 0 0 8px;
+        color: white;
+        font-size: 20px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .control-panel h3 {
+        margin-top: 0;
+        margin-bottom: 15px;
+        border-bottom: 1px solid #555;
+        padding-bottom: 10px;
+      }
+
+      .control-panel-row {
+        margin-bottom: 15px;
+      }
+
+      .control-button {
+        width: 10%;
+        padding: 10px;
+        background-color: #444;
+        border: none;
+        border-radius: 4px;
+        color: white;
+        cursor: pointer;
+        margin-bottom: 10px;
+        transition: background-color 0.2s ease;
+      }
+
+      .control-button:hover {
+        background-color: #555;
+      }
+
+      .control-button.active {
+        background-color: #4a5;
+      }
     </style>
-</head>
+  </head>
 
-<body>
+  <body>
     <div class="page-container">
-        <nav class="top-navbar">
-            <div class="navbar-section navbar-left">
-                <div id="dateTime" class="date-time">
-                    <span class="date"></span>
-                    <span class="time"></span>
-                </div>
-            </div>
-            
-            <div class="navbar-section navbar-center">
-                <div class="brand">Talkomatic™</div>
-            </div>
-
-            <div class="navbar-section navbar-right">
-                <button id="muteToggle" class="mute-toggle" aria-label="Toggle Sound">
-                    <img src="images/icons/sound-on.svg" alt="Sound On" id="muteIcon">
-                </button>
-                
-                <div class="leave-room">Leave Room</div>
-            </div>
-        </nav>
-
-        <div class="second-navbar">
-            <div class="room-type">Public Room</div>
-            <div class="room-name">*</div>
-            <div class="room-id">*</div>
+      <nav class="top-navbar">
+        <div class="navbar-section navbar-left">
+          <div id="dateTime" class="date-time">
+            <span class="date"></span>
+            <span class="time"></span>
+          </div>
         </div>
 
-        <div class="chat-container">
-            <!-- Chat rows will be dynamically added here by JavaScript -->
+        <div class="navbar-section navbar-center">
+          <div class="brand">Talkomatic™</div>
         </div>
 
-        <div class="invite-section">
-            <div class="invite-text">Invite friends to your room with this link:</div>
-            
-            <div class="invite-container">
-                <div class="invite-link" id="inviteLink"></div>
-                
-                <button id="copyInviteLink" aria-label="Copy invite link">
-                    <img src="images/icons/copy.svg" alt="Copy">
-                </button>
-            </div>
+        <div class="navbar-section navbar-right">
+          <button id="muteToggle" class="mute-toggle" aria-label="Toggle Sound">
+            <img src="images/icons/sound-on.svg" alt="Sound On" id="muteIcon" />
+          </button>
+
+          <div class="leave-room">Leave Room</div>
         </div>
+      </nav>
+
+      <div class="second-navbar">
+        <div class="room-type">Public Room</div>
+        <div class="room-name">*</div>
+        <div class="room-id">*</div>
+      </div>
+
+      <div class="chat-container">
+        <!-- Chat rows will be dynamically added here by JavaScript -->
+      </div>
+
+      <div class="invite-section">
+        <div class="invite-text">
+          Invite friends to your room with this link:
+        </div>
+
+        <div class="invite-container">
+          <div class="invite-link" id="inviteLink"></div>
+
+          <button id="copyInviteLink" aria-label="Copy invite link">
+            <img src="images/icons/copy.svg" alt="Copy" />
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Control Panel -->
+    <div class="control-panel" id="controlPanel">
+      <button class="control-panel-toggle" id="controlPanelToggle">⚙️</button>
+      <h3>Chat Settings</h3>
+
+      <div class="control-panel-row">
+        <button class="control-button" id="wordFilterToggle">
+          🙈 Filter On
+        </button>
+        <button class="control-button" id="soundToggle">🔊 Sound On</button>
+      </div>
     </div>
 
     <!-- Emote autocomplete container -->
@@ -183,25 +264,33 @@
 
     <!-- Custom Modal -->
     <div id="customModal" class="custom-modal">
-        <div class="modal-content">
-            <span class="close-modal-btn">&times;</span>
-            <h3 id="modalTitle">Modal Title</h3>
-            <p id="modalMessage">Modal message goes here.</p>
-            <div id="modalInputContainer" style="display: none;">
-                <input type="text" id="modalInput" maxlength="6" pattern="[0-9]*" inputmode="numeric">
-                <p class="input-error" id="modalInputError"></p>
-            </div>
-            <div class="modal-buttons">
-                <button id="modalCancelBtn" class="modal-btn">Cancel</button>
-                <button id="modalConfirmBtn" class="modal-btn modal-confirm-btn">Confirm</button>
-            </div>
+      <div class="modal-content">
+        <span class="close-modal-btn">&times;</span>
+        <h3 id="modalTitle">Modal Title</h3>
+        <p id="modalMessage">Modal message goes here.</p>
+        <div id="modalInputContainer" style="display: none">
+          <input
+            type="text"
+            id="modalInput"
+            maxlength="6"
+            pattern="[0-9]*"
+            inputmode="numeric"
+          />
+          <p class="input-error" id="modalInputError"></p>
         </div>
+        <div class="modal-buttons">
+          <button id="modalCancelBtn" class="modal-btn">Cancel</button>
+          <button id="modalConfirmBtn" class="modal-btn modal-confirm-btn">
+            Confirm
+          </button>
+        </div>
+      </div>
     </div>
 
     <audio id="joinSound" src="audio/ding.mp3"></audio>
     <audio id="leaveSound" src="audio/ding.mp3"></audio>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="js/room-client.js?v=1.1.4"></script>
-</body>
+    <script src="js/room-client.js?v=1.2.2"></script>
+  </body>
 </html>

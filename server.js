@@ -40,32 +40,34 @@ process.on("uncaughtException", (error) => {
 const CONFIG = {
   LIMITS: {
     MAX_USERNAME_LENGTH: 15,
-    MAX_AFK_TIME: 300000, // Increased from 200000
+    MAX_AFK_TIME: 180000, // Set to 3 minutes (180000ms) for inactive users
     MAX_LOCATION_LENGTH: 20,
     MAX_ROOM_NAME_LENGTH: 25,
     MAX_MESSAGE_LENGTH: 5000,
     MAX_ROOM_CAPACITY: 5,
-    MAX_CONNECTIONS_PER_IP: 30, // Increased from 20
+    MAX_CONNECTIONS_PER_IP: 30,
     SOCKET_MAX_REQUESTS_WINDOW: 1,
-    SOCKET_MAX_REQUESTS_PER_WINDOW: 50, // Increased from 20
-    CHAT_UPDATE_RATE_LIMIT: 300, // Increased from 100
-    TYPING_RATE_LIMIT: 60, // Increased from 35
-    CONNECTION_DELAY: 100, // Reduced from 1000
+    SOCKET_MAX_REQUESTS_PER_WINDOW: 50,
+    CHAT_UPDATE_RATE_LIMIT: 300,
+    TYPING_RATE_LIMIT: 60,
+    CONNECTION_DELAY: 100,
     MAX_ID_GEN_ATTEMPTS: 100,
-    BATCH_SIZE_LIMIT: 50, // Increased from 20
+    BATCH_SIZE_LIMIT: 50,
   },
   FEATURES: {
     ENABLE_WORD_FILTER: true,
+    LOAD_ROOMS_ON_STARTUP: false, // Added flag to control room loading on startup
   },
   TIMING: {
-    ROOM_CREATION_COOLDOWN: 10000, // Reduced from 30000
-    ROOM_DELETION_TIMEOUT: 30000, // Increased from 15000
+    ROOM_CREATION_COOLDOWN: 10000,
+    ROOM_DELETION_TIMEOUT: 30000,
     TYPING_TIMEOUT: 2000,
-    BATCH_PROCESSING_INTERVAL: 20, // Reduced from 50
+    BATCH_PROCESSING_INTERVAL: 20,
+    AFK_WARNING_TIME: 150000, // 2.5 minutes - warn before kick
   },
   VERSIONS: {
     API: "v1",
-    SERVER: "1.3.0", // Updated version with optimizations
+    SERVER: "1.3.1", // Updated version with AFK improvements
   },
 };
 
@@ -80,6 +82,8 @@ const ERROR_CODES = {
   BAD_REQUEST: "BAD_REQUEST",
   FORBIDDEN: "FORBIDDEN",
   CIRCUIT_OPEN: "CIRCUIT_OPEN",
+  AFK_WARNING: "AFK_WARNING",
+  AFK_TIMEOUT: "AFK_TIMEOUT",
 };
 
 // Load word filter
@@ -110,13 +114,17 @@ const userMessageBuffers = new Map();
 const pendingChatUpdates = new Map();
 const batchProcessingTimers = new Map();
 
+// Track AFK timers and warnings
+const afkTimers = new Map();
+const afkWarningTimers = new Map();
+
 // Circuit breaker state with more lenient thresholds
 const chatCircuitState = {
   failures: 0,
   lastFailure: 0,
   isOpen: false,
-  threshold: 50, // Higher threshold before opening circuit
-  resetTimeout: 15000, // Faster reset time
+  threshold: 50,
+  resetTimeout: 15000,
 };
 
 // Connection and rate limiting trackers
@@ -128,13 +136,13 @@ const blockedIPs = new Map();
 const socketRateLimiter = new RateLimiterMemory({
   points: CONFIG.LIMITS.SOCKET_MAX_REQUESTS_PER_WINDOW,
   duration: CONFIG.LIMITS.SOCKET_MAX_REQUESTS_WINDOW,
-  blockDuration: 5, // Reduced from 10 seconds
+  blockDuration: 5,
 });
 
 const chatUpdateLimiter = new RateLimiterMemory({
   points: CONFIG.LIMITS.CHAT_UPDATE_RATE_LIMIT,
-  duration: 5, // Increased from 3
-  blockDuration: 2, // Reduced from 5
+  duration: 5,
+  blockDuration: 2,
 });
 
 const typingLimiter = new RateLimiterMemory({
@@ -143,9 +151,9 @@ const typingLimiter = new RateLimiterMemory({
 });
 
 const ipRateLimiter = new RateLimiterMemory({
-  points: 20, // Increased from 10
-  duration: 15, // Reduced from 30
-  blockDuration: 30, // Reduced from 60
+  points: 20,
+  duration: 15,
+  blockDuration: 30,
 });
 
 const app = express();
@@ -187,7 +195,7 @@ const corsOptions = {
 };
 
 // Express middleware - OPTIMIZED
-app.use(express.json({ limit: "100kb" })); // Increased from 50kb
+app.use(express.json({ limit: "100kb" }));
 app.use(cors(corsOptions));
 app.use(cookieParser());
 app.use((req, res, next) => {
@@ -249,7 +257,7 @@ app.use(hpp());
 // Global rate limiter - OPTIMIZED
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 2000, // Increased from 1000
+  max: 2000,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -291,15 +299,15 @@ const io = socketIo(server, {
     methods: ["GET", "POST"],
     credentials: true,
   },
-  proxy: true, // Trust X-Forwarded-For header
+  proxy: true,
   pingTimeout: 60000,
   pingInterval: 25000,
-  connectTimeout: 45000, // Increased from 30000
-  maxHttpBufferSize: 2e6, // Increased to 2MB
+  connectTimeout: 45000,
+  maxHttpBufferSize: 2e6,
   transports: ["websocket", "polling"],
   // Performance optimizations
   perMessageDeflate: {
-    threshold: 1024, // Only compress messages larger than 1KB
+    threshold: 1024,
   },
   httpCompression: true,
 });
@@ -419,7 +427,7 @@ function sendErrorResponse(res, code, message, status = 400, details = null) {
   return res.status(status).json(createErrorResponse(code, message, details));
 }
 
-// Simplified validation rules - OPTIMIZED
+// OPTIMIZED validation functions
 const validationRules = {
   username: (value) => {
     if (!value || typeof value !== "string")
@@ -472,7 +480,6 @@ const validationRules = {
   },
 };
 
-// OPTIMIZED validation functions
 function validate(field, value, context = {}) {
   if (validationRules[field]) {
     return validationRules[field](value, context);
@@ -583,6 +590,68 @@ function enforceRoomNameLimit(roomName) {
     : "";
 }
 
+// AFK handling functions
+function setupAFKTimers(socket, userId) {
+  clearAFKTimers(userId);
+
+  if (!socket || !socket.roomId) return;
+
+  // Set warning timer (fires 30 seconds before timeout)
+  const warningTimer = setTimeout(() => {
+    if (socket && socket.connected) {
+      socket.emit("afk warning", {
+        message:
+          "You have been inactive. You will be returned to the lobby soon.",
+        secondsRemaining: 30,
+      });
+    }
+  }, CONFIG.TIMING.AFK_WARNING_TIME);
+
+  // Set AFK timeout timer
+  const afkTimer = setTimeout(() => {
+    handleAFKTimeout(socket, userId);
+  }, CONFIG.LIMITS.MAX_AFK_TIME);
+
+  // Store timers for cleanup
+  afkWarningTimers.set(userId, warningTimer);
+  afkTimers.set(userId, afkTimer);
+}
+
+function clearAFKTimers(userId) {
+  // Clear existing timers if any
+  if (afkWarningTimers.has(userId)) {
+    clearTimeout(afkWarningTimers.get(userId));
+    afkWarningTimers.delete(userId);
+  }
+
+  if (afkTimers.has(userId)) {
+    clearTimeout(afkTimers.get(userId));
+    afkTimers.delete(userId);
+  }
+}
+
+async function handleAFKTimeout(socket, userId) {
+  if (!socket || !socket.roomId) return;
+
+  console.log(`AFK timeout for user ${userId} in room ${socket.roomId}`);
+
+  try {
+    // Send notification to user
+    socket.emit("afk timeout", {
+      message: "You have been removed from the room due to inactivity.",
+      redirectTo: "/",
+    });
+
+    // Remove from room but don't disconnect
+    await leaveRoom(socket, userId);
+
+    // Clear the timers
+    clearAFKTimers(userId);
+  } catch (err) {
+    console.error(`Error in handleAFKTimeout for user ${userId}:`, err);
+  }
+}
+
 // OPTIMIZED chat update batch processing
 async function processPendingChatUpdates(userId, socket) {
   try {
@@ -606,8 +675,8 @@ async function processPendingChatUpdates(userId, socket) {
     try {
       // Adjust points based on batch size with lower consumption rate
       const pointsToConsume = Math.min(
-        1 + Math.floor(pendingData.diffs.length / 10), // Reduced from /5
-        2 // Reduced from 3
+        1 + Math.floor(pendingData.diffs.length / 10),
+        2
       );
 
       await chatUpdateLimiter.consume(userId, pointsToConsume);
@@ -731,6 +800,9 @@ async function processPendingChatUpdates(userId, socket) {
         .emit("chat update", { userId, username, diff: broadcastDiff });
     }
 
+    // Reset user's AFK timers since they're active
+    setupAFKTimers(socket, userId);
+
     // If there are remaining diffs, schedule another batch with reduced interval
     if (pendingData.diffs.length > 0) {
       batchProcessingTimers.set(
@@ -757,7 +829,7 @@ async function processPendingChatUpdates(userId, socket) {
 function checkChatCircuit() {
   const now = Date.now();
 
-  // Reset after configured timeout (reduced from 30s to 15s)
+  // Reset after configured timeout
   if (
     chatCircuitState.isOpen &&
     now - chatCircuitState.lastFailure > chatCircuitState.resetTimeout
@@ -767,7 +839,7 @@ function checkChatCircuit() {
     console.log("Chat circuit breaker reset");
   }
 
-  // Only open circuit if above threshold (increased from implicit 5 to 50)
+  // Only open circuit if above threshold
   if (
     !chatCircuitState.isOpen &&
     chatCircuitState.failures > chatCircuitState.threshold
@@ -837,7 +909,14 @@ const debouncedSaveRooms = async () => {
   }, 10000); // 10 second debounce
 };
 
+// Modified to NOT load rooms on server startup based on config flag
 async function loadRooms() {
+  if (!CONFIG.FEATURES.LOAD_ROOMS_ON_STARTUP) {
+    console.log("Starting with empty rooms (room loading disabled)");
+    rooms = new Map();
+    return;
+  }
+
   try {
     const roomsData = await fs.readFile(
       path.join(__dirname, "rooms.json"),
@@ -984,6 +1063,9 @@ async function leaveRoom(socket, userId) {
     const currentRoomId = socket.roomId;
     if (!currentRoomId) return;
 
+    // Clear AFK timers for this user
+    clearAFKTimers(userId);
+
     const room = rooms.get(currentRoomId);
     if (room) {
       // Remove user from room
@@ -1025,6 +1107,9 @@ async function leaveRoom(socket, userId) {
         console.error("Session save failed in leaveRoom:", err)
       );
     }
+
+    // Remove user message buffer
+    userMessageBuffers.delete(userId);
 
     // Reset socket state
     socket.roomId = null;
@@ -1139,6 +1224,9 @@ function joinRoom(socket, roomId, userId) {
       return;
     }
 
+    // Clear existing AFK timers if user is joining from another room
+    clearAFKTimers(userId);
+
     // Remove user from room if already there
     room.users = room.users.filter((user) => user.id !== userId);
 
@@ -1147,6 +1235,9 @@ function joinRoom(socket, roomId, userId) {
     room.users.push({ id: userId, username, location });
     room.lastActiveTime = Date.now();
     socket.roomId = roomId;
+
+    // Set up AFK timer for the user in this room
+    setupAFKTimers(socket, userId);
 
     // Update session
     if (socket.handshake.session) {
@@ -1225,6 +1316,9 @@ function handleTyping(socket, userId, username, isTyping) {
   try {
     if (!socket.roomId) return;
 
+    // Reset AFK timers when user is typing
+    setupAFKTimers(socket, userId);
+
     if (typingTimeouts.has(userId)) {
       clearTimeout(typingTimeouts.get(userId));
     }
@@ -1251,28 +1345,6 @@ function handleTyping(socket, userId, username, isTyping) {
     }
   } catch (err) {
     console.error("Error in handleTyping:", err);
-  }
-}
-
-function onAFKTimeExceeded(socket) {
-  try {
-    console.log(`Socket ${socket.id} AFK timeout.`);
-    socket.emit(
-      "error",
-      createErrorResponse(
-        ERROR_CODES.ACCESS_DENIED,
-        "Disconnected due to inactivity.",
-        null,
-        true
-      )
-    );
-    socket.disconnect(true);
-  } catch (err) {
-    console.error(
-      "Error in onAFKTimeExceeded for socket " +
-        (socket ? socket.id : "unknown"),
-      err
-    );
   }
 }
 
@@ -1665,7 +1737,6 @@ app.post(
 
 // Socket.IO Event Handlers - OPTIMIZED
 io.on("connection", (socket) => {
-  let AFK_TIMEOUT = null;
   const clientIp = socket.clientIp || socket.handshake.address;
 
   // Helper to wrap all socket handlers for safety
@@ -1712,15 +1783,16 @@ io.on("connection", (socket) => {
     };
   }
 
-  // Set up AFK timeout only when in a room (not in lobby)
+  // Handle user activity to reset AFK timers
   socket.onAny(() => {
     try {
-      clearTimeout(AFK_TIMEOUT);
-      if (socket.roomId) {
-        AFK_TIMEOUT = setTimeout(
-          () => onAFKTimeExceeded(socket),
-          CONFIG.LIMITS.MAX_AFK_TIME
-        );
+      if (
+        socket.roomId &&
+        socket.handshake.session &&
+        socket.handshake.session.userId
+      ) {
+        // Reset AFK timers when user is active
+        setupAFKTimers(socket, socket.handshake.session.userId);
       }
     } catch (err) {
       console.error("Error in socket.onAny AFK reset:", err);
@@ -2163,11 +2235,14 @@ io.on("connection", (socket) => {
   socket.on(
     "leave room",
     safe(async () => {
-      clearTimeout(AFK_TIMEOUT);
       const userId = socket.handshake.session
         ? socket.handshake.session.userId
         : null;
-      if (userId) await leaveRoom(socket, userId);
+
+      if (userId) {
+        clearAFKTimers(userId);
+        await leaveRoom(socket, userId);
+      }
     })
   );
 
@@ -2270,6 +2345,9 @@ io.on("connection", (socket) => {
         return;
       }
 
+      // Reset AFK timers since user is typing
+      setupAFKTimers(socket, userId);
+
       // Add to pending updates
       if (!pendingChatUpdates.has(userId)) {
         pendingChatUpdates.set(userId, { diffs: [] });
@@ -2301,6 +2379,9 @@ io.on("connection", (socket) => {
 
       const userId = socket.handshake.session.userId;
       const username = socket.handshake.session.username || "Anonymous";
+
+      // Reset AFK timers since user is active
+      setupAFKTimers(socket, userId);
 
       // Fast path for stopping typing
       if (data && data.isTyping === false) {
@@ -2396,13 +2477,15 @@ io.on("connection", (socket) => {
   socket.on(
     "disconnect",
     safe(async (reason) => {
-      clearTimeout(AFK_TIMEOUT);
-
       const userId = socket.handshake.session
         ? socket.handshake.session.userId
         : null;
 
       if (userId) {
+        // Clean up all timers
+        clearAFKTimers(userId);
+
+        // Leave room if in one
         await leaveRoom(socket, userId);
 
         // Clean up user data
@@ -2435,6 +2518,21 @@ io.on("connection", (socket) => {
       console.log(
         `Socket ${socket.id} disconnected. Reason: ${reason}. IP: ${socket.clientIp}`
       );
+    })
+  );
+
+  // Add handler for AFK acknowledgment from client
+  socket.on(
+    "afk response",
+    safe(async (data) => {
+      const userId = socket.handshake.session?.userId;
+      if (!userId || !socket.roomId) return;
+
+      // If user responded, reset their AFK timers
+      setupAFKTimers(socket, userId);
+
+      // Log the response for debugging
+      console.log(`AFK response from user ${userId}: ${JSON.stringify(data)}`);
     })
   );
 });
@@ -2499,6 +2597,13 @@ setInterval(() => {
     if (!activeUserIds.has(timeoutId)) {
       clearTimeout(typingTimeouts.get(timeoutId));
       typingTimeouts.delete(timeoutId);
+    }
+  }
+
+  // Clean up AFK timers for users no longer in rooms
+  for (const userId of afkTimers.keys()) {
+    if (!activeUserIds.has(userId)) {
+      clearAFKTimers(userId);
     }
   }
 }, 300000); // Every 5 minutes
