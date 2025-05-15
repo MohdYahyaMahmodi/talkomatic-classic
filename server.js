@@ -40,7 +40,7 @@ process.on("uncaughtException", (error) => {
 const CONFIG = {
   LIMITS: {
     MAX_USERNAME_LENGTH: 15,
-    MAX_AFK_TIME: 1, // Set to 3 minutes (180000ms) for inactive users
+    MAX_AFK_TIME: 180000, // Set to 3 minutes (180000ms) for inactive users
     MAX_LOCATION_LENGTH: 20,
     MAX_ROOM_NAME_LENGTH: 25,
     MAX_MESSAGE_LENGTH: 5000,
