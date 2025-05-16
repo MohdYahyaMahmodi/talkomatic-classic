@@ -782,23 +782,17 @@ async function processPendingChatUpdates(userId, socket) {
     if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
       const filterResult = wordFilter.checkText(consolidatedMessage);
       if (filterResult.hasOffensiveWord) {
-        consolidatedMessage = wordFilter.filterText(consolidatedMessage);
-        userMessageBuffers.set(userId, consolidatedMessage);
         io.to(socket.roomId).emit("offensive word detected", {
           userId,
-          filteredMessage: consolidatedMessage,
+          filteredMessage: wordFilter.filterText(consolidatedMessage),
         });
-      } else {
-        // OPTIMIZED: only broadcast to room, not including sender
-        socket
-          .to(socket.roomId)
-          .emit("chat update", { userId, username, diff: broadcastDiff });
       }
-    } else {
-      socket
-        .to(socket.roomId)
-        .emit("chat update", { userId, username, diff: broadcastDiff });
     }
+
+    // Broadcast unfiltered message to others
+    socket
+      .to(socket.roomId)
+      .emit("chat update", { userId, username, diff: broadcastDiff });
 
     // Reset user's AFK timers since they're active
     setupAFKTimers(socket, userId);
