@@ -24,6 +24,21 @@ const muteIcon = document.getElementById("muteIcon");
 
 const MAX_MESSAGE_LENGTH = 5000;
 
+const ERROR_CODES = {
+  VALIDATION_ERROR: "Validation Error",
+  SERVER_ERROR: "Server Error",
+  UNAUTHORIZED: "Unauthorized",
+  NOT_FOUND: "Not Found",
+  RATE_LIMITED: "Rate Limited",
+  ROOM_FULL: "Room Full",
+  ACCESS_DENIED: "Access Denied",
+  BAD_REQUEST: "Bad Request",
+  FORBIDDEN: "Forbidden",
+  CIRCUIT_OPEN: "Circuit Open",
+  AFK_WARNING: "AFK Warning",
+  AFK_TIMEOUT: "AFK Timeout",
+};
+
 // Emote system variables
 let emoteList = {};
 let emoteAutocomplete = null;
@@ -1312,6 +1327,20 @@ socket.on("room update", (roomData) => {
   }
 
   adjustLayout();
+});
+
+socket.on('afk timeout', (data) => {
+  showInfoModal(
+    data.message ?? "You have been removed from the room due to inactivity.",
+    () => {
+      window.location.href = data.redirectTo ?? "/";
+    }
+  );
+});
+
+socket.on('error', (error) => {
+  console.log(error);
+  showErrorModal((error.error.replaceDefaultText?'':`An error occurred: `)+error.error.message,error.error.code);
 });
 
 // IMPROVED: Create a user row without affecting the rest of the UI
