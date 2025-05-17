@@ -124,6 +124,7 @@
   }
 
   /* Mute Toggle Button Styles */
+  .settings-button,
   .mute-toggle {
     background: none;
     border: none;
@@ -137,15 +138,18 @@
     transition: background-color 0.2s ease;
   }
 
+  .settings-button:hover,
   .mute-toggle:hover {
     background-color: rgba(255, 255, 255, 0.1);
     border-radius: 3px;
   }
 
+  .settings-button:active,
   .mute-toggle:active {
     background-color: rgba(255, 255, 255, 0.2);
   }
 
+  .settings-button img,
   .mute-toggle img {
     width: 24px;
     height: 24px;
@@ -583,6 +587,17 @@
 
 .modal-btn:active, .modal-confirm-btn:active {
   transform: translateY(0);
+}
+
+/* Settings modal */
+.settings-option {
+  margin-bottom: 10px;
+  color: #f0f0f0;
+  font-size: 16px;
+}
+
+.settings-option input {
+  margin-right: 8px;
 }
 
 /* Mobile responsiveness */

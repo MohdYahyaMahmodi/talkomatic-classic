@@ -146,8 +146,8 @@
         </div>
 
         <div class="navbar-section navbar-right">
-          <button id="muteToggle" class="mute-toggle" aria-label="Toggle Sound">
-            <img src="images/icons/sound-on.svg" alt="Sound On" id="muteIcon" />
+          <button id="settingsButton" class="settings-button" aria-label="Settings">
+            <img src="images/icons/settings.svg" alt="Settings" />
           </button>
 
           <div class="leave-room">Leave Room</div>
@@ -203,6 +203,23 @@
           <button id="modalConfirmBtn" class="modal-btn modal-confirm-btn">
             Confirm
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="custom-modal">
+      <div class="modal-content">
+        <span id="closeSettingsBtn" class="close-modal-btn">&times;</span>
+        <h3>Settings</h3>
+        <div class="settings-option">
+          <label><input type="checkbox" id="muteCheckbox" /> Mute sound</label>
+        </div>
+        <div class="settings-option">
+          <label><input type="checkbox" id="censorCheckbox" /> Disable word censor</label>
+        </div>
+        <div class="modal-buttons">
+          <button id="closeSettingsButton" class="modal-btn modal-confirm-btn">Close</button>
         </div>
       </div>
     </div>

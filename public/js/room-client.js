@@ -18,9 +18,14 @@ const storedMessagesForMutedUsers = new Map();
 const joinSound = document.getElementById("joinSound");
 const leaveSound = document.getElementById("leaveSound");
 let soundEnabled = true;
+let censorEnabled = true;
 
-const muteToggleButton = document.getElementById("muteToggle");
-const muteIcon = document.getElementById("muteIcon");
+const settingsButton = document.getElementById("settingsButton");
+const settingsModal = document.getElementById("settingsModal");
+const closeSettingsBtn = document.getElementById("closeSettingsBtn");
+const closeSettingsButton = document.getElementById("closeSettingsButton");
+const muteCheckbox = document.getElementById("muteCheckbox");
+const censorCheckbox = document.getElementById("censorCheckbox");
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -60,6 +65,39 @@ async function loadEmotes() {
     console.error("Error loading emotes:", error);
     emoteList = {}; // Empty object as fallback
   }
+}
+
+// Load offensive words for client-side censor
+let offensiveWords = [];
+let whitelistedWords = [];
+
+async function loadWordFilter() {
+  try {
+    const res = await fetch('/js/offensive_words.json');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    offensiveWords = data.offensive_words || [];
+    whitelistedWords = data.whitelisted_words || [];
+  } catch (err) {
+    console.error('Error loading offensive words:', err);
+    offensiveWords = [];
+    whitelistedWords = [];
+  }
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function applyWordCensor(text) {
+  let result = text;
+  if (!offensiveWords.length) return result;
+  offensiveWords.forEach((w) => {
+    if (whitelistedWords.includes(w)) return;
+    const regex = new RegExp(`\\b${escapeRegex(w)}\\b`, 'gi');
+    result = result.replace(regex, (m) => '*'.repeat(m.length));
+  });
+  return result;
 }
 
 // Modal functionality
@@ -103,6 +141,11 @@ function closeModal() {
   customModal.classList.remove("show");
   document.body.style.overflow = "";
   currentModalCallback = null;
+}
+
+function closeSettings() {
+  settingsModal.classList.remove("show");
+  document.body.style.overflow = "";
 }
 
 function showErrorModal(message) {
@@ -937,21 +980,6 @@ function playLeaveSound() {
   }
 }
 
-function toggleMute() {
-  soundEnabled = !soundEnabled;
-  localStorage.setItem("soundEnabled", JSON.stringify(soundEnabled));
-  updateMuteIcon();
-}
-
-function updateMuteIcon() {
-  if (soundEnabled) {
-    muteIcon.src = "images/icons/sound-on.svg";
-    muteIcon.alt = "Sound On";
-  } else {
-    muteIcon.src = "images/icons/sound-off.svg";
-    muteIcon.alt = "Sound Off";
-  }
-}
 
 function updateVotesUI(votes) {
   document.querySelectorAll(".chat-row").forEach((row) => {
@@ -1004,6 +1032,10 @@ function updateCurrentMessages(messages) {
     );
     if (chatDiv) {
       const messageText = messages[userId].slice(0, MAX_MESSAGE_LENGTH);
+      chatDiv.dataset.rawMessage = messageText;
+      const displayMessage = censorEnabled
+        ? applyWordCensor(messageText)
+        : messageText;
 
       if (userId === currentUserId) {
         // Save current focus state
@@ -1020,7 +1052,7 @@ function updateCurrentMessages(messages) {
 
         // Clear and set plain text first
         chatDiv.innerHTML = "";
-        chatDiv.textContent = messageText;
+        chatDiv.textContent = displayMessage;
 
         // Then replace emotes
         replaceEmotes(chatDiv);
@@ -1050,14 +1082,19 @@ function updateCurrentMessages(messages) {
 }
 
 // Update message display for other users
-function updateOtherUserMessage(element, message) {
+function updateOtherUserMessage(element, rawMessage) {
   if (!element) return;
+
+  // Preserve the raw message so the client can reapply censoring
+  if (rawMessage !== undefined) {
+    element.dataset.rawMessage = rawMessage;
+  }
 
   // Clear the element
   element.innerHTML = "";
 
-  // Create a text node with the message
-  const textNode = document.createTextNode(message);
+  const display = censorEnabled ? applyWordCensor(rawMessage) : rawMessage;
+  const textNode = document.createTextNode(display);
   element.appendChild(textNode);
 
   // Replace emotes
@@ -1067,6 +1104,7 @@ function updateOtherUserMessage(element, message) {
 async function initRoom() {
   // Load emotes first
   await loadEmotes();
+  await loadWordFilter();
 
   const urlParams = new URLSearchParams(window.location.search);
   const roomIdFromUrl = urlParams.get("roomId");
@@ -1381,6 +1419,7 @@ function createUserRow(user, container) {
   const contentEditableDiv = document.createElement("div");
   contentEditableDiv.classList.add("chat-input");
   contentEditableDiv.contentEditable = user.id === currentUserId;
+  contentEditableDiv.dataset.rawMessage = "";
   contentEditableDiv.style.width = "100%";
   contentEditableDiv.style.height = "100%";
   contentEditableDiv.style.backgroundColor = "black";
@@ -1503,6 +1542,8 @@ socket.on("offensive word detected", (data) => {
   );
   if (!chatDiv) return;
 
+  if (!censorEnabled) return;
+
   if (userId === currentUserId) {
     // Save cursor position and focus state
     const isActive = document.activeElement === chatDiv;
@@ -1520,9 +1561,6 @@ socket.on("offensive word detected", (data) => {
     chatDiv.textContent = filteredMessage.slice(0, MAX_MESSAGE_LENGTH);
     replaceEmotes(chatDiv);
 
-    // Update last sent message
-    lastSentMessage = filteredMessage;
-
     // Restore cursor and focus
     if (isActive) {
       try {
@@ -1537,10 +1575,9 @@ socket.on("offensive word detected", (data) => {
     }
   } else {
     // Update other user's display
-    updateOtherUserMessage(
-      chatDiv,
-      filteredMessage.slice(0, MAX_MESSAGE_LENGTH)
-    );
+    chatDiv.innerHTML = "";
+    chatDiv.textContent = filteredMessage.slice(0, MAX_MESSAGE_LENGTH);
+    replaceEmotes(chatDiv);
   }
 });
 
@@ -1774,8 +1811,8 @@ function displayChatMessage(data) {
   const chatDiv = chatRow.querySelector(".chat-input");
   if (!chatDiv) return;
 
-  // Get current plain text
-  let currentText = getPlainText(chatDiv);
+  // Use stored raw text if available
+  let currentText = chatDiv.dataset.rawMessage || getPlainText(chatDiv);
   let newText = "";
 
   if (data.diff) {
@@ -1808,8 +1845,11 @@ function displayChatMessage(data) {
     return;
   }
 
-  // Trim to max length
+  // Trim to max length and store raw text
   newText = newText.slice(0, MAX_MESSAGE_LENGTH);
+  chatDiv.dataset.rawMessage = newText;
+
+  const displayText = censorEnabled ? applyWordCensor(newText) : newText;
 
   if (data.userId === currentUserId) {
     // Save cursor position and focus state
@@ -1825,8 +1865,8 @@ function displayChatMessage(data) {
 
     // Update our content
     chatDiv.innerHTML = "";
-    chatDiv.textContent = newText;
-    if (newText.includes(":")) {
+    chatDiv.textContent = displayText;
+    if (displayText.includes(":")) {
       replaceEmotes(chatDiv);
     }
 
@@ -2109,9 +2149,40 @@ window.addEventListener("load", () => {
   const savedMuteState = localStorage.getItem("soundEnabled");
   if (savedMuteState !== null) {
     soundEnabled = JSON.parse(savedMuteState);
-    updateMuteIcon();
   }
-  muteToggleButton.addEventListener("click", toggleMute);
+  const savedCensor = localStorage.getItem("censorEnabled");
+  if (savedCensor !== null) {
+    censorEnabled = JSON.parse(savedCensor);
+  }
+  muteCheckbox.checked = !soundEnabled;
+  censorCheckbox.checked = !censorEnabled;
+
+  settingsButton.addEventListener("click", () => {
+    settingsModal.classList.add("show");
+    document.body.style.overflow = "hidden";
+  });
+  closeSettingsBtn.addEventListener("click", closeSettings);
+  closeSettingsButton.addEventListener("click", closeSettings);
+  settingsModal.addEventListener("click", (e) => {
+    if (e.target === settingsModal) closeSettings();
+  });
+
+  muteCheckbox.addEventListener("change", () => {
+    soundEnabled = !muteCheckbox.checked;
+    localStorage.setItem("soundEnabled", JSON.stringify(soundEnabled));
+  });
+
+  censorCheckbox.addEventListener("change", () => {
+    censorEnabled = !censorCheckbox.checked;
+    localStorage.setItem("censorEnabled", JSON.stringify(censorEnabled));
+    document.querySelectorAll(".chat-input").forEach((el) => {
+      const raw = el.dataset.rawMessage || getPlainText(el);
+      const display = censorEnabled ? applyWordCensor(raw) : raw;
+      el.innerHTML = "";
+      el.textContent = display;
+      replaceEmotes(el);
+    });
+  });
 
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", handleViewportChange);
