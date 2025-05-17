@@ -113,6 +113,7 @@ const typingTimeouts = new Map();
 const userMessageBuffers = new Map();
 const pendingChatUpdates = new Map();
 const batchProcessingTimers = new Map();
+const userCensorSettings = new Map();
 
 // Track AFK timers and warnings
 const afkTimers = new Map();
@@ -782,23 +783,25 @@ async function processPendingChatUpdates(userId, socket) {
     if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
       const filterResult = wordFilter.checkText(consolidatedMessage);
       if (filterResult.hasOffensiveWord) {
-        consolidatedMessage = wordFilter.filterText(consolidatedMessage);
-        userMessageBuffers.set(userId, consolidatedMessage);
-        io.to(socket.roomId).emit("offensive word detected", {
-          userId,
-          filteredMessage: consolidatedMessage,
+        const filtered = wordFilter.filterText(consolidatedMessage);
+        const socketsInRoom = await io.in(socket.roomId).fetchSockets();
+        socketsInRoom.forEach((skt) => {
+          const targetId = skt.handshake.session?.userId;
+          if (!targetId) return;
+          if (userCensorSettings.get(targetId) !== false) {
+            skt.emit("offensive word detected", {
+              userId,
+              filteredMessage: filtered,
+            });
+          }
         });
-      } else {
-        // OPTIMIZED: only broadcast to room, not including sender
-        socket
-          .to(socket.roomId)
-          .emit("chat update", { userId, username, diff: broadcastDiff });
       }
-    } else {
-      socket
-        .to(socket.roomId)
-        .emit("chat update", { userId, username, diff: broadcastDiff });
     }
+
+    // Broadcast unfiltered message to others
+    socket
+      .to(socket.roomId)
+      .emit("chat update", { userId, username, diff: broadcastDiff });
 
     // Reset user's AFK timers since they're active
     setupAFKTimers(socket, userId);
@@ -1235,6 +1238,9 @@ function joinRoom(socket, roomId, userId) {
     room.users.push({ id: userId, username, location });
     room.lastActiveTime = Date.now();
     socket.roomId = roomId;
+
+    // Default to censor enabled for new connections
+    userCensorSettings.set(userId, true);
 
     // Set up AFK timer for the user in this room
     setupAFKTimers(socket, userId);
@@ -2504,6 +2510,8 @@ io.on("connection", (socket) => {
           pendingChatUpdates.delete(userId);
         }
 
+        userCensorSettings.delete(userId);
+
         users.delete(userId);
       }
 
@@ -2533,6 +2541,16 @@ io.on("connection", (socket) => {
 
       // Log the response for debugging
       console.log(`AFK response from user ${userId}: ${JSON.stringify(data)}`);
+    })
+  );
+
+  // Receive client censor preference
+  socket.on(
+    "censor setting",
+    safe(async (data) => {
+      const userId = socket.handshake.session?.userId;
+      if (!userId) return;
+      userCensorSettings.set(userId, data && data.enabled !== false);
     })
   );
 });
