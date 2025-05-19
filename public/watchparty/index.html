@@ -1,0 +1,1333 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Talkomatic | WatchParty</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Roboto", sans-serif;
+        background-color: #000000;
+        color: #ffffff;
+      }
+      .bg-primary {
+        background-color: #000000;
+      }
+      .bg-secondary {
+        background-color: #1a1a1a;
+      }
+      .bg-tertiary {
+        background-color: #262626;
+      }
+      .bg-quaternary {
+        background-color: #333333;
+      }
+      .text-primary {
+        color: #ffffff;
+      }
+      .text-secondary {
+        color: #aaaaaa;
+      }
+      .text-tertiary {
+        color: #777777;
+      }
+      .accent-red {
+        color: #ff9800;
+      }
+      .bg-accent-red {
+        background-color: #ff9800;
+      }
+      .border-secondary {
+        border-color: #333333;
+      }
+      .border-tertiary {
+        border-color: #555555;
+      }
+      .hover-bg-secondary:hover {
+        background-color: #1a1a1a;
+      }
+      .hover-bg-tertiary:hover {
+        background-color: #262626;
+      }
+      .hover-accent-red:hover {
+        color: #ff9800;
+      }
+      .room-card {
+        background-color: #1a1a1a;
+        border: 1px solid #333333;
+        transition: all 0.2s ease;
+      }
+      .room-card:hover {
+        background-color: #262626;
+        border-color: #555555;
+        transform: translateY(-1px);
+      }
+      .user-section {
+        background-color: #1a1a1a;
+        border: 1px solid #333333;
+      }
+      .btn-primary {
+        background-color: #ff9800;
+        color: white;
+        transition: background-color 0.2s ease;
+      }
+      .btn-primary:hover {
+        background-color: #e68900;
+      }
+      .btn-secondary {
+        background-color: #333333;
+        color: white;
+        border: 1px solid #555555;
+        transition: all 0.2s ease;
+      }
+      .btn-secondary:hover {
+        background-color: #444444;
+        border-color: #666666;
+      }
+      .input-field {
+        background-color: #1a1a1a;
+        border: 1px solid #333333;
+        color: white;
+        transition: border-color 0.2s ease;
+      }
+      .input-field:focus {
+        outline: none;
+        border-color: #ff9800;
+        box-shadow: 0 0 0 1px #ff9800;
+      }
+      .online-indicator {
+        width: 8px;
+        height: 8px;
+        background-color: #00ff00;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.6;
+        }
+      }
+      .modal-overlay {
+        background-color: rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(4px);
+      }
+      .scrollbar-custom::-webkit-scrollbar {
+        width: 8px;
+      }
+      .scrollbar-custom::-webkit-scrollbar-track {
+        background: #1a1a1a;
+      }
+      .scrollbar-custom::-webkit-scrollbar-thumb {
+        background: #333333;
+        border-radius: 4px;
+      }
+      .scrollbar-custom::-webkit-scrollbar-thumb:hover {
+        background: #555555;
+      }
+      .banner-slide-in {
+        animation: slideInFromTop 0.3s ease-out;
+      }
+      .banner-slide-out {
+        animation: slideOutToTop 0.3s ease-in;
+      }
+      @keyframes slideInFromTop {
+        from {
+          transform: translateY(-100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      @keyframes slideOutToTop {
+        from {
+          transform: translateY(0);
+          opacity: 1;
+        }
+        to {
+          transform: translateY(-100%);
+          opacity: 0;
+        }
+      }
+      .modal-enter {
+        animation: modalEnter 0.2s ease-out;
+      }
+      @keyframes modalEnter {
+        from {
+          transform: scale(0.95);
+          opacity: 0;
+        }
+        to {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+      .spinner {
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .error-text {
+        color: #ef4444;
+        font-size: 0.875rem;
+      }
+    </style>
+  </head>
+  <body class="bg-primary text-primary min-h-screen">
+    <!-- Success/Info Banner -->
+    <div id="bannerContainer" class="fixed top-0 left-0 right-0 z-50 hidden">
+      <div id="banner" class="bg-green-600 text-white px-6 py-3 text-center">
+        <div class="flex items-center justify-center space-x-2">
+          <svg
+            class="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M5 13l4 4L19 7"
+            ></path>
+          </svg>
+          <span id="bannerText"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-secondary border-b border-secondary px-6 py-4">
+      <div class="max-w-7xl mx-auto flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 flex items-center justify-center">
+            <img src="images/logo.jpg" alt="Logo" class="w-8 h-8" />
+          </div>
+          <h1 class="text-2xl font-medium">WatchParty</h1>
+        </div>
+        <div class="flex items-center space-x-4">
+          <div
+            class="flex items-center space-x-2 bg-tertiary px-3 py-2 rounded-lg"
+          >
+            <div class="online-indicator"></div>
+            <span class="text-sm"><span id="onlineCount">0</span> online</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="max-w-7xl mx-auto px-6 py-8">
+      <div class="grid lg:grid-cols-3 gap-8">
+        <!-- Left Column - User Profile & Actions -->
+        <div class="lg:col-span-1 space-y-6">
+          <!-- User Profile Section -->
+          <div class="user-section rounded-lg p-6">
+            <h2 class="text-xl font-medium mb-6">Your Profile</h2>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-secondary mb-2"
+                  >Username (max 12 characters)</label
+                >
+                <div class="flex space-x-2">
+                  <div class="flex-1">
+                    <input
+                      type="text"
+                      id="username"
+                      placeholder="Enter username"
+                      class="input-field w-full px-4 py-3 rounded-lg text-sm"
+                      maxlength="12"
+                    />
+                    <div
+                      id="usernameError"
+                      class="error-text mt-1 hidden"
+                    ></div>
+                  </div>
+                  <button
+                    id="editUsername"
+                    class="btn-secondary px-4 py-3 rounded-lg text-sm"
+                  >
+                    <svg
+                      class="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-secondary mb-2"
+                  >Location (optional, max 15 characters)</label
+                >
+                <input
+                  type="text"
+                  id="userLocation"
+                  placeholder="Earth"
+                  class="input-field w-full px-4 py-3 rounded-lg text-sm"
+                  maxlength="15"
+                />
+                <div id="locationError" class="error-text mt-1 hidden"></div>
+              </div>
+              <button
+                id="saveProfile"
+                class="btn-primary w-full py-3 rounded-lg text-sm font-medium"
+              >
+                Save Profile
+              </button>
+            </div>
+          </div>
+
+          <!-- Quick Actions -->
+          <div class="user-section rounded-lg p-6">
+            <h2 class="text-xl font-medium mb-6">Quick Actions</h2>
+            <div class="space-y-3">
+              <button
+                id="createRoomBtn"
+                class="btn-secondary w-full py-4 rounded-lg text-left px-4 flex items-center space-x-3"
+              >
+                <div
+                  class="w-10 h-10 bg-tertiary rounded-lg flex items-center justify-center"
+                >
+                  <svg
+                    class="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <div class="font-medium">Create Room</div>
+                  <div class="text-xs text-secondary">
+                    Start a new watch room
+                  </div>
+                </div>
+              </button>
+
+              <button
+                id="joinRoomBtn"
+                class="btn-secondary w-full py-4 rounded-lg text-left px-4 flex items-center space-x-3"
+              >
+                <div
+                  class="w-10 h-10 bg-tertiary rounded-lg flex items-center justify-center"
+                >
+                  <svg
+                    class="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <div class="font-medium">Join Room</div>
+                  <div class="text-xs text-secondary">Enter room code</div>
+                </div>
+              </button>
+
+              <button
+                id="randomMatchBtn"
+                class="btn-secondary w-full py-4 rounded-lg text-left px-4 flex items-center space-x-3"
+              >
+                <div
+                  class="w-10 h-10 bg-tertiary rounded-lg flex items-center justify-center"
+                >
+                  <svg
+                    class="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <div class="font-medium">Random Match</div>
+                  <div class="text-xs text-secondary">Meet someone new</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column - Room List -->
+        <div class="lg:col-span-2">
+          <div class="user-section rounded-lg p-6">
+            <div class="flex items-center justify-between mb-6">
+              <h2 class="text-xl font-medium">Active Watch Rooms</h2>
+              <button
+                id="refreshRooms"
+                class="btn-secondary px-4 py-2 rounded-lg text-sm"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div
+              id="roomsList"
+              class="space-y-3 scrollbar-custom max-h-96 overflow-y-auto"
+            >
+              <!-- Rooms will be populated here -->
+            </div>
+            <div id="noRooms" class="text-center py-12">
+              <svg
+                class="w-16 h-16 text-tertiary mx-auto mb-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <!-- TV screen -->
+                <rect
+                  x="3"
+                  y="6"
+                  width="18"
+                  height="12"
+                  rx="2"
+                  stroke-width="1.5"
+                  stroke-linejoin="round"
+                />
+                <!-- Left leg -->
+                <line
+                  x1="7"
+                  y1="20"
+                  x2="7"
+                  y2="18"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                />
+                <!-- Right leg -->
+                <line
+                  x1="17"
+                  y1="20"
+                  x2="17"
+                  y2="18"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                />
+                <!-- Antenna left -->
+                <line
+                  x1="12"
+                  y1="6"
+                  x2="9"
+                  y2="2"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                />
+                <!-- Antenna right -->
+                <line
+                  x1="12"
+                  y1="6"
+                  x2="15"
+                  y2="2"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                />
+              </svg>
+
+              <h3 class="text-lg font-medium text-secondary mb-2">
+                No active rooms
+              </h3>
+              <p class="text-secondary">Create a room to get started!</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Message Modal -->
+    <div
+      id="messageModal"
+      class="fixed inset-0 modal-overlay hidden items-center justify-center z-50 p-4"
+    >
+      <div
+        class="bg-secondary border border-tertiary rounded-lg w-full max-w-md mx-auto modal-enter"
+      >
+        <div class="p-6">
+          <div class="flex items-center space-x-3 mb-4">
+            <div
+              id="messageIcon"
+              class="w-10 h-10 rounded-lg flex items-center justify-center"
+            >
+              <!-- Icon will be inserted here -->
+            </div>
+            <h3 id="messageTitle" class="text-xl font-medium"></h3>
+          </div>
+          <p id="messageText" class="text-secondary mb-6"></p>
+          <div class="flex space-x-3">
+            <button
+              id="messageModalClose"
+              class="btn-primary flex-1 py-3 rounded-lg text-sm font-medium"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create Room Modal -->
+    <div
+      id="createRoomModal"
+      class="fixed inset-0 modal-overlay hidden items-center justify-center z-50 p-4"
+    >
+      <div
+        class="bg-secondary border border-tertiary rounded-lg w-full max-w-md mx-auto modal-enter"
+      >
+        <div class="p-6">
+          <h3 class="text-xl font-medium mb-6">Create New Watch Room</h3>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-secondary mb-2"
+                >Room Name (max 20 characters)</label
+              >
+              <input
+                type="text"
+                id="roomName"
+                placeholder="Enter room name"
+                class="input-field w-full px-4 py-3 rounded-lg text-sm"
+                maxlength="20"
+              />
+              <div id="roomNameError" class="error-text mt-1 hidden"></div>
+            </div>
+            <div class="flex items-center space-x-3">
+              <input
+                type="checkbox"
+                id="isPublic"
+                checked
+                class="w-4 h-4 text-orange-600 bg-secondary border-tertiary rounded focus:ring-orange-500"
+              />
+              <label for="isPublic" class="text-sm text-secondary"
+                >Make room public</label
+              >
+            </div>
+          </div>
+          <div class="flex space-x-3 mt-6">
+            <button
+              id="cancelCreateRoom"
+              class="btn-secondary flex-1 py-3 rounded-lg text-sm font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              id="confirmCreateRoom"
+              class="btn-primary flex-1 py-3 rounded-lg text-sm font-medium"
+            >
+              Create Room
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Join Room Modal -->
+    <div
+      id="joinRoomModal"
+      class="fixed inset-0 modal-overlay hidden items-center justify-center z-50 p-4"
+    >
+      <div
+        class="bg-secondary border border-tertiary rounded-lg w-full max-w-md mx-auto modal-enter"
+      >
+        <div class="p-6">
+          <h3 class="text-xl font-medium mb-6">Join Watch Room</h3>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-secondary mb-2"
+                >Room Code</label
+              >
+              <input
+                type="text"
+                id="roomCode"
+                placeholder="Enter room code"
+                class="input-field w-full px-4 py-3 rounded-lg text-sm"
+                maxlength="10"
+              />
+              <div id="roomCodeError" class="error-text mt-1 hidden"></div>
+            </div>
+          </div>
+          <div class="flex space-x-3 mt-6">
+            <button
+              id="cancelJoinRoom"
+              class="btn-secondary flex-1 py-3 rounded-lg text-sm font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              id="confirmJoinRoom"
+              class="btn-primary flex-1 py-3 rounded-lg text-sm font-medium"
+            >
+              Join Room
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Random Match Modal -->
+    <div
+      id="randomMatchModal"
+      class="fixed inset-0 modal-overlay hidden items-center justify-center z-50 p-4"
+    >
+      <div
+        class="bg-secondary border border-tertiary rounded-lg w-full max-w-md mx-auto modal-enter"
+      >
+        <div class="p-6 text-center">
+          <div class="mb-6">
+            <div
+              id="matchIcon"
+              class="w-20 h-20 mx-auto mb-4 bg-tertiary rounded-full flex items-center justify-center"
+            >
+              <!-- Icon will be updated based on state -->
+              <svg
+                class="w-10 h-10 text-orange-500 spinner"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+            </div>
+            <h3 id="matchTitle" class="text-xl font-medium mb-2">
+              Looking for a Match
+            </h3>
+            <p id="matchMessage" class="text-secondary">
+              Please wait while we find someone for you to watch with...
+            </p>
+          </div>
+          <button
+            id="cancelRandomMatch"
+            class="btn-secondary px-6 py-3 rounded-lg text-sm font-medium"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Global variables
+      let socket;
+      let currentUser = {};
+      let isSearchingForMatch = false;
+
+      // DOM elements
+      const onlineCount = document.getElementById("onlineCount");
+      const username = document.getElementById("username");
+      const userLocation = document.getElementById("userLocation");
+      const editUsername = document.getElementById("editUsername");
+      const saveProfile = document.getElementById("saveProfile");
+      const roomsList = document.getElementById("roomsList");
+      const noRooms = document.getElementById("noRooms");
+
+      // Banner elements
+      const bannerContainer = document.getElementById("bannerContainer");
+      const banner = document.getElementById("banner");
+      const bannerText = document.getElementById("bannerText");
+
+      // Modal elements
+      const messageModal = document.getElementById("messageModal");
+      const createRoomModal = document.getElementById("createRoomModal");
+      const joinRoomModal = document.getElementById("joinRoomModal");
+      const randomMatchModal = document.getElementById("randomMatchModal");
+      const createRoomBtn = document.getElementById("createRoomBtn");
+      const joinRoomBtn = document.getElementById("joinRoomBtn");
+      const randomMatchBtn = document.getElementById("randomMatchBtn");
+      const refreshRooms = document.getElementById("refreshRooms");
+
+      // Error elements
+      const usernameError = document.getElementById("usernameError");
+      const locationError = document.getElementById("locationError");
+      const roomNameError = document.getElementById("roomNameError");
+      const roomCodeError = document.getElementById("roomCodeError");
+
+      // Utility function to escape HTML
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      // Utility function to validate input
+      function validateInput(value, maxLength, fieldName) {
+        if (value.length > maxLength) {
+          return `${fieldName} must be ${maxLength} characters or less`;
+        }
+        if (value.trim() === "") {
+          return "";
+        }
+        // Check for suspicious patterns
+        if (/<[^>]*>/.test(value)) {
+          return `${fieldName} contains invalid characters`;
+        }
+        return "";
+      }
+
+      // Show/hide error messages
+      function showError(element, message) {
+        element.textContent = message;
+        element.classList.remove("hidden");
+      }
+
+      function hideError(element) {
+        element.classList.add("hidden");
+      }
+
+      // Utility functions for UI feedback
+      function showBanner(message, type = "success", duration = 3000) {
+        bannerText.textContent = escapeHtml(message);
+
+        // Update banner style based on type
+        banner.className =
+          type === "success"
+            ? "bg-green-600 text-white px-6 py-3 text-center"
+            : "bg-red-600 text-white px-6 py-3 text-center";
+
+        bannerContainer.classList.remove("hidden");
+        banner.classList.add("banner-slide-in");
+
+        setTimeout(() => {
+          banner.classList.remove("banner-slide-in");
+          banner.classList.add("banner-slide-out");
+          setTimeout(() => {
+            bannerContainer.classList.add("hidden");
+            banner.classList.remove("banner-slide-out");
+          }, 300);
+        }, duration);
+      }
+
+      function showMessage(title, message, type = "info") {
+        const messageIcon = document.getElementById("messageIcon");
+        const messageTitle = document.getElementById("messageTitle");
+        const messageText = document.getElementById("messageText");
+
+        messageTitle.textContent = escapeHtml(title);
+        messageText.textContent = escapeHtml(message);
+
+        // Set icon and colors based on type
+        if (type === "error") {
+          messageIcon.className =
+            "w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center";
+          messageIcon.innerHTML = `
+            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          `;
+        } else if (type === "success") {
+          messageIcon.className =
+            "w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center";
+          messageIcon.innerHTML = `
+            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+          `;
+        } else {
+          messageIcon.className =
+            "w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center";
+          messageIcon.innerHTML = `
+            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          `;
+        }
+
+        showModal(messageModal);
+      }
+
+      function updateRandomMatchModal(state, title, message) {
+        const matchIcon = document.getElementById("matchIcon");
+        const matchTitle = document.getElementById("matchTitle");
+        const matchMessage = document.getElementById("matchMessage");
+
+        matchTitle.textContent = escapeHtml(title);
+        matchMessage.textContent = escapeHtml(message);
+
+        switch (state) {
+          case "searching":
+            matchIcon.innerHTML = `
+              <svg class="w-10 h-10 text-orange-500 spinner" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+            `;
+            break;
+          case "found":
+            matchIcon.innerHTML = `
+              <svg class="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+            `;
+            break;
+          case "connecting":
+            matchIcon.innerHTML = `
+              <svg class="w-10 h-10 text-blue-500 spinner" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+              </svg>
+            `;
+            break;
+        }
+      }
+
+      function resetRandomMatchState() {
+        console.log("🔄 Resetting random match state");
+        isSearchingForMatch = false;
+        hideModal(randomMatchModal);
+        updateRandomMatchModal(
+          "searching",
+          "Looking for a Match",
+          "Please wait while we find someone for you to watch with..."
+        );
+      }
+
+      // Initialize application
+      function init() {
+        console.log("🚀 Initializing lobby...");
+        loadUserData();
+        connectSocket();
+        setupEventListeners();
+      }
+
+      function loadUserData() {
+        console.log("📋 Loading user data...");
+        const userData = JSON.parse(
+          localStorage.getItem("watchtogether_user") || "{}"
+        );
+        currentUser = userData;
+        console.log("👤 Current user:", currentUser);
+
+        if (userData.username) {
+          username.value = userData.username;
+          username.disabled = true;
+          editUsername.style.display = "block";
+        } else {
+          username.disabled = false;
+          editUsername.style.display = "none";
+        }
+
+        if (userData.location) {
+          userLocation.value = userData.location;
+        }
+      }
+
+      function connectSocket() {
+        console.log("🔌 Connecting to server...");
+        socket = io();
+
+        socket.on("connect", () => {
+          console.log("✅ Connected to server with socket ID:", socket.id);
+          if (currentUser.username) {
+            console.log("🔄 Emitting user-connected event...");
+            socket.emit("user-connected", currentUser);
+          }
+        });
+
+        setupSocketListeners();
+      }
+
+      function setupSocketListeners() {
+        socket.on("online-count", (count) => {
+          console.log("👥 Online count updated:", count);
+          onlineCount.textContent = count;
+        });
+
+        socket.on("rooms-list", (rooms) => {
+          console.log("🏠 Rooms list updated:", rooms);
+          updateRoomsList(rooms);
+        });
+
+        socket.on("room-created", (room) => {
+          console.log("🎉 Room created successfully:", room);
+          console.log("🚪 Navigating to room...");
+          resetRandomMatchState();
+          setTimeout(() => {
+            window.location.href = `/watchparty/room/${room.id}`;
+          }, 100);
+        });
+
+        socket.on("error", (message) => {
+          console.error("❌ Error from server:", message);
+          resetRandomMatchState();
+          showMessage("Error", message, "error");
+        });
+
+        socket.on("waiting-for-match", () => {
+          console.log("⏳ Waiting for random match...");
+          isSearchingForMatch = true;
+          updateRandomMatchModal(
+            "searching",
+            "Looking for a Match",
+            "Please wait while we find someone for you to Watch with..."
+          );
+          showModal(randomMatchModal);
+        });
+
+        socket.on("match-found", () => {
+          console.log("🎉 Match found!");
+          if (isSearchingForMatch) {
+            updateRandomMatchModal(
+              "found",
+              "Match Found!",
+              "Great! We found someone for you. Connecting now..."
+            );
+            setTimeout(() => {
+              updateRandomMatchModal(
+                "connecting",
+                "Connecting...",
+                "Setting up your watch room. Just a moment..."
+              );
+            }, 1000);
+          }
+        });
+
+        socket.on("match-timeout", () => {
+          console.log("⏱️ Match search timed out");
+          resetRandomMatchState();
+          showMessage(
+            "Search Timeout",
+            "We couldn't find a match. Please try again later.",
+            "info"
+          );
+        });
+
+        socket.on("match-cancelled", () => {
+          console.log("❌ Match search cancelled by server");
+          resetRandomMatchState();
+        });
+
+        socket.on("disconnect", () => {
+          console.log("🔌 Disconnected from server");
+          resetRandomMatchState();
+          showMessage(
+            "Connection Lost",
+            "You have been disconnected from the server. Please refresh the page to reconnect.",
+            "error"
+          );
+        });
+      }
+
+      function setupEventListeners() {
+        // Profile management
+        saveProfile.addEventListener("click", saveUserProfile);
+        editUsername.addEventListener("click", enableUsernameEdit);
+
+        // Input validation
+        username.addEventListener("input", () => {
+          const error = validateInput(username.value, 12, "Username");
+          if (error) {
+            showError(usernameError, error);
+          } else {
+            hideError(usernameError);
+          }
+        });
+
+        userLocation.addEventListener("input", () => {
+          const error = validateInput(userLocation.value, 15, "Location");
+          if (error) {
+            showError(locationError, error);
+          } else {
+            hideError(locationError);
+          }
+        });
+
+        document.getElementById("roomName").addEventListener("input", (e) => {
+          const error = validateInput(e.target.value, 30, "Room name");
+          if (error) {
+            showError(roomNameError, error);
+          } else {
+            hideError(roomNameError);
+          }
+        });
+
+        document.getElementById("roomCode").addEventListener("input", (e) => {
+          const error = validateInput(e.target.value, 10, "Room code");
+          if (error) {
+            showError(roomCodeError, error);
+          } else {
+            hideError(roomCodeError);
+          }
+        });
+
+        // Room actions
+        createRoomBtn.addEventListener("click", () =>
+          showModal(createRoomModal)
+        );
+        joinRoomBtn.addEventListener("click", () => showModal(joinRoomModal));
+        randomMatchBtn.addEventListener("click", findRandomMatch);
+        refreshRooms.addEventListener("click", () => {
+          console.log("🔄 Manual refresh rooms...");
+          showBanner("Refreshing Rooms...");
+          socket.emit("get-rooms");
+        });
+
+        // Modal actions
+        document
+          .getElementById("cancelCreateRoom")
+          .addEventListener("click", () => hideModal(createRoomModal));
+        document
+          .getElementById("cancelJoinRoom")
+          .addEventListener("click", () => hideModal(joinRoomModal));
+        document
+          .getElementById("confirmCreateRoom")
+          .addEventListener("click", createRoom);
+        document
+          .getElementById("confirmJoinRoom")
+          .addEventListener("click", joinRoom);
+        document
+          .getElementById("messageModalClose")
+          .addEventListener("click", () => hideModal(messageModal));
+        document
+          .getElementById("cancelRandomMatch")
+          .addEventListener("click", () => {
+            console.log("🚫 User cancelled random match search");
+            if (isSearchingForMatch && socket) {
+              console.log("📤 Emitting cancel-random-match event");
+              socket.emit("cancel-random-match");
+            }
+            resetRandomMatchState();
+          });
+
+        // Close modals on backdrop click
+        [
+          messageModal,
+          createRoomModal,
+          joinRoomModal,
+          randomMatchModal,
+        ].forEach((modal) => {
+          modal.addEventListener("click", (e) => {
+            if (e.target === modal) {
+              if (modal === randomMatchModal && isSearchingForMatch && socket) {
+                console.log(
+                  "📤 Emitting cancel-random-match event (backdrop click)"
+                );
+                socket.emit("cancel-random-match");
+              }
+              hideModal(modal);
+              if (modal === randomMatchModal) {
+                resetRandomMatchState();
+              }
+            }
+          });
+        });
+
+        // Enter key handlers
+        document
+          .getElementById("roomCode")
+          .addEventListener("keypress", (e) => {
+            if (e.key === "Enter") joinRoom();
+          });
+        document
+          .getElementById("roomName")
+          .addEventListener("keypress", (e) => {
+            if (e.key === "Enter") createRoom();
+          });
+      }
+
+      function saveUserProfile() {
+        console.log("💾 Saving user profile...");
+        const usernameValue = username.value.trim();
+        const locationValue = userLocation.value.trim();
+
+        // Validate inputs
+        const usernameErr = validateInput(usernameValue, 12, "Username");
+        const locationErr = validateInput(locationValue, 15, "Location");
+
+        if (usernameErr) {
+          showError(usernameError, usernameErr);
+          return;
+        }
+        if (locationErr) {
+          showError(locationError, locationErr);
+          return;
+        }
+
+        if (!usernameValue) {
+          showMessage(
+            "Username Required",
+            "Please enter a username before saving your profile.",
+            "error"
+          );
+          return;
+        }
+
+        // Clear any previous errors
+        hideError(usernameError);
+        hideError(locationError);
+
+        currentUser = { username: usernameValue, location: locationValue };
+        localStorage.setItem("watchtogether_user", JSON.stringify(currentUser));
+        console.log("✅ Profile saved:", currentUser);
+
+        username.disabled = true;
+        editUsername.style.display = "block";
+
+        console.log("🔄 Emitting user-connected event after profile save...");
+        socket.emit("user-connected", currentUser);
+
+        showBanner("Profile Updated Successfully!");
+      }
+
+      function enableUsernameEdit() {
+        console.log("✏️ Enabling username edit...");
+        username.disabled = false;
+        username.focus();
+        editUsername.style.display = "none";
+        hideError(usernameError);
+      }
+
+      function updateRoomsList(rooms) {
+        if (rooms.length === 0) {
+          roomsList.innerHTML = "";
+          noRooms.style.display = "block";
+          return;
+        }
+
+        noRooms.style.display = "none";
+        roomsList.innerHTML = rooms
+          .map(
+            (room) => `
+                <div class="room-card rounded-lg p-4 cursor-pointer" data-room-id="${escapeHtml(
+                  room.id
+                )}">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <h4 class="font-medium text-lg mb-1">${escapeHtml(
+                              room.name
+                            )}</h4>
+                            <div class="flex items-center space-x-4 text-sm text-secondary">
+                                <span class="flex items-center space-x-1">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                                    </svg>
+                                    <span>${room.users}/${room.maxUsers}</span>
+                                </span>
+                                <span class="flex items-center space-x-1">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                                    </svg>
+                                    <span>Text Chat</span>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                            <span class="text-xs text-secondary">Live</span>
+                        </div>
+                    </div>
+                </div>
+            `
+          )
+          .join("");
+
+        // Add click event listeners to room cards
+        document.querySelectorAll(".room-card").forEach((card) => {
+          card.addEventListener("click", function () {
+            const roomId = this.dataset.roomId;
+            joinRoomById(roomId);
+          });
+        });
+      }
+
+      function showModal(modal) {
+        modal.classList.remove("hidden");
+        modal.classList.add("flex");
+      }
+
+      function hideModal(modal) {
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+      }
+
+      function createRoom() {
+        if (!currentUser.username) {
+          showMessage(
+            "Profile Required",
+            "Please save your profile first before creating a room.",
+            "error"
+          );
+          return;
+        }
+
+        const roomName = document.getElementById("roomName").value.trim();
+        const isPublic = document.getElementById("isPublic").checked;
+
+        // Validate room name
+        const roomNameErr = validateInput(roomName, 30, "Room name");
+        if (roomNameErr) {
+          showError(roomNameError, roomNameErr);
+          return;
+        }
+
+        if (!roomName) {
+          showMessage(
+            "Room Name Required",
+            "Please enter a room name.",
+            "error"
+          );
+          return;
+        }
+
+        hideError(roomNameError);
+
+        console.log("🏗️ Creating room with data:", {
+          name: roomName,
+          type: "text",
+          isPublic,
+        });
+
+        socket.emit("create-room", {
+          name: roomName,
+          type: "text",
+          isPublic,
+        });
+
+        hideModal(createRoomModal);
+        // Clear the form
+        document.getElementById("roomName").value = "";
+        hideError(roomNameError);
+      }
+
+      function joinRoom() {
+        if (!currentUser.username) {
+          showMessage(
+            "Profile Required",
+            "Please save your profile first before joining a room.",
+            "error"
+          );
+          return;
+        }
+
+        const roomCode = document
+          .getElementById("roomCode")
+          .value.trim()
+          .toUpperCase();
+
+        // Validate room code
+        const roomCodeErr = validateInput(roomCode, 10, "Room code");
+        if (roomCodeErr) {
+          showError(roomCodeError, roomCodeErr);
+          return;
+        }
+
+        if (!roomCode) {
+          showMessage(
+            "Room Code Required",
+            "Please enter a room code.",
+            "error"
+          );
+          return;
+        }
+
+        hideError(roomCodeError);
+
+        console.log("🚪 Joining room with code:", roomCode);
+        window.location.href = `/watchparty/room/${encodeURIComponent(
+          roomCode
+        )}`;
+      }
+      function joinRoomById(roomId) {
+        if (!currentUser.username) {
+          showMessage(
+            "Profile Required",
+            "Please save your profile first before joining a room.",
+            "error"
+          );
+          return;
+        }
+
+        console.log("🚪 Joining room with ID:", roomId);
+        window.location.href = `/watchparty/room/${encodeURIComponent(roomId)}`;
+      }
+
+      function findRandomMatch() {
+        if (!currentUser.username) {
+          showMessage(
+            "Profile Required",
+            "Please save your profile first before finding a match.",
+            "error"
+          );
+          return;
+        }
+
+        if (isSearchingForMatch) {
+          showMessage(
+            "Already Searching",
+            "You are already searching for a match. Please wait or cancel the current search.",
+            "info"
+          );
+          return;
+        }
+
+        console.log("🎲 Finding random match...");
+        socket.emit("find-random-match");
+      }
+
+      // Auto-refresh rooms every 5 seconds
+      setInterval(() => {
+        if (socket && socket.connected) {
+          socket.emit("get-rooms");
+        }
+      }, 5000);
+
+      // Initialize when page loads
+      init();
+    </script>
+  </body>
+</html>
