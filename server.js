@@ -208,48 +208,42 @@ app.use(
   helmet({
     contentSecurityPolicy: {
       directives: {
-        "default-src": ["'self'"],
-        "script-src": [
+        defaultSrc: ["'self'"],
+        scriptSrc: [
           "'self'",
           "'unsafe-inline'",
           "'unsafe-eval'",
-          "https://cdn.tailwindcss.com",
-          "https://www.gstatic.com",
-          "https://apis.google.com",
-          "https://www.youtube.com",
-          "https://youtube.com",
-          "blob:",
+          "https://cdnjs.cloudflare.com",
+          (req, res) => `'nonce-${res.locals.nonce}'`,
         ],
-        "script-src-attr": ["'unsafe-inline'"],
-        "object-src": ["'none'"],
-        "frame-src": [
-          "'self'",
-          "https://www.youtube.com",
-          "https://youtube.com",
-        ],
-        "frame-ancestors": ["'self'"],
-        "connect-src": [
-          "'self'",
-          "ws://localhost:3000",
-          "ws://localhost:3009",
-          "wss://classic.talkomatic.co",
-          "wss://watchparty.talkomatic.co",
-          "https://www.googleapis.com",
-          "https://www.google.com",
-          "https://www.youtube.com",
-          "https://youtube.com",
-        ],
-        "img-src": ["'self'", "data:", "https://i.ytimg.com"],
-        "media-src": ["'self'", "blob:"],
-        "style-src": [
+        styleSrc: [
           "'self'",
           "'unsafe-inline'",
+          "https://cdnjs.cloudflare.com",
           "https://fonts.googleapis.com",
-          "https://cdn.tailwindcss.com",
         ],
-        "font-src": ["'self'", "https://fonts.gstatic.com", "data:"],
-        "worker-src": ["'self'", "blob:"],
-        "child-src": ["'self'", "blob:"],
+        imgSrc: ["'self'", "data:", "https:", "blob:"],
+        connectSrc: ["'self'"],
+        fontSrc: [
+          "'self'",
+          "https://fonts.gstatic.com",
+          "https://cdnjs.cloudflare.com",
+        ],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'"],
+        frameSrc: ["'none'"],
+        styleSrcElem: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://cdnjs.cloudflare.com",
+          "https://fonts.googleapis.com",
+        ],
+        scriptSrcElem: [
+          "'self'",
+          "https://cdnjs.cloudflare.com",
+          "https://classic.talkomatic.co",
+          (req, res) => `'nonce-${res.locals.nonce}'`,
+        ],
       },
     },
     crossOriginEmbedderPolicy: false,
@@ -257,7 +251,6 @@ app.use(
     crossOriginOpenerPolicy: false,
   })
 );
-
 app.use(xss());
 app.use(hpp());
 
@@ -789,23 +782,17 @@ async function processPendingChatUpdates(userId, socket) {
     if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
       const filterResult = wordFilter.checkText(consolidatedMessage);
       if (filterResult.hasOffensiveWord) {
-        consolidatedMessage = wordFilter.filterText(consolidatedMessage);
-        userMessageBuffers.set(userId, consolidatedMessage);
         io.to(socket.roomId).emit("offensive word detected", {
           userId,
-          filteredMessage: consolidatedMessage,
+          filteredMessage: wordFilter.filterText(consolidatedMessage),
         });
-      } else {
-        // OPTIMIZED: only broadcast to room, not including sender
-        socket
-          .to(socket.roomId)
-          .emit("chat update", { userId, username, diff: broadcastDiff });
       }
-    } else {
-      socket
-        .to(socket.roomId)
-        .emit("chat update", { userId, username, diff: broadcastDiff });
     }
+
+    // Broadcast unfiltered message to others
+    socket
+      .to(socket.roomId)
+      .emit("chat update", { userId, username, diff: broadcastDiff });
 
     // Reset user's AFK timers since they're active
     setupAFKTimers(socket, userId);
