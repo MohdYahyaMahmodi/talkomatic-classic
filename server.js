@@ -208,42 +208,48 @@ app.use(
   helmet({
     contentSecurityPolicy: {
       directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: [
+        "default-src": ["'self'"],
+        "script-src": [
           "'self'",
           "'unsafe-inline'",
           "'unsafe-eval'",
-          "https://cdnjs.cloudflare.com",
-          (req, res) => `'nonce-${res.locals.nonce}'`,
+          "https://cdn.tailwindcss.com",
+          "https://www.gstatic.com",
+          "https://apis.google.com",
+          "https://www.youtube.com",
+          "https://youtube.com",
+          "blob:",
         ],
-        styleSrc: [
+        "script-src-attr": ["'unsafe-inline'"],
+        "object-src": ["'none'"],
+        "frame-src": [
+          "'self'",
+          "https://www.youtube.com",
+          "https://youtube.com",
+        ],
+        "frame-ancestors": ["'self'"],
+        "connect-src": [
+          "'self'",
+          "ws://localhost:3000",
+          "ws://localhost:3009",
+          "wss://classic.talkomatic.co",
+          "wss://watchparty.talkomatic.co",
+          "https://www.googleapis.com",
+          "https://www.google.com",
+          "https://www.youtube.com",
+          "https://youtube.com",
+        ],
+        "img-src": ["'self'", "data:", "https://i.ytimg.com"],
+        "media-src": ["'self'", "blob:"],
+        "style-src": [
           "'self'",
           "'unsafe-inline'",
-          "https://cdnjs.cloudflare.com",
           "https://fonts.googleapis.com",
+          "https://cdn.tailwindcss.com",
         ],
-        imgSrc: ["'self'", "data:", "https:", "blob:"],
-        connectSrc: ["'self'"],
-        fontSrc: [
-          "'self'",
-          "https://fonts.gstatic.com",
-          "https://cdnjs.cloudflare.com",
-        ],
-        objectSrc: ["'none'"],
-        mediaSrc: ["'self'"],
-        frameSrc: ["'none'"],
-        styleSrcElem: [
-          "'self'",
-          "'unsafe-inline'",
-          "https://cdnjs.cloudflare.com",
-          "https://fonts.googleapis.com",
-        ],
-        scriptSrcElem: [
-          "'self'",
-          "https://cdnjs.cloudflare.com",
-          "https://classic.talkomatic.co",
-          (req, res) => `'nonce-${res.locals.nonce}'`,
-        ],
+        "font-src": ["'self'", "https://fonts.gstatic.com", "data:"],
+        "worker-src": ["'self'", "blob:"],
+        "child-src": ["'self'", "blob:"],
       },
     },
     crossOriginEmbedderPolicy: false,
@@ -251,6 +257,7 @@ app.use(
     crossOriginOpenerPolicy: false,
   })
 );
+
 app.use(xss());
 app.use(hpp());
 
