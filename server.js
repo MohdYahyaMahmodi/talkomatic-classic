@@ -172,8 +172,7 @@ app.set("trust proxy", trustProxyConfig);
 const allowedOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
-  "https://classic.talkomatic.co",
-  "https://congenial-space-umbrella-59w564vwqgph49g5.github.dev" // REMOVE
+  "https://classic.talkomatic.co"
 ];
 
 const corsOptions = {
@@ -785,12 +784,14 @@ async function processPendingChatUpdates(userId, socket) {
       const filterResult = wordFilter.checkText(consolidatedMessage);
       if (filterResult.hasOffensiveWord) {
         messageIsAppropriate = false;
+        const censoredText = wordFilter.filterText(consolidatedMessage);
+        userMessageBuffers.set(userId, censoredText);
         io.to(socket.roomId).emit("chat update", {
           userId,
           username,
           diff: {
             type: 'full-replace',
-            text: wordFilter.filterText(consolidatedMessage),
+            text: censoredText,
           }
         });
       }
