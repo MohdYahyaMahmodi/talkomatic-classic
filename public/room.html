@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Talkomatic Room</title>
-    <link rel="stylesheet" href="stylesheets/room.css?v=1.0.7" />
+    <link rel="stylesheet" href="stylesheets/room.css?v=1.0.9" />
     <link rel="icon" type="image/png" href="images/icons/favicon.png" />
     <style>
       /* Emote system styles */
@@ -128,6 +128,205 @@
         height: 20px;
         margin: 0 2px;
       }
+
+      .app-directory-toggle {
+        background: none;
+        border: none;
+        color: white;
+        cursor: pointer;
+        padding: 8px 12px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 14px;
+        font-family: inherit;
+        transition: background-color 0.2s ease;
+        margin: 0 2px;
+        margin-right: 8px;
+      }
+
+      .app-directory-toggle:hover {
+        background-color: rgba(255, 152, 0, 0.1);
+      }
+
+      .app-directory-toggle img {
+        width: 18px;
+        height: 18px;
+      }
+
+      /* App Directory Dropdown */
+      .app-directory-dropdown {
+        position: absolute;
+        top: 100%;
+        right: 120px;
+        background-color: #202020;
+        border: 1px solid #616161;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        z-index: 10000;
+        min-width: 280px;
+        max-width: 320px;
+        display: none;
+        padding: 1rem;
+        margin-top: 5px;
+      }
+
+      .app-directory-dropdown.show {
+        display: block;
+        animation: fadeInDown 0.2s ease-out;
+      }
+
+      @keyframes fadeInDown {
+        from {
+          opacity: 0;
+          transform: translateY(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .app-directory-header {
+        color: #ff9800;
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #616161;
+      }
+
+      .app-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+      }
+
+      .app-item {
+        display: flex;
+        align-items: center;
+        padding: 12px;
+        border-radius: 6px;
+        background-color: #000000;
+        border: 1px solid #616161;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        color: white;
+      }
+
+      .app-item:hover {
+        border-color: #ff9800;
+        background-color: #1a1a1a;
+        transform: translateY(-1px);
+      }
+
+      .app-item.disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .app-item.disabled:hover {
+        border-color: #616161;
+        background-color: #000000;
+        transform: none;
+      }
+
+      .app-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        margin-right: 12px;
+        object-fit: cover;
+      }
+
+      .app-icon.watchparty {
+        padding: 4px;
+      }
+
+      .app-icon.placeholder {
+        background: linear-gradient(135deg, #ff9800, #ff8c42);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        color: #000000;
+      }
+
+      .app-info {
+        flex: 1;
+      }
+
+      .app-name {
+        font-size: 14px;
+        font-weight: bold;
+        color: white;
+        margin-bottom: 2px;
+      }
+
+      .app-description {
+        font-size: 12px;
+        color: #cccccc;
+        line-height: 1.3;
+      }
+
+      .app-status {
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 8px;
+        font-weight: bold;
+        text-transform: uppercase;
+        margin-left: 8px;
+      }
+
+      .status-available {
+        background: #ff9800;
+        color: #000000;
+      }
+
+      .status-coming-soon {
+        background: #616161;
+        color: #ffffff;
+      }
+
+      .app-directory-footer {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #616161;
+        text-align: center;
+      }
+
+      .view-all-link {
+        color: #ff9800;
+        text-decoration: none;
+        font-size: 12px;
+        font-weight: bold;
+      }
+
+      .view-all-link:hover {
+        text-decoration: underline;
+      }
+
+      /* Mobile responsiveness */
+      @media (max-width: 768px) {
+        .app-directory-dropdown {
+          right: 10px;
+          left: 10px;
+          width: auto;
+          min-width: auto;
+          max-width: none;
+        }
+
+        .app-directory-toggle {
+          margin-right: 8px;
+          margin-left: 0;
+        }
+
+        .app-directory-toggle span {
+          display: none;
+        }
+      }
     </style>
   </head>
 
@@ -149,7 +348,14 @@
           <button id="muteToggle" class="mute-toggle" aria-label="Toggle Sound">
             <img src="images/icons/sound-on.svg" alt="Sound On" id="muteIcon" />
           </button>
-
+          <button
+            id="appDirectoryToggle"
+            class="app-directory-toggle"
+            aria-label="Open App Directory"
+          >
+            <img src="images/icons/apps.png" alt="Apps" id="appDirectoryIcon" />
+            <span>Apps</span>
+          </button>
           <div class="leave-room">Leave Room</div>
         </div>
       </nav>
@@ -211,6 +417,6 @@
     <audio id="leaveSound" src="audio/ding.mp3"></audio>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="js/room-client.js?v=1.3.1"></script>
+    <script src="js/room-client.js?v=1.3.2"></script>
   </body>
 </html>

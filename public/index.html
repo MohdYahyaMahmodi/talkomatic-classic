@@ -1,12 +1,10 @@
 <!-- 
     Talkomatic Lobby Page
     =====================
-
     This HTML document serves as the entry point for the Talkomatic web application's lobby page. 
     The page allows users to sign in, create chat rooms, and join existing rooms. It includes links 
     to external resources and relies on various CSS stylesheets and JavaScript files for styling 
     and functionality.
-
     Main Features:
     - Sign-in form to enter a chat room with a name and optional location.
     - Create a chat room with different privacy options (public, semi-private, private).
@@ -14,7 +12,6 @@
     - View and join available chat rooms.
     - External links to information about Talkomatic.
     - Uses socket.io for real-time communication with the server.
-
     External Resources:
     - lobby.css (styling)
     - lobby.js, lobby-client.js (client-side functionality)
@@ -22,23 +19,18 @@
     
     Note: The use of the <%= nonce %> tag indicates dynamic nonce generation, likely for Content 
     Security Policy (CSP) purposes to allow only authorized scripts to run.
-
     Last updated: 2024
 -->
-
 <!DOCTYPE html>
 <html lang="en">
   <!-- Head Section: Metadata and External Resources -->
   <head>
     <!-- Specifies the document's character encoding as UTF-8 -->
     <meta charset="UTF-8" />
-
     <!-- Ensures proper scaling on mobile devices by setting the viewport properties -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
     <!-- SEO Enhanced Title -->
     <title>Talkomatic Lobby - Join the World's First Real-Time Chat Room</title>
-
     <!-- SEO Meta Tags -->
     <meta
       name="description"
@@ -51,10 +43,8 @@
     <meta name="author" content="Mohd Mahmodi" />
     <meta name="robots" content="index, follow" />
     <meta name="language" content="English" />
-
     <!-- Canonical URL -->
     <link rel="canonical" href="https://talkomatic.co/index.html" />
-
     <!-- Open Graph Meta Tags for social sharing -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://talkomatic.co/index.html" />
@@ -71,7 +61,6 @@
       content="https://talkomatic.co/images/talkomatic-social-share.png"
     />
     <meta property="og:site_name" content="Talkomatic" />
-
     <!-- Twitter Card Tags -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta
@@ -87,7 +76,6 @@
       content="https://talkomatic.co/images/talkomatic-social-share.png"
     />
     <meta name="twitter:creator" content="@mohdmahmodi" />
-
     <!-- Schema.org JSON-LD for structured data -->
     <script type="application/ld+json">
       {
@@ -124,28 +112,21 @@
         "description": "The world's first multi-user chat room created in 1973, offering real-time character-by-character text communication."
       }
     </script>
-
     <!-- Link to external stylesheet for lobby-specific styles -->
     <link rel="stylesheet" href="stylesheets/lobby.css?v=1.1.0" />
-
     <!-- Toastr official CSS -->
     <link rel="stylesheet" href="stylesheets/toastr.min.css?v=1.0.1" />
-
     <!-- Custom overrides for a black/orange theme -->
     <link rel="stylesheet" href="stylesheets/toastr.css?v=1.0.1" />
-
     <!-- Favicon icon for the website, displayed in the browser tab -->
     <link rel="icon" type="image/png" href="images/icons/favicon.png" />
-
     <!-- Preconnect to external domains -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
   </head>
-
   <!-- Body Section: Main content and layout of the page -->
   <body>
     <!-- Button to toggle the left panel (menu) visibility -->
     <button class="toggle-button" id="toggleButton">Menu</button>
-
     <!-- Container that holds both the left (menu) and right (content) panels -->
     <div class="container">
       <!-- Left panel containing the menu options and forms -->
@@ -154,50 +135,48 @@
         <button class="hide-menu-button" id="hideMenuButton">
           ...Hide Menu
         </button>
-
         <!-- Panel header displaying the Talkomatic logo and the word "Lobby" -->
         <div class="panel-header">
           <span class="talkomatic">Talkomatic™</span>
           <span class="lobby">Lobby</span>
         </div>
-
         <div class="external-links">
           <table class="retro-link-table">
             <tr>
-              <td>
-                <a href="sponsors.html" rel="noopener noreferrer"
-                  ><span class="bullet"></span> Sponsors</a
-                >
-              </td>
               <td>
                 <a href="contributors.html" rel="noopener noreferrer"
                   ><span class="bullet"></span> Contributors</a
                 >
               </td>
-            </tr>
-            <tr>
               <td>
                 <a href="about.html" rel="noopener noreferrer"
                   ><span class="bullet"></span> About</a
                 >
               </td>
+            </tr>
+
+            <!-- NEW ROW FOR APPS -->
+            <tr>
               <td>
                 <a
-                  href="https://discord.gg/N7tJznESrE"
+                  href="https://watchparty.talkomatic.co/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  ><span class="bullet"></span> Discord</a
+                  ><span class="bullet"></span>📺 WatchParty</a
+                >
+              </td>
+              <td>
+                <a href="app-directory.html" rel="noopener noreferrer"
+                  ><span class="bullet"></span> App Directory</a
                 >
               </td>
             </tr>
           </table>
         </div>
-
         <!-- Section where users can provide a name to be known as in the chat -->
         <div class="known-as-section">
           <p>Be Known As...</p>
         </div>
-
         <!-- Form for signing in to the chat room -->
         <div id="logform">
           <form>
@@ -208,14 +187,12 @@
               required
               maxlength="15"
             />
-
             <!-- Optional text input for the user's location -->
             <input
               type="text"
               placeholder="Location (optional)"
               maxlength="20"
             />
-
             <!-- Submit button with an icon for signing in -->
             <button type="submit">
               Sign In
@@ -227,18 +204,15 @@
             </button>
           </form>
         </div>
-
         <!-- Section for creating a chat room -->
         <div class="createRoom">
           <p>Create A Room...</p>
           <a href="#" class="learn-more">Learn More</a>
         </div>
-
         <!-- Form for specifying room details (room name, type, layout) -->
         <div id="lobbyForm">
           <!-- Input field for the room name (max length: 20 characters) -->
           <input type="text" placeholder="Room Name" maxlength="25" />
-
           <!-- Radio buttons for selecting the type of room (public, semi-private, private) -->
           <div class="radio-group">
             <label>
@@ -269,7 +243,6 @@
               <span>Private Room</span>
             </label>
           </div>
-
           <!-- Input field for access code, hidden unless a private room is selected -->
           <div id="accessCodeInput" style="display: none">
             <input
@@ -279,7 +252,6 @@
               pattern="\d{6}"
             />
           </div>
-
           <!-- Room layout selection (horizontal or vertical) -->
           <p class="roomLay">Room Layout</p>
           <div class="radio-group">
@@ -302,35 +274,29 @@
               <span>Vertical</span>
             </label>
           </div>
-
           <!-- Button to initiate the chat based on the provided inputs -->
           <div class="button-container">
             <button type="button" class="go-chat-button">Go Chat...</button>
           </div>
         </div>
       </div>
-
       <!-- Right panel where available rooms and sign-in messages are displayed -->
       <div class="right-panel">
         <!-- Header inviting the user to join a room -->
         <h2>Join A Room ...</h2>
-
         <!-- Message prompting the user to sign in before viewing chat rooms -->
         <div id="signInMessage" style="display: block">
           <p>Please sign in to see available chatrooms.</p>
         </div>
-
         <!-- Section where the list of rooms will be dynamically added -->
         <div class="roomList" style="display: none">
           <div class="rooms" id="dynamicRoomList">
             <!-- Placeholder for dynamically generated room list -->
           </div>
-
           <!-- Message displayed when no rooms are available -->
           <div id="noRoomsMessage" style="display: none">
             <p>No rooms available at the moment. Why not create one?</p>
           </div>
-
           <!-- Copyright and version information for the lobby page -->
           <div class="copyright-info">
             <span class="brand">Talkomatic</span>
@@ -347,13 +313,11 @@
         </div>
       </div>
     </div>
-
     <!-- Modal Container -->
     <div id="roomInfoModal" class="modal">
       <div class="modal-content-info">
         <span class="close-modal">&times;</span>
         <h2>Creating a Room in Talkomatic</h2>
-
         <div class="modal-section">
           <h3>Room Types</h3>
           <div class="room-type-info">
@@ -369,7 +333,6 @@
                 instantly.
               </p>
             </div>
-
             <div class="type-item">
               <img
                 src="images/icons/semi-private.svg"
@@ -381,7 +344,6 @@
                 Visible in the room list but requires creator approval to join.
               </p>
             </div>
-
             <div class="type-item">
               <img
                 src="images/icons/secret.svg"
@@ -389,14 +351,9 @@
                 class="info-icon"
               />
               <h4>Private Room</h4>
-              <p>
-                Hidden from the room list. Accessible only through direct invite
-                link.
-              </p>
             </div>
           </div>
         </div>
-
         <div class="modal-section">
           <h3>Room Layouts</h3>
           <div class="layout-info">
@@ -412,7 +369,6 @@
                 switches to vertical on smaller screens.
               </p>
             </div>
-
             <div class="layout-item">
               <img
                 src="images/icons/vertical.svg"
@@ -429,7 +385,6 @@
         </div>
       </div>
     </div>
-
     <!-- Custom Modal -->
     <div id="customModal" class="custom-modal">
       <div class="modal-content">
@@ -454,12 +409,14 @@
         </div>
       </div>
     </div>
-
     <!-- External scripts with both nonce and version -->
     <script nonce="<%= nonce %>" src="js/jquery.min.js?v=1.0.1"></script>
     <script nonce="<%= nonce %>" src="js/toastr.min.js?v=1.0.1"></script>
     <script nonce="<%= nonce %>" src="js/lobby.js?v=1.0.5"></script>
     <script nonce="<%= nonce %>" src="/socket.io/socket.io.js?v=1.0.1"></script>
     <script nonce="<%= nonce %>" src="js/lobby-client.js?v=1.2.0"></script>
+
+    <!-- POPUP SYSTEM: Add this script tag to enable update popups -->
+    <script nonce="<%= nonce %>" src="js/popup.js?v=1.0.9"></script>
   </body>
 </html>

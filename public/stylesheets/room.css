@@ -26,23 +26,23 @@
    'talkoText' font is used specifically for chat input to give a handwritten style.
    =============================================================================*/
 
-   @font-face {
-    font-family: 'talkoSS';
-    src: url('../fonts/Sansation_Light.ttf');
-  }
-  
-  @font-face {
-    font-family: 'talkoSS';
-    src: url('../fonts/Sansation_Bold.ttf');
-    font-weight: bold;
-  }
-  
-  @font-face {
-    font-family: 'talkoText';
-    src: url('../fonts/dited.otf');
-  }
-  
-  /* =============================================================================
+@font-face {
+  font-family: "talkoSS";
+  src: url("../fonts/Sansation_Light.ttf");
+}
+
+@font-face {
+  font-family: "talkoSS";
+  src: url("../fonts/Sansation_Bold.ttf");
+  font-weight: bold;
+}
+
+@font-face {
+  font-family: "talkoText";
+  src: url("../fonts/dited.otf");
+}
+
+/* =============================================================================
      Base Styles
      -----------------------------------------------------------------------------
      Basic styles applied to the entire page (body and html tags). These include 
@@ -50,184 +50,189 @@
      family and background color. The interface is also set to hide overflow to 
      prevent scrolling.
      =============================================================================*/
-  
-  body, html {
-    margin: 0;
-    padding: 0;
-    height: 100vh;
-    font-family: talkoSS, Arial, sans-serif;
-    background-color: #f0f0f0;
-    font-size: 16px;
-    overflow: hidden;
-  }
-  
-  .page-container {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-  }
-  
-  /* =============================================================================
+
+body,
+html {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  font-family: talkoSS, Arial, sans-serif;
+  background-color: #f0f0f0;
+  font-size: 16px;
+  overflow: hidden;
+}
+
+.page-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* =============================================================================
      Navigation Styles
      -----------------------------------------------------------------------------
      These styles define the appearance and layout of the top and secondary navigation 
      bars, including the branding, room info, and buttons for user interactions. 
      =============================================================================*/
-  
-  /* Common navbar styles */
-  .top-navbar,
-  .second-navbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 20px;
-    background-color: black;
-    color: white;
-  }
-  
-  .navbar-section {
-    flex: 1;
-    display: flex;
-    align-items: center;
-  }
-  
-  /* Navbar layout: positioning sections */
-  .navbar-left { justify-content: flex-start; }
-  .navbar-center { justify-content: center; }
-  .navbar-right { justify-content: flex-end; }
-  
-  /* Top navbar specific styles: date-time display, branding, leave button */
-  .date-time {
-    font-size: 14px;
-    color: #ffff00;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .brand {
-    font-size: 24px;
-    color: #FF9800;
-    text-align: center;
-  }
-  
-  .leave-room {
-    font-size: 14px;
-    cursor: pointer;
-    background-color: black;
-    color: white;
-    border: 1px solid #FF9800;
-    padding: 10px;
-    border-radius: 5px;
-    font-family: talkoSS, Arial, sans-serif;
-    white-space: nowrap;
-  }
 
-  /* Mute Toggle Button Styles */
-  .mute-toggle {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 8px;
-    margin-left: 10px;
-    margin-right: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.2s ease;
-  }
+/* Common navbar styles */
+.top-navbar,
+.second-navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  background-color: black;
+  color: white;
+}
 
-  .mute-toggle:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
-  }
+.navbar-section {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
 
-  .mute-toggle:active {
-    background-color: rgba(255, 255, 255, 0.2);
-  }
+/* Navbar layout: positioning sections */
+.navbar-left {
+  justify-content: flex-start;
+}
+.navbar-center {
+  justify-content: center;
+}
+.navbar-right {
+  justify-content: flex-end;
+}
 
-  .mute-toggle img {
-    width: 24px;
-    height: 24px;
-  }
-  
-  /* Second navbar specific styles: room info */
-  .second-navbar {
-    background-color: #1a1a1a;
-  }
-  
-  .room-type {
-    color: cyan;
-  }
-  
-  .room-name {
-    font-size: 18px;
-    font-weight: bold;
-    text-align: center;
-  }
-  
-  .room-id {
-    color: #FF9800;
-  }
-  
-  /* =============================================================================
+/* Top navbar specific styles: date-time display, branding, leave button */
+.date-time {
+  font-size: 14px;
+  color: #ffff00;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.brand {
+  font-size: 24px;
+  color: #ff9800;
+  text-align: center;
+}
+
+.leave-room {
+  font-size: 14px;
+  cursor: pointer;
+  background-color: black;
+  color: white;
+  border: 1px solid #ff9800;
+  padding: 10px;
+  border-radius: 5px;
+  font-family: talkoSS, Arial, sans-serif;
+  white-space: nowrap;
+}
+
+/* Mute Toggle Button Styles */
+.mute-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+
+.mute-toggle:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.mute-toggle:active {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.mute-toggle img {
+  width: 24px;
+  height: 24px;
+}
+
+/* Second navbar specific styles: room info */
+.second-navbar {
+  background-color: #1a1a1a;
+}
+
+.room-type {
+  color: cyan;
+}
+
+.room-name {
+  font-size: 18px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.room-id {
+  color: #ff9800;
+}
+
+/* =============================================================================
      Chat Container Styles
      -----------------------------------------------------------------------------
      Styles for the main chat area, which includes the message rows, user info 
      section, and message input field. This section is flexible and grows to fill 
      available space in the viewport.
      =============================================================================*/
-  
-  .chat-container {
-    flex-grow: 1;
-    display: flex;
-    gap: 5px;
-    padding: 0 5px;
-    background-color: #202020;
-    overflow: hidden;
-    box-sizing: border-box;
-  }
-  
-  .chat-row {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid #ccc;
-    box-sizing: border-box;
-  }
-  
-  /* Highlight for the current user’s messages */
-  .chat-row.current-user {
-    border-color: orange;
-  }
-  
-  /* Styling for the user information above chat messages */
-  .user-info {
-    font-size: 14px;
-    padding: 8px;
-    color: #ffffff;
-    background: linear-gradient(to bottom, #616161, #303030);
-    display: flex;
-    align-items: center;
-  }
 
-  .vote-button {
-    background: none;
-    border: none;
-    color: red;
-    font-size: 16px;
-    cursor: pointer;
-    margin-left: auto; /* Push it to the right */
+.chat-container {
+  flex-grow: 1;
+  display: flex;
+  gap: 5px;
+  padding: 0 5px;
+  background-color: #202020;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.chat-row {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ccc;
+  box-sizing: border-box;
+}
+
+/* Highlight for the current user’s messages */
+.chat-row.current-user {
+  border-color: orange;
+}
+
+/* Styling for the user information above chat messages */
+.user-info {
+  font-size: 14px;
+  padding: 8px;
+  color: #ffffff;
+  background: linear-gradient(to bottom, #616161, #303030);
+  display: flex;
+  align-items: center;
+}
+
+.vote-button {
+  background: none;
+  border: none;
+  color: red;
+  font-size: 16px;
+  cursor: pointer;
+  margin-left: auto; /* Push it to the right */
 }
 
 /* Style when the user has voted for this user */
 .vote-button.voted {
-    color: darkred;
-    font-weight: bold;
+  color: darkred;
+  font-weight: bold;
 }
 
 /* Adjust vote button visibility */
 .vote-button {
-    display: none; /* Initially hidden */
+  display: none; /* Initially hidden */
 }
 
 .mute-button {
@@ -252,180 +257,215 @@
 .mute-button:active {
   background: #ff9999;
 }
-  
-  /* Chat input box for typing messages */
-  .chat-input {
-    flex-grow: 1;
-    padding: 5px;
-    border: none;
-    font-family: talkoText, Arial, sans-serif;
-    font-size: 18px;
-    resize: none;
-    box-sizing: border-box;
-    background-color: black;
-    color: #FF9800;
-    outline: none; /* Remove default focus outline */
-  }
-  
-  /* =============================================================================
+
+/* Chat input box for typing messages */
+.chat-input {
+  flex-grow: 1;
+  padding: 5px;
+  border: none;
+  font-family: talkoText, Arial, sans-serif;
+  font-size: 18px;
+  resize: none;
+  box-sizing: border-box;
+  background-color: black;
+  color: #ff9800;
+  outline: none; /* Remove default focus outline */
+}
+
+/* =============================================================================
      Invite Section Styles
      -----------------------------------------------------------------------------
      Styles for the invite link section, allowing users to share the room link.
      It contains text and a clickable link to copy the invite URL.
      =============================================================================*/
-  
-  .invite-section {
-    background-color: #1a1a1a;
-    padding: 10px 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  
-  .invite-text {
-    color: #ffff00;
-    font-size: 14px;
-    margin-bottom: 5px;
-  }
-  
-  .invite-container {
-    display: inline-flex;
-    align-items: stretch;
-    background-color: #2a2a2a;
-    border-radius: 4px;
-    overflow: hidden;
-  }
-  
-  /* Invite link and copy button */
-  .invite-link {
-    color: cyan;
-    font-size: 16px;
-    padding: 5px 5px;
-    text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  
-  #copyInviteLink {
-    width: 30px;
-    min-width: 30px;
-    height: auto;
-    background-color: #000000;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    transition: background-color 0.3s;
-    padding: 0;
-    margin: 0;
-  }
-  
-  /* Icon inside the copy button */
-  #copyInviteLink img {
-    width: 20px;
-    height: 20px;
-  }
-  
-  #copyInviteLink:hover {
-    background-color: #000000a1;
-  }
-  
-  /* =============================================================================
+
+.invite-section {
+  background-color: #1a1a1a;
+  padding: 10px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.invite-text {
+  color: #ffff00;
+  font-size: 14px;
+  margin-bottom: 5px;
+}
+
+.invite-container {
+  display: inline-flex;
+  align-items: stretch;
+  background-color: #2a2a2a;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* Invite link and copy button */
+.invite-link {
+  color: cyan;
+  font-size: 16px;
+  padding: 5px 5px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#copyInviteLink {
+  width: 30px;
+  min-width: 30px;
+  height: auto;
+  background-color: #000000;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: background-color 0.3s;
+  padding: 0;
+  margin: 0;
+}
+
+/* Icon inside the copy button */
+#copyInviteLink img {
+  width: 20px;
+  height: 20px;
+}
+
+#copyInviteLink:hover {
+  background-color: #000000a1;
+}
+
+/* =============================================================================
      Responsive Styles
      -----------------------------------------------------------------------------
      Adjustments to layout and font sizes for tablet and mobile devices. Breakpoints 
      target screen widths of 768px and 576px to provide optimal user experience on 
      smaller screens.
      =============================================================================*/
-  
-  /* Tablet and smaller desktop screens */
-  @media screen and (max-width: 768px) {
-    .brand { font-size: 20px; }
-    .leave-room { padding: 8px; }
-    .room-name { font-size: 16px; }
-  
-    .date-time {
-      font-size: 12px;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-    }
-    .date-time .date { margin-bottom: 2px; }
-    .date-time .time { font-size: 10px; }
-  
-    .user-info { font-size: 12px; }
-    .chat-input { font-size: 12px; }
-  
-    .invite-text { font-size: 12px; }
-    .invite-link { font-size: 14px; }
-    #copyInviteLink {
-      width: 28px;
-      height: 28px;
-    }
-    #copyInviteLink img {
-      width: 18px;
-      height: 18px;
-    }
-  }
-  
-  /* Mobile devices */
-  @media screen and (max-width: 576px) {
-    body, html {
-      height: 100%;
-      overflow: auto;
-      font-size: 12px;
-    }
-  
-    .page-container {
-      height: 100%;
-      min-height: 100%;
-    }
-  
-    .brand { font-size: 18px; }
-    .leave-room { padding: 6px; }
-    .room-name { font-size: 14px; }
-  
-    .date-time { font-size: 10px; }
-    .date-time .time { font-size: 9px; }
-  
-    .chat-container {
-      padding: 5px;
-      flex-grow: 1;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-  
-    .chat-row {
-      min-height: 100px; /* Ensure minimum visibility */
-    }
-  
-    .chat-input {
-      font-size: 16px; /* Prevent zoom on iOS */
-    }
-  
-    .invite-section { padding: 3px 5px; }
-    .invite-text { font-size: 10px; }
-    .invite-link { font-size: 12px; }
-    #copyInviteLink {
-      width: 24px;
-      height: 24px;
-    }
-    #copyInviteLink img {
-      width: 16px;
-      height: 16px;
-    }
 
-    .navbar-left {
-      display: none;
-    }
-
-    .navbar-center {
-      justify-content: flex-start;
-    }
+/* Tablet and smaller desktop screens */
+@media screen and (max-width: 768px) {
+  .brand {
+    font-size: 20px;
   }
-  
+  .leave-room {
+    padding: 8px;
+  }
+  .room-name {
+    font-size: 16px;
+  }
+
+  .date-time {
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .date-time .date {
+    margin-bottom: 2px;
+  }
+  .date-time .time {
+    font-size: 10px;
+  }
+
+  .user-info {
+    font-size: 12px;
+  }
+  .chat-input {
+    font-size: 12px;
+  }
+
+  .invite-text {
+    font-size: 12px;
+  }
+  .invite-link {
+    font-size: 14px;
+  }
+  #copyInviteLink {
+    width: 28px;
+    height: 28px;
+  }
+  #copyInviteLink img {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* Mobile devices */
+@media screen and (max-width: 576px) {
+  body,
+  html {
+    height: 100%;
+    overflow: auto;
+    font-size: 12px;
+  }
+
+  .page-container {
+    height: 100%;
+    min-height: 100%;
+  }
+
+  .brand {
+    font-size: 18px;
+  }
+  .leave-room {
+    padding: 6px;
+  }
+  .room-name {
+    font-size: 14px;
+  }
+
+  .date-time {
+    font-size: 10px;
+  }
+  .date-time .time {
+    font-size: 9px;
+  }
+
+  .chat-container {
+    padding: 5px;
+    flex-grow: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chat-row {
+    min-height: 100px; /* Ensure minimum visibility */
+  }
+
+  .chat-input {
+    font-size: 16px; /* Prevent zoom on iOS */
+  }
+
+  .invite-section {
+    padding: 3px 5px;
+  }
+  .invite-text {
+    font-size: 10px;
+  }
+  .invite-link {
+    font-size: 12px;
+  }
+  #copyInviteLink {
+    width: 24px;
+    height: 24px;
+  }
+  #copyInviteLink img {
+    width: 16px;
+    height: 16px;
+  }
+
+  .navbar-left {
+    display: none;
+  }
+
+  .navbar-center {
+    justify-content: flex-start;
+  }
+}
+
 /* Custom Modal Styles */
 .custom-modal {
   display: none;
@@ -449,8 +489,12 @@
 }
 
 @keyframes modalFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .modal-content {
@@ -461,7 +505,7 @@
   width: 90%;
   max-width: 500px;
   box-shadow: 0 0 20px rgba(255, 152, 0, 0.5);
-  border: 1px solid #FF9800;
+  border: 1px solid #ff9800;
   position: relative;
   margin: 0 auto;
 }
@@ -477,7 +521,7 @@
   justify-content: center;
   font-size: 28px;
   cursor: pointer;
-  color: #FF9800;
+  color: #ff9800;
   background-color: rgba(0, 0, 0, 0.3);
   border-radius: 4px;
   border: 1px solid #444;
@@ -497,7 +541,7 @@
   margin-top: 0;
   margin-right: 30px; /* Space for the X button */
   background: linear-gradient(to bottom, #616161, #303030);
-  color: #FF9800;
+  color: #ff9800;
   padding: 10px 15px;
   border-radius: 4px 4px 0 0;
   font-weight: bold;
@@ -523,7 +567,7 @@
   background-color: black;
   border: 1px solid #444;
   border-radius: 4px;
-  color: #FF9800;
+  color: #ff9800;
   font-family: talkoText, Arial, sans-serif;
   font-size: 18px;
   box-sizing: border-box;
@@ -566,11 +610,11 @@
 .modal-confirm-btn {
   background-color: black;
   color: white;
-  border: 1px solid #FF9800;
+  border: 1px solid #ff9800;
 }
 
 .modal-confirm-btn:hover {
-  background-color: #FF9800;
+  background-color: #ff9800;
   color: black;
   transform: translateY(-2px);
 }
@@ -581,7 +625,8 @@
   transform: translateY(-2px);
 }
 
-.modal-btn:active, .modal-confirm-btn:active {
+.modal-btn:active,
+.modal-confirm-btn:active {
   transform: translateY(0);
 }
 
@@ -590,7 +635,7 @@
   .custom-modal {
     padding: 15px;
   }
-  
+
   .modal-content {
     width: 100%;
     max-width: 450px;
@@ -602,36 +647,36 @@
   .custom-modal {
     padding: 12px;
   }
-  
+
   .modal-content {
     padding: 18px;
     width: 100%;
     margin: 0 12px;
     max-width: none;
   }
-  
+
   #modalTitle {
     font-size: 16px;
     padding: 8px 12px;
     margin-bottom: 16px;
   }
-  
+
   #modalMessage {
     font-size: 15px;
     margin-bottom: 18px;
   }
-  
+
   .modal-btn {
     padding: 8px 14px;
     font-size: 14px;
     min-width: 70px;
   }
-  
+
   #modalInput {
     font-size: 16px;
     padding: 10px;
   }
-  
+
   .close-modal-btn {
     width: 30px;
     height: 30px;

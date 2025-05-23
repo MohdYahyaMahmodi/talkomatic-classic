@@ -62,6 +62,47 @@ const closeModalBtn = document.querySelector(".close-modal-btn");
 
 let currentModalCallback = null;
 
+const APPS_DATA = {
+  watchparty: {
+    name: "WatchParty",
+    description: "Watch YouTube videos together",
+    icon: "https://watchparty.talkomatic.co/images/logo.png",
+    iconClass: "watchparty",
+    status: "available",
+    url: "https://watchparty.talkomatic.co/",
+    openInNewTab: true,
+  },
+  infiniteboard: {
+    name: "InfiniteBoard",
+    description: "Collaborative whiteboard drawing",
+    icon: "🎨",
+    iconClass: "placeholder",
+    status: "coming-soon",
+    url: null,
+    openInNewTab: false,
+  },
+  minigames: {
+    name: "Mini Games",
+    description: "Uno, Hangman, Tic Tac Toe & more",
+    icon: "🎮",
+    iconClass: "placeholder",
+    status: "coming-soon",
+    url: null,
+    openInNewTab: false,
+  },
+  fileshare: {
+    name: "File Share",
+    description: "Share files and images securely",
+    icon: "📁",
+    iconClass: "placeholder",
+    status: "coming-soon",
+    url: null,
+    openInNewTab: false,
+  },
+};
+
+let appDirectoryDropdown = null;
+
 // Load emotes from JSON file
 async function loadEmotes() {
   try {
@@ -75,6 +116,215 @@ async function loadEmotes() {
     console.error("Error loading emotes:", error);
     emoteList = {}; // Empty object as fallback
   }
+}
+
+function createAppDirectoryDropdown() {
+  // Remove existing dropdown if any
+  if (appDirectoryDropdown) {
+    appDirectoryDropdown.remove();
+  }
+
+  // Create dropdown container
+  appDirectoryDropdown = document.createElement("div");
+  appDirectoryDropdown.className = "app-directory-dropdown";
+  appDirectoryDropdown.id = "appDirectoryDropdown";
+
+  // Create header
+  const header = document.createElement("div");
+  header.className = "app-directory-header";
+  header.textContent = "🚀 App Directory";
+
+  // Create app grid
+  const appGrid = document.createElement("div");
+  appGrid.className = "app-grid";
+
+  // Add apps to grid
+  Object.entries(APPS_DATA).forEach(([appId, app]) => {
+    const appItem = document.createElement("div");
+    appItem.className = `app-item ${
+      app.status === "coming-soon" ? "disabled" : ""
+    }`;
+    appItem.setAttribute("data-app-id", appId);
+
+    // Create app icon
+    const appIcon = document.createElement("div");
+    appIcon.className = `app-icon ${app.iconClass}`;
+
+    if (app.iconClass === "placeholder") {
+      appIcon.textContent = app.icon;
+    } else {
+      const img = document.createElement("img");
+      img.src = app.icon;
+      img.alt = app.name;
+      img.style.width = "100%";
+      img.style.height = "100%";
+      img.style.objectFit = "cover";
+      appIcon.appendChild(img);
+    }
+
+    // Create app info
+    const appInfo = document.createElement("div");
+    appInfo.className = "app-info";
+
+    const appName = document.createElement("div");
+    appName.className = "app-name";
+    appName.textContent = app.name;
+
+    const appDescription = document.createElement("div");
+    appDescription.className = "app-description";
+    appDescription.textContent = app.description;
+
+    appInfo.appendChild(appName);
+    appInfo.appendChild(appDescription);
+
+    // Create status badge
+    const appStatus = document.createElement("div");
+    appStatus.className = `app-status status-${app.status.replace("-", "-")}`;
+    appStatus.textContent =
+      app.status === "available" ? "Available" : "Coming Soon";
+
+    // Assemble app item
+    appItem.appendChild(appIcon);
+    appItem.appendChild(appInfo);
+    appItem.appendChild(appStatus);
+
+    // Add click handler
+    if (app.status === "available") {
+      appItem.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleAppClick(appId, app);
+      });
+    }
+
+    appGrid.appendChild(appItem);
+  });
+
+  // Create footer
+  const footer = document.createElement("div");
+  footer.className = "app-directory-footer";
+
+  const viewAllLink = document.createElement("a");
+  viewAllLink.href = "app-directory.html";
+  viewAllLink.className = "view-all-link";
+  viewAllLink.target = "_blank";
+  viewAllLink.textContent = "📂 View All Apps";
+
+  footer.appendChild(viewAllLink);
+
+  // Assemble dropdown
+  appDirectoryDropdown.appendChild(header);
+  appDirectoryDropdown.appendChild(appGrid);
+  appDirectoryDropdown.appendChild(footer);
+
+  // Add to navbar
+  const navbar = document.querySelector(".top-navbar");
+  if (navbar) {
+    navbar.style.position = "relative"; // Ensure navbar can contain positioned elements
+    navbar.appendChild(appDirectoryDropdown);
+  }
+}
+
+function toggleAppDirectory() {
+  if (!appDirectoryDropdown) {
+    createAppDirectoryDropdown();
+  }
+
+  const isVisible = appDirectoryDropdown.classList.contains("show");
+
+  if (isVisible) {
+    hideAppDirectory();
+  } else {
+    showAppDirectory();
+  }
+}
+
+function showAppDirectory() {
+  if (!appDirectoryDropdown) {
+    createAppDirectoryDropdown();
+  }
+
+  // Hide any other open dropdowns
+  hideAutocomplete();
+  const emotesDropdown = document.getElementById("emotesDropdown");
+  if (emotesDropdown) {
+    emotesDropdown.style.display = "none";
+  }
+
+  appDirectoryDropdown.classList.add("show");
+}
+
+function hideAppDirectory() {
+  if (appDirectoryDropdown) {
+    appDirectoryDropdown.classList.remove("show");
+  }
+}
+
+function handleAppClick(appId, app) {
+  console.log(`Opening app: ${app.name}`);
+
+  // Hide the dropdown
+  hideAppDirectory();
+
+  // Handle different app types
+  switch (appId) {
+    case "watchparty":
+      if (app.openInNewTab) {
+        // Open WatchParty in new tab
+        window.open(app.url, "_blank", "noopener,noreferrer");
+      } else {
+        // Redirect to WatchParty
+        window.location.href = app.url;
+      }
+      break;
+
+    case "infiniteboard":
+    case "minigames":
+    case "fileshare":
+      // Coming soon apps
+      showInfoModal(
+        `${app.name} is coming soon! We're working hard to bring you this feature.`
+      );
+      break;
+
+    default:
+      console.warn(`Unknown app: ${appId}`);
+      break;
+  }
+}
+
+function initializeAppDirectory() {
+  const appDirectoryButton = document.getElementById("appDirectoryToggle");
+  if (appDirectoryButton) {
+    appDirectoryButton.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleAppDirectory();
+    });
+  }
+
+  // Close dropdown when clicking outside
+  document.addEventListener("click", (e) => {
+    if (
+      appDirectoryDropdown &&
+      appDirectoryDropdown.classList.contains("show") &&
+      !appDirectoryDropdown.contains(e.target) &&
+      !e.target.closest("#appDirectoryToggle")
+    ) {
+      hideAppDirectory();
+    }
+  });
+
+  // Close dropdown with Escape key
+  document.addEventListener("keydown", (e) => {
+    if (
+      e.key === "Escape" &&
+      appDirectoryDropdown &&
+      appDirectoryDropdown.classList.contains("show")
+    ) {
+      hideAppDirectory();
+    }
+  });
 }
 
 // Modal functionality
@@ -1329,7 +1579,7 @@ socket.on("room update", (roomData) => {
   adjustLayout();
 });
 
-socket.on('afk timeout', (data) => {
+socket.on("afk timeout", (data) => {
   showInfoModal(
     data.message ?? "You have been removed from the room due to inactivity.",
     () => {
@@ -1338,9 +1588,13 @@ socket.on('afk timeout', (data) => {
   );
 });
 
-socket.on('error', (error) => {
+socket.on("error", (error) => {
   console.log(error);
-  showErrorModal((error.error.replaceDefaultText?'':`An error occurred: `)+error.error.message,error.error.code);
+  showErrorModal(
+    (error.error.replaceDefaultText ? "" : `An error occurred: `) +
+      error.error.message,
+    error.error.code
+  );
 });
 
 // IMPROVED: Create a user row without affecting the rest of the UI
@@ -2131,21 +2385,21 @@ window.addEventListener("load", () => {
   adjustLayout();
   updateInviteLink();
 
+  // Initialize App Directory
+  initializeAppDirectory();
+
   document
     .getElementById("copyInviteLink")
     .addEventListener("click", copyInviteLink);
-
   const savedMuteState = localStorage.getItem("soundEnabled");
   if (savedMuteState !== null) {
     soundEnabled = JSON.parse(savedMuteState);
     updateMuteIcon();
   }
   muteToggleButton.addEventListener("click", toggleMute);
-
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", handleViewportChange);
   }
-
   // Create autocomplete element if it doesn't exist yet
   if (!document.getElementById("emoteAutocomplete")) {
     const emoteAutocompleteEl = document.createElement("div");
