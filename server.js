@@ -53,21 +53,26 @@ const CONFIG = {
     CONNECTION_DELAY: 100,
     MAX_ID_GEN_ATTEMPTS: 100,
     BATCH_SIZE_LIMIT: 50,
+    MAX_ROOMS_PER_USER: 1, // NEW: Limit users to 1 room only
+    BOT_DETECTION_JOIN_THRESHOLD: 5, // NEW: Max room joins per minute
+    BOT_DETECTION_WINDOW: 60000, // NEW: 1 minute window for bot detection
   },
   FEATURES: {
     ENABLE_WORD_FILTER: true,
-    LOAD_ROOMS_ON_STARTUP: false, // Added flag to control room loading on startup
+    LOAD_ROOMS_ON_STARTUP: false,
+    ENABLE_BOT_PROTECTION: true, // NEW: Enable bot protection
   },
   TIMING: {
     ROOM_CREATION_COOLDOWN: 10000,
     ROOM_DELETION_TIMEOUT: 30000,
     TYPING_TIMEOUT: 2000,
     BATCH_PROCESSING_INTERVAL: 20,
-    AFK_WARNING_TIME: 150000, // 2.5 minutes - warn before kick
+    AFK_WARNING_TIME: 150000,
+    BOT_BLOCK_DURATION: 300000, // NEW: 5 minutes bot block
   },
   VERSIONS: {
     API: "v1",
-    SERVER: "1.3.2", // Updated version with AFK improvements
+    SERVER: "1.3.2",
   },
 };
 
@@ -132,6 +137,11 @@ const ipConnections = new Map();
 const ipLastConnectionTime = new Map();
 const blockedIPs = new Map();
 
+const userJoinAttempts = new Map(); // Track join attempts per user
+const ipJoinAttempts = new Map(); // Track join attempts per IP
+const suspiciousUsers = new Map(); // Track users with suspicious behavior
+const botBlacklist = new Set(); // Blacklisted bot IPs/users
+
 // Rate limiters - OPTIMIZED SETTINGS
 const socketRateLimiter = new RateLimiterMemory({
   points: CONFIG.LIMITS.SOCKET_MAX_REQUESTS_PER_WINDOW,
@@ -172,7 +182,7 @@ app.set("trust proxy", trustProxyConfig);
 const allowedOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
-  "https://classic.talkomatic.co"
+  "https://classic.talkomatic.co",
 ];
 
 const corsOptions = {
@@ -539,8 +549,11 @@ function normalize(str) {
 function getUserRoomsCount(userId) {
   let count = 0;
   for (const [, room] of rooms) {
-    if (room.users.some((u) => u.id === userId)) count++;
-    if (count >= 2) break; // Early exit if count already reaches limit
+    if (room.users.some((u) => u.id === userId)) {
+      count++;
+      // Early exit since we only allow 1 room now
+      if (count >= 1) break;
+    }
   }
   return count;
 }
@@ -549,7 +562,6 @@ function getUsernameLocationRoomsCount(username, location) {
   const userLower = normalize(username);
   const locLower = normalize(location);
   let count = 0;
-
   for (const [, room] of rooms) {
     for (const u of room.users) {
       if (
@@ -557,12 +569,85 @@ function getUsernameLocationRoomsCount(username, location) {
         normalize(u.location) === locLower
       ) {
         count++;
-        if (count >= 2) return count; // Early exit if count already reaches limit
+        // Early exit since we only allow 1 room now
+        if (count >= 1) return count;
       }
     }
   }
-
   return count;
+}
+
+function getUserCurrentRoom(userId) {
+  for (const [roomId, room] of rooms) {
+    if (room.users.some((u) => u.id === userId)) {
+      return roomId;
+    }
+  }
+  return null;
+}
+
+function detectBotBehavior(userId, clientIp) {
+  const now = Date.now();
+
+  // Track join attempts per user
+  if (!userJoinAttempts.has(userId)) {
+    userJoinAttempts.set(userId, []);
+  }
+  const userAttempts = userJoinAttempts.get(userId);
+  userAttempts.push(now);
+
+  // Clean old attempts (outside detection window)
+  const validAttempts = userAttempts.filter(
+    (time) => now - time < CONFIG.LIMITS.BOT_DETECTION_WINDOW
+  );
+  userJoinAttempts.set(userId, validAttempts);
+
+  // Track join attempts per IP
+  if (!ipJoinAttempts.has(clientIp)) {
+    ipJoinAttempts.set(clientIp, []);
+  }
+  const ipAttempts = ipJoinAttempts.get(clientIp);
+  ipAttempts.push(now);
+
+  // Clean old attempts
+  const validIpAttempts = ipAttempts.filter(
+    (time) => now - time < CONFIG.LIMITS.BOT_DETECTION_WINDOW
+  );
+  ipJoinAttempts.set(clientIp, validIpAttempts);
+
+  // Check for bot behavior
+  const isBotUser =
+    validAttempts.length > CONFIG.LIMITS.BOT_DETECTION_JOIN_THRESHOLD;
+  const isBotIp =
+    validIpAttempts.length > CONFIG.LIMITS.BOT_DETECTION_JOIN_THRESHOLD * 2;
+
+  if (isBotUser || isBotIp) {
+    console.warn(
+      `Bot behavior detected - User: ${userId}, IP: ${clientIp}, UserAttempts: ${validAttempts.length}, IPAttempts: ${validIpAttempts.length}`
+    );
+
+    // Add to suspicious users
+    suspiciousUsers.set(userId, {
+      ip: clientIp,
+      firstDetection: now,
+      attempts: validAttempts.length,
+    });
+
+    // Blacklist if severe
+    if (validAttempts.length > CONFIG.LIMITS.BOT_DETECTION_JOIN_THRESHOLD * 2) {
+      botBlacklist.add(userId);
+      botBlacklist.add(clientIp);
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+// NEW: Check if user/IP is blacklisted
+function isBlacklisted(userId, clientIp) {
+  return botBlacklist.has(userId) || botBlacklist.has(clientIp);
 }
 
 // OPTIMIZED string truncation functions
@@ -790,9 +875,9 @@ async function processPendingChatUpdates(userId, socket) {
           userId,
           username,
           diff: {
-            type: 'full-replace',
+            type: "full-replace",
             text: censoredText,
-          }
+          },
         });
       }
     }
@@ -1136,6 +1221,7 @@ async function leaveRoom(socket, userId) {
 }
 
 // OPTIMIZED joinRoom function
+// UPDATED: joinRoom function with stricter room limits and bot protection
 function joinRoom(socket, roomId, userId) {
   try {
     if (!roomId || typeof roomId !== "string" || roomId.length !== 6) {
@@ -1180,34 +1266,66 @@ function joinRoom(socket, roomId, userId) {
       }
     }
 
-    // Quick check if this is an anonymous user
-    const isAnonymous = username === "Anonymous" && location === "On The Web";
-
-    if (!isAnonymous) {
-      // Check user room limits
-      const userRoomsCount = getUserRoomsCount(userId);
-      if (userRoomsCount >= 2) {
+    // Bot detection check
+    const clientIp = socket.clientIp || socket.handshake.address;
+    if (CONFIG.FEATURES.ENABLE_BOT_PROTECTION) {
+      // Check blacklist first
+      if (isBlacklisted(userId, clientIp)) {
         socket.emit(
           "error",
           createErrorResponse(
             ERROR_CODES.FORBIDDEN,
-            "You are already in the maximum number of rooms."
+            "Access denied due to suspicious activity. Please try again later."
           )
         );
         return;
       }
 
-      // Check username/location room limits
-      const sameNameLocCount = getUsernameLocationRoomsCount(
-        username,
-        location
-      );
-      if (sameNameLocCount >= 2) {
+      // Detect bot behavior
+      if (detectBotBehavior(userId, clientIp)) {
+        socket.emit(
+          "error",
+          createErrorResponse(
+            ERROR_CODES.RATE_LIMITED,
+            "Too many room join attempts. Please slow down and try again later."
+          )
+        );
+        return;
+      }
+    }
+
+    // Quick check if this is an anonymous user
+    const isAnonymous = username === "Anonymous" && location === "On The Web";
+
+    if (!isAnonymous) {
+      // UPDATED: Check if user is already in ANY room (strict limit of 1)
+      const currentRoomId = getUserCurrentRoom(userId);
+      if (currentRoomId && currentRoomId !== roomId) {
+        const currentRoom = rooms.get(currentRoomId);
+        const currentRoomName = currentRoom ? currentRoom.name : "Unknown Room";
         socket.emit(
           "error",
           createErrorResponse(
             ERROR_CODES.FORBIDDEN,
-            "This username/location is already in the maximum number of rooms."
+            `You are already in a room: "${currentRoomName}". Please leave that room first before joining another one.`,
+            { currentRoomId, currentRoomName },
+            true
+          )
+        );
+        return;
+      }
+
+      // UPDATED: Check username/location room limits (strict limit of 1)
+      const sameNameLocCount = getUsernameLocationRoomsCount(
+        username,
+        location
+      );
+      if (sameNameLocCount >= CONFIG.LIMITS.MAX_ROOMS_PER_USER) {
+        socket.emit(
+          "error",
+          createErrorResponse(
+            ERROR_CODES.FORBIDDEN,
+            "This username/location combination is already in a room. Please leave that room first."
           )
         );
         return;
@@ -1971,23 +2089,26 @@ io.on("connection", (socket) => {
       }
 
       // Quick check for maximum rooms
-      if (getUsernameLocationRoomsCount(username, location) >= 2) {
+      if (
+        getUsernameLocationRoomsCount(username, location) >=
+        CONFIG.LIMITS.MAX_ROOMS_PER_USER
+      ) {
         socket.emit(
           "error",
           createErrorResponse(
             ERROR_CODES.FORBIDDEN,
-            "This username/location is already in the maximum number of rooms."
+            "You are already in a room. Please leave that room first before creating a new one."
           )
         );
         return;
       }
 
-      if (getUserRoomsCount(userId) >= 2) {
+      if (getUserRoomsCount(userId) >= CONFIG.LIMITS.MAX_ROOMS_PER_USER) {
         socket.emit(
           "error",
           createErrorResponse(
             ERROR_CODES.FORBIDDEN,
-            "You are already in the maximum number of rooms."
+            "You are already in a room. Please leave that room first before creating a new one."
           )
         );
         return;
@@ -2103,12 +2224,59 @@ io.on("connection", (socket) => {
         return;
       }
 
+      // Get user info from session
+      let { username, location, userId } = socket.handshake.session || {};
+      if (!userId) {
+        userId = socket.handshake.sessionID;
+        if (socket.handshake.session) {
+          socket.handshake.session.userId = userId;
+          if (!username) socket.handshake.session.username = "Anonymous";
+          if (!location) socket.handshake.session.location = "On The Web";
+        } else {
+          console.error(
+            "No session available for socket " + socket.id + " during join room"
+          );
+          socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.SERVER_ERROR,
+              "Session error, cannot join room."
+            )
+          );
+          return;
+        }
+      }
+
+      username = username || "Anonymous";
+      location = location || "On The Web";
+
+      // UPDATED: Early check for existing room membership
+      const isAnonymous = username === "Anonymous" && location === "On The Web";
+      if (!isAnonymous) {
+        const currentRoomId = getUserCurrentRoom(userId);
+        if (currentRoomId && currentRoomId !== data.roomId) {
+          const currentRoom = rooms.get(currentRoomId);
+          const currentRoomName = currentRoom
+            ? currentRoom.name
+            : "Unknown Room";
+          socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.FORBIDDEN,
+              `You are already in a room: "${currentRoomName}". Please leave that room first before joining another one.`,
+              { currentRoomId, currentRoomName },
+              true
+            )
+          );
+          return;
+        }
+      }
+
       // Check access code for semi-private rooms
       if (room.type === "semi-private") {
         const validatedAccessCode =
           socket.handshake.session.validatedRooms &&
           socket.handshake.session.validatedRooms[data.roomId];
-
         let codeToUse = data.accessCode;
         if (validatedAccessCode) {
           codeToUse = validatedAccessCode;
@@ -2144,38 +2312,11 @@ io.on("connection", (socket) => {
           if (!socket.handshake.session.validatedRooms)
             socket.handshake.session.validatedRooms = {};
           socket.handshake.session.validatedRooms[data.roomId] = codeToUse;
-
           await promisifySessionSave(socket.handshake.session).catch((err) => {
             console.error("Session save error (join room access code):", err);
           });
         }
       }
-
-      // Get user info from session
-      let { username, location, userId } = socket.handshake.session || {};
-      if (!userId) {
-        userId = socket.handshake.sessionID;
-        if (socket.handshake.session) {
-          socket.handshake.session.userId = userId;
-          if (!username) socket.handshake.session.username = "Anonymous";
-          if (!location) socket.handshake.session.location = "On The Web";
-        } else {
-          console.error(
-            "No session available for socket " + socket.id + " during join room"
-          );
-          socket.emit(
-            "error",
-            createErrorResponse(
-              ERROR_CODES.SERVER_ERROR,
-              "Session error, cannot join room."
-            )
-          );
-          return;
-        }
-      }
-
-      username = username || "Anonymous";
-      location = location || "On The Web";
 
       joinRoom(socket, data.roomId, userId);
     })
@@ -2542,39 +2683,44 @@ io.on("connection", (socket) => {
 
 // OPTIMIZED periodic tasks with staggered intervals
 // Periodic cleanup for empty rooms
-setInterval(async () => {
+setInterval(() => {
   const now = Date.now();
-  let roomsDeleted = 0;
 
-  for (const [roomId, room] of rooms.entries()) {
-    if (room.users.length === 0) {
-      const timeSinceLastActive = now - (room.lastActiveTime || 0);
-      if (
-        timeSinceLastActive > CONFIG.TIMING.ROOM_DELETION_TIMEOUT &&
-        !roomDeletionTimers.has(roomId)
-      ) {
-        console.log(
-          `Periodic cleanup: Room ${roomId} is empty and inactive. Deleting.`
-        );
-        rooms.delete(roomId);
-        roomsDeleted++;
-
-        // Early exit if we've already cleaned up several rooms
-        if (roomsDeleted >= 5) break;
-      }
+  // Clean up old join attempts
+  for (const [userId, attempts] of userJoinAttempts.entries()) {
+    const validAttempts = attempts.filter(
+      (time) => now - time < CONFIG.LIMITS.BOT_DETECTION_WINDOW
+    );
+    if (validAttempts.length === 0) {
+      userJoinAttempts.delete(userId);
+    } else {
+      userJoinAttempts.set(userId, validAttempts);
     }
   }
 
-  if (roomsDeleted > 0) {
-    updateLobby();
-    apiCache.delete("public_rooms"); // Invalidate cache
-    try {
-      await debouncedSaveRooms();
-    } catch (e) {
-      console.error("Periodic cleanup saveRooms error:", e);
+  for (const [ip, attempts] of ipJoinAttempts.entries()) {
+    const validAttempts = attempts.filter(
+      (time) => now - time < CONFIG.LIMITS.BOT_DETECTION_WINDOW
+    );
+    if (validAttempts.length === 0) {
+      ipJoinAttempts.delete(ip);
+    } else {
+      ipJoinAttempts.set(ip, validAttempts);
     }
   }
-}, 60000); // Every minute
+
+  // Clean up old suspicious users (remove after 5 minutes of no activity)
+  for (const [userId, data] of suspiciousUsers.entries()) {
+    if (now - data.firstDetection > CONFIG.TIMING.BOT_BLOCK_DURATION) {
+      suspiciousUsers.delete(userId);
+    }
+  }
+
+  // Clean up blacklist after extended period (1 hour)
+  // Note: You might want to persist this to a database for longer-term blocking
+  const ONE_HOUR = 3600000;
+  // This is a simple approach - in production you'd want more sophisticated blacklist management
+}, 120000); // Every 2 minutes
 
 // Cleanup abandoned resources with staggered cleanup
 setInterval(() => {
