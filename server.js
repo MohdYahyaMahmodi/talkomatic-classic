@@ -67,7 +67,7 @@ const CONFIG = {
   },
   VERSIONS: {
     API: "v1",
-    SERVER: "1.3.1", // Updated version with AFK improvements
+    SERVER: "1.3.2", // Updated version with AFK improvements
   },
 };
 
@@ -172,7 +172,7 @@ app.set("trust proxy", trustProxyConfig);
 const allowedOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
-  "https://classic.talkomatic.co",
+  "https://classic.talkomatic.co"
 ];
 
 const corsOptions = {
@@ -778,21 +778,30 @@ async function processPendingChatUpdates(userId, socket) {
       text: consolidatedMessage,
     };
 
+    let messageIsAppropriate = true;
     // Filter offensive words if enabled
     if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
       const filterResult = wordFilter.checkText(consolidatedMessage);
       if (filterResult.hasOffensiveWord) {
-        io.to(socket.roomId).emit("offensive word detected", {
+        messageIsAppropriate = false;
+        const censoredText = wordFilter.filterText(consolidatedMessage);
+        userMessageBuffers.set(userId, censoredText);
+        io.to(socket.roomId).emit("chat update", {
           userId,
-          filteredMessage: wordFilter.filterText(consolidatedMessage),
+          username,
+          diff: {
+            type: 'full-replace',
+            text: censoredText,
+          }
         });
       }
     }
-
-    // Broadcast unfiltered message to others
-    socket
-      .to(socket.roomId)
-      .emit("chat update", { userId, username, diff: broadcastDiff });
+    if (messageIsAppropriate) {
+      // Broadcast unfiltered message to others, since we know it's appropriate
+      socket
+        .to(socket.roomId)
+        .emit("chat update", { userId, username, diff: broadcastDiff });
+    }
 
     // Reset user's AFK timers since they're active
     setupAFKTimers(socket, userId);
