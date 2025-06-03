@@ -54,7 +54,7 @@ const CONFIG = {
     MAX_ID_GEN_ATTEMPTS: 100,
     BATCH_SIZE_LIMIT: 50,
     MAX_ROOMS_PER_USER: 1, // NEW: Limit users to 1 room only
-    BOT_DETECTION_JOIN_THRESHOLD: 5, // NEW: Max room joins per minute
+    BOT_DETECTION_JOIN_THRESHOLD: 10, // NEW: Max room joins per minute
     BOT_DETECTION_WINDOW: 60000, // NEW: 1 minute window for bot detection
   },
   FEATURES: {
