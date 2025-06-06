@@ -133,7 +133,7 @@ for (let i = 0; i < Math.floor(canvas.width / 160); i++) {
 }
 
 function createExplosion(x, y) {
-    const burstCount = 30;
+    const burstCount = 20;
     for (let i = 0; i < burstCount; i++) {
         if (Math.random() < 0.5) {
             explosionConfettis.push(createNewExplosionEmojiConfetti(x, y));
