@@ -65,8 +65,7 @@ html {
   transition: transform 0.3s ease-in-out; /* Smooth transition for showing/hiding */
   display: flex;
   flex-direction: column; /* Stack child elements vertically */
-  margin-top: 23px; /* Space from the top */
-  height: calc(100vh - 23px); /* Adjust height considering the top margin */
+  height: 100vh; /* Adjust height considering the top margin */
   overflow-y: auto; /* Enable vertical scrolling */
   overflow-x: hidden; /* Disable horizontal scrolling */
   scrollbar-width: none; /* Hide scrollbar in Firefox */
@@ -386,7 +385,7 @@ html {
   flex-grow: 1; /* Take up remaining space */
   background-color: #202020; /* Match the body background color */
   color: white; /* White text */
-  padding-top: 30px;
+  padding-top: 15px;
   display: flex;
   flex-direction: column;
 }
@@ -1159,4 +1158,14 @@ html {
 .fa-book {
   margin-right: 10px;
   color: #28a745; /* Green for documentation/knowledge */
+}
+
+#party-canvas {
+  pointer-events: none;
+  z-index: 9999;
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin: 0;
+  padding: 0;
 }
