@@ -1,0 +1,302 @@
+/* 
+   Talkomatic Confetti - Bulletproof Version
+   ========================================
+   Guaranteed to work with fallback animations
+*/
+
+/* Container */
+#talkomatic-confetti-container {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  pointer-events: none !important;
+  z-index: 998 !important;
+  overflow: hidden !important;
+  background: transparent !important;
+}
+
+/* Base Confetti */
+.confetti-piece {
+  position: absolute !important;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+/* Shapes */
+.confetti-square {
+  width: 12px !important;
+  height: 12px !important;
+  background-color: #ff9800 !important;
+  border-radius: 2px !important;
+}
+
+.confetti-rectangle {
+  width: 20px !important;
+  height: 8px !important;
+  background-color: #ff9800 !important;
+  border-radius: 1px !important;
+}
+
+.confetti-circle {
+  width: 10px !important;
+  height: 10px !important;
+  background-color: #ff9800 !important;
+  border-radius: 50% !important;
+}
+
+.confetti-triangle {
+  width: 0 !important;
+  height: 0 !important;
+  border-left: 6px solid transparent !important;
+  border-right: 6px solid transparent !important;
+  border-bottom: 12px solid #ff9800 !important;
+  background: transparent !important;
+}
+
+/* Colors */
+.confetti-orange {
+  background-color: #ff9800 !important;
+}
+.confetti-cyan {
+  background-color: #00ffff !important;
+}
+.confetti-red {
+  background-color: #ff4444 !important;
+}
+.confetti-green {
+  background-color: #44ff44 !important;
+}
+.confetti-blue {
+  background-color: #4488ff !important;
+}
+.confetti-purple {
+  background-color: #ff44ff !important;
+}
+.confetti-yellow {
+  background-color: #ffff44 !important;
+}
+.confetti-pink {
+  background-color: #ff69b4 !important;
+}
+.confetti-gold {
+  background-color: #ffd700 !important;
+}
+.confetti-white {
+  background-color: #ffffff !important;
+}
+
+/* Triangle colors */
+.confetti-triangle.confetti-orange {
+  border-bottom-color: #ff9800 !important;
+}
+.confetti-triangle.confetti-cyan {
+  border-bottom-color: #00ffff !important;
+}
+.confetti-triangle.confetti-red {
+  border-bottom-color: #ff4444 !important;
+}
+.confetti-triangle.confetti-green {
+  border-bottom-color: #44ff44 !important;
+}
+.confetti-triangle.confetti-blue {
+  border-bottom-color: #4488ff !important;
+}
+.confetti-triangle.confetti-purple {
+  border-bottom-color: #ff44ff !important;
+}
+.confetti-triangle.confetti-yellow {
+  border-bottom-color: #ffff44 !important;
+}
+.confetti-triangle.confetti-pink {
+  border-bottom-color: #ff69b4 !important;
+}
+.confetti-triangle.confetti-gold {
+  border-bottom-color: #ffd700 !important;
+}
+.confetti-triangle.confetti-white {
+  border-bottom-color: #ffffff !important;
+}
+
+/* Simple falling animation */
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-50px) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(calc(100vh + 50px)) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* Wobble animation */
+@keyframes confetti-wobble {
+  0% {
+    transform: translateY(-50px) translateX(0px) rotate(0deg);
+    opacity: 1;
+  }
+  25% {
+    transform: translateY(25vh) translateX(20px) rotate(90deg);
+  }
+  50% {
+    transform: translateY(50vh) translateX(-15px) rotate(180deg);
+  }
+  75% {
+    transform: translateY(75vh) translateX(25px) rotate(270deg);
+  }
+  100% {
+    transform: translateY(calc(100vh + 50px)) translateX(0px) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* Spiral animation */
+@keyframes confetti-spiral {
+  0% {
+    transform: translateY(-50px) translateX(0px) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  25% {
+    transform: translateY(25vh) translateX(-40px) rotate(180deg) scale(1.2);
+  }
+  50% {
+    transform: translateY(50vh) translateX(40px) rotate(360deg) scale(0.8);
+  }
+  75% {
+    transform: translateY(75vh) translateX(-20px) rotate(540deg) scale(1.1);
+  }
+  100% {
+    transform: translateY(calc(100vh + 50px)) translateX(0px) rotate(720deg)
+      scale(1);
+    opacity: 0;
+  }
+}
+
+/* Click ripple */
+.click-ripple {
+  position: absolute !important;
+  border-radius: 50% !important;
+  background: radial-gradient(
+    circle,
+    rgba(255, 152, 0, 0.6) 0%,
+    transparent 70%
+  ) !important;
+  pointer-events: none !important;
+  z-index: 997 !important;
+  animation: ripple-expand 0.8s ease-out !important;
+}
+
+@keyframes ripple-expand {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* Toggle Section */
+.confetti-toggle-section {
+  background-color: #fdf5e6 !important;
+  padding: 18px !important;
+  margin-bottom: 0 !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  border-bottom: 2px solid #616161 !important;
+}
+
+.confetti-toggle-section p {
+  color: black !important;
+  margin: 0 !important;
+  font-weight: bold !important;
+  flex: 1 !important;
+  font-size: 14px !important;
+}
+
+/* Toggle Switch */
+.confetti-toggle {
+  position: relative !important;
+  display: inline-block !important;
+  width: 60px !important;
+  height: 30px !important;
+}
+
+.confetti-toggle input {
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.confetti-slider {
+  position: absolute !important;
+  cursor: pointer !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background-color: #616161 !important;
+  transition: 0.3s ease !important;
+  border-radius: 30px !important;
+  border: 2px solid #444 !important;
+}
+
+.confetti-slider:before {
+  position: absolute !important;
+  content: "" !important;
+  height: 22px !important;
+  width: 22px !important;
+  left: 2px !important;
+  bottom: 2px !important;
+  background-color: #ffffff !important;
+  transition: 0.3s ease !important;
+  border-radius: 50% !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+}
+
+input:checked + .confetti-slider {
+  background-color: #ff9800 !important;
+  border-color: #e68900 !important;
+}
+
+input:checked + .confetti-slider:before {
+  transform: translateX(30px) !important;
+}
+
+/* Anniversary Badge */
+.anniversary-badge {
+  display: none !important;
+  background: linear-gradient(45deg, #ff9800, #ffc107) !important;
+  color: #000000 !important;
+  padding: 4px 8px !important;
+  border-radius: 4px !important;
+  font-size: 12px !important;
+  font-weight: bold !important;
+  margin-left: 8px !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .confetti-toggle-section {
+    padding: 12px 18px !important;
+  }
+
+  .confetti-toggle {
+    width: 50px !important;
+    height: 26px !important;
+  }
+
+  .confetti-slider:before {
+    height: 18px !important;
+    width: 18px !important;
+  }
+
+  input:checked + .confetti-slider:before {
+    transform: translateX(24px) !important;
+  }
+}
