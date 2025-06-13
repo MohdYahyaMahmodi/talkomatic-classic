@@ -381,11 +381,18 @@ class SimplifiedConfettiSystem {
   loadState() {
     try {
       const saved = localStorage.getItem("talkomatic-confetti-enabled");
-      if (saved === "true") {
+      // Default to enabled if no saved state exists, otherwise use saved value
+      const shouldEnable = saved === null ? true : saved === "true";
+
+      if (shouldEnable) {
         const toggle = document.getElementById("confetti-toggle-checkbox");
         if (toggle) {
           toggle.checked = true;
           this.start();
+          // Save the default state if it's the first time
+          if (saved === null) {
+            this.saveState(true);
+          }
         }
       }
     } catch (e) {
