@@ -36,7 +36,7 @@ class Trie {
 }
 
 class WordFilter {
-    constructor(wordsFilePath, substitionsFilePath) {
+    constructor(wordsFilePath, substitutionsFilePath) {
         try {
             const data = JSON.parse(fs.readFileSync(wordsFilePath, 'utf8'));
 
@@ -58,7 +58,7 @@ class WordFilter {
             this.cacheMisses = 0;
 
             // Add obfuscation mapping
-            this.obfuscationMap = JSON.parse(fs.readFileSync(substitutionsFilePath, 'utf8');
+            this.obfuscationMap = JSON.parse(fs.readFileSync(substitutionsFilePath, 'utf8'));
 
             console.log('WordFilter initialized successfully');
         } catch (error) {

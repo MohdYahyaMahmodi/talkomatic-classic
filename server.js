@@ -72,7 +72,7 @@ const CONFIG = {
   },
   VERSIONS: {
     API: "v1",
-    SERVER: "1.3.2",
+    SERVER: "1.3.3",
   },
 };
 
@@ -95,7 +95,8 @@ const ERROR_CODES = {
 let wordFilter;
 try {
   wordFilter = new WordFilter(
-    path.join(__dirname, "public", "js", "offensive_words.json")
+    path.join(__dirname, "public", "js", "offensive_words.json"),
+    path.join(__dirname, "public", "js", "character_substitutions.json")
   );
 } catch (err) {
   console.error(
