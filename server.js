@@ -43,12 +43,12 @@ const CONFIG = {
     MAX_AFK_TIME: 180000, // Set to 3 minutes (180000ms) for inactive users
     MAX_LOCATION_LENGTH: 20,
     MAX_ROOM_NAME_LENGTH: 25,
-    MAX_MESSAGE_LENGTH: 5000,
+    MAX_MESSAGE_LENGTH: 15000,
     MAX_ROOM_CAPACITY: 5,
     MAX_CONNECTIONS_PER_IP: 30,
     SOCKET_MAX_REQUESTS_WINDOW: 1,
-    SOCKET_MAX_REQUESTS_PER_WINDOW: 50,
-    CHAT_UPDATE_RATE_LIMIT: 300,
+    SOCKET_MAX_REQUESTS_PER_WINDOW: 75,
+    CHAT_UPDATE_RATE_LIMIT: 500,
     TYPING_RATE_LIMIT: 60,
     CONNECTION_DELAY: 100,
     MAX_ID_GEN_ATTEMPTS: 100,
@@ -153,7 +153,7 @@ const socketRateLimiter = new RateLimiterMemory({
 const chatUpdateLimiter = new RateLimiterMemory({
   points: CONFIG.LIMITS.CHAT_UPDATE_RATE_LIMIT,
   duration: 5,
-  blockDuration: 2,
+  blockDuration: 1,
 });
 
 const typingLimiter = new RateLimiterMemory({
