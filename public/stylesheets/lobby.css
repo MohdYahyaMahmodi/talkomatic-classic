@@ -127,66 +127,42 @@ html {
   color: white;
 }
 
-/* External links section in the left panel */
 .external-links {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
   margin-bottom: 10px;
   width: 100%;
-  padding: 5px;
+  font-family: monospace;
 }
 
-/* Retro table for 2x2 grid */
-.retro-link-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 8px;
-  font-family: monospace; /* Retro feel */
-}
-
-.retro-link-table td {
-  padding: 0;
-  text-align: left;
-  vertical-align: top;
-}
-
-/* Style for external links */
 .external-links a {
+  justify-self: stretch;
+  align-self: stretch;
+
+  display: flex;
+  align-items: center;
+  background-color: #444;
+  padding: 8px 12px;
+  border-radius: 3px;
   color: white;
   text-decoration: none;
   font-size: 15px;
-  transition: all 0.2s ease;
-  display: block;
-  letter-spacing: 0.5px;
-  background-color: #444;
-  padding: 5px 10px;
-  border-radius: 3px;
+  letter-spacing: .5px;
+  transition: background-color .2s ease;
 }
 
-/* Non-underlined bullet point */
-.bullet {
-  text-decoration: none;
-  display: inline-block;
-}
-
-/* Hover effect - darker background */
 .external-links a:hover {
   background-color: #1b1b1b;
 }
 
-/* Ensure visited links remain white */
 .external-links a:visited {
   color: white;
 }
 
-/* Mobile responsiveness */
-@media (max-width: 480px) {
-  .retro-link-table {
-    border-spacing: 4px;
-  }
-
-  .external-links a {
-    font-size: 14px;
-    padding: 4px 8px;
-  }
+/* if there’s an odd number of links, the last one spans both columns */
+.external-links > a:nth-last-child(1):nth-child(odd) {
+  grid-column: 1 / -1;
 }
 
 /* Known-as section with a light background */
@@ -1159,4 +1135,9 @@ html {
 .fa-book {
   margin-right: 10px;
   color: #28a745; /* Green for documentation/knowledge */
+}
+
+.fa-gift {
+  margin-right: 10px;
+  color: #ee3fcb;
 }
