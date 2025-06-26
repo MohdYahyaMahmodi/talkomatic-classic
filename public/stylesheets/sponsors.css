@@ -991,18 +991,18 @@ body, html {
 }
 
 .creator-link {
-  color: var(--text-color);
-  text-decoration: none;
-  transition: all 0.2s ease;
+  color: #ffffff; /* Match the text color */
+  text-decoration: none; /* Remove default underline */
+  transition: all 0.2s ease; /* Smooth transition for hover effect */
 }
 
 .creator-link:visited {
-  color: var(--text-color);
+  color: #ffffff; /* Ensure visited links stay the same color */
 }
 
 .creator-link:hover {
-  text-decoration: underline;
-  color: var(--primary-color);
+  text-decoration: underline; /* Add underline on hover */
+  color: #c7c7c7; /* Slightly lighter on hover */
 }
 
 .creator-link:focus {
