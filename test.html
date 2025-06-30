@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🎨 Real-Time Emoji Camera</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: #0a0a0a;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          sans-serif;
+        color: #ffffff;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 30px;
+      }
+
+      .header h1 {
+        font-size: 2.5rem;
+        font-weight: 300;
+        margin-bottom: 8px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .header p {
+        font-size: 1rem;
+        color: #888;
+        font-weight: 300;
+      }
+
+      .controls-panel {
+        background: rgba(20, 20, 20, 0.8);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
+      }
+
+      .controls-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 24px;
+        align-items: center;
+      }
+
+      .control-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .control-group label {
+        font-size: 0.9rem;
+        color: #ccc;
+        font-weight: 500;
+      }
+
+      .control-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        white-space: nowrap;
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+      }
+
+      .btn:active {
+        transform: translateY(0);
+      }
+
+      .btn.stop {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+      }
+
+      .btn.stop:hover {
+        box-shadow: 0 8px 25px rgba(255, 107, 107, 0.3);
+      }
+
+      .btn.secondary {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .btn.secondary:hover {
+        background: rgba(255, 255, 255, 0.2);
+        box-shadow: 0 8px 25px rgba(255, 255, 255, 0.1);
+      }
+
+      select {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: white;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        cursor: pointer;
+        min-width: 140px;
+      }
+
+      select:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+      }
+
+      select option {
+        background: #1a1a1a;
+        color: white;
+      }
+
+      .slider-container {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex: 1;
+      }
+
+      .slider {
+        flex: 1;
+        height: 6px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 3px;
+        outline: none;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+
+      .slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 18px;
+        height: 18px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 50%;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .slider::-webkit-slider-thumb:hover {
+        transform: scale(1.2);
+      }
+
+      .slider::-moz-range-thumb {
+        width: 18px;
+        height: 18px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 50%;
+        cursor: pointer;
+        border: none;
+      }
+
+      .slider-value {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        min-width: 40px;
+        text-align: center;
+      }
+
+      .camera-display {
+        position: relative;
+        background: rgba(10, 10, 10, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        overflow: hidden;
+        margin-bottom: 24px;
+      }
+
+      .emoji-output {
+        background: #000000;
+        font-family: "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+        font-size: 4px;
+        line-height: 4px;
+        letter-spacing: 0;
+        word-spacing: 0;
+        white-space: pre;
+        overflow: hidden;
+        padding: 16px;
+        position: relative;
+        min-height: 400px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .loading-state {
+        color: #666;
+        font-size: 16px;
+        text-align: center;
+        padding: 60px 20px;
+      }
+
+      .status-overlay {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        background: rgba(0, 0, 0, 0.8);
+        color: #fff;
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        backdrop-filter: blur(10px);
+      }
+
+      .stats-panel {
+        background: rgba(20, 20, 20, 0.8);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        padding: 20px;
+      }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 20px;
+      }
+
+      .stat-item {
+        text-align: center;
+      }
+
+      .stat-label {
+        font-size: 0.8rem;
+        color: #888;
+        margin-bottom: 4px;
+        font-weight: 500;
+      }
+
+      .stat-value {
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: #fff;
+      }
+
+      .warning {
+        background: rgba(255, 152, 0, 0.1);
+        border: 1px solid rgba(255, 152, 0, 0.3);
+        color: #ff9800;
+        padding: 16px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        text-align: center;
+        font-size: 0.9rem;
+      }
+
+      .error {
+        background: rgba(244, 67, 54, 0.1);
+        border: 1px solid rgba(244, 67, 54, 0.3);
+        color: #f44336;
+        padding: 16px;
+        border-radius: 12px;
+        margin: 20px 0;
+        text-align: center;
+        font-size: 0.9rem;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      /* Responsive Design */
+      @media (max-width: 768px) {
+        .container {
+          padding: 16px;
+        }
+
+        .header h1 {
+          font-size: 2rem;
+        }
+
+        .controls-grid {
+          grid-template-columns: 1fr;
+          gap: 16px;
+        }
+
+        .emoji-output {
+          font-size: 2px;
+          line-height: 2px;
+          min-height: 300px;
+        }
+
+        .stats-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      /* Smooth transitions */
+      * {
+        transition: all 0.2s ease;
+      }
+
+      /* Custom scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.3);
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- HTTPS Warning -->
+    <div id="httpsWarning" class="warning hidden">
+      ⚠️ Camera requires HTTPS or localhost. Try:
+      <strong>http://localhost:5500</strong>
+    </div>
+
+    <div class="container">
+      <header class="header">
+        <h1>🎨 Real-Time Emoji Camera</h1>
+        <p>
+          Convert your camera feed into ultra-detailed emoji art in real-time
+        </p>
+      </header>
+
+      <div class="controls-panel">
+        <div class="controls-grid">
+          <!-- Camera Controls -->
+          <div class="control-group">
+            <label>Camera Control</label>
+            <div class="control-row">
+              <button id="toggleCamera" class="btn">📷 Start Camera</button>
+              <button id="switchCamera" class="btn secondary hidden">
+                🔄 Switch
+              </button>
+            </div>
+          </div>
+
+          <!-- Camera Selection -->
+          <div class="control-group">
+            <label>Camera Source</label>
+            <select id="cameraSelect" class="hidden">
+              <option value="">Loading cameras...</option>
+            </select>
+          </div>
+
+          <!-- Aspect Ratio -->
+          <div class="control-group">
+            <label>Aspect Ratio</label>
+            <select id="aspectRatio">
+              <option value="16:9">16:9 (Widescreen)</option>
+              <option value="16:10">16:10 (Monitor)</option>
+              <option value="4:3">4:3 (Classic)</option>
+              <option value="1:1">1:1 (Square)</option>
+              <option value="21:9">21:9 (Ultra-wide)</option>
+            </select>
+          </div>
+
+          <!-- Detail Level -->
+          <div class="control-group">
+            <label>Detail Level</label>
+            <div class="slider-container">
+              <input
+                type="range"
+                id="detailSlider"
+                class="slider"
+                min="3"
+                max="15"
+                value="8"
+                step="1"
+              />
+              <span id="detailValue" class="slider-value">8</span>
+            </div>
+          </div>
+
+          <!-- Contrast -->
+          <div class="control-group">
+            <label>Contrast</label>
+            <div class="slider-container">
+              <input
+                type="range"
+                id="contrastSlider"
+                class="slider"
+                min="0.5"
+                max="3"
+                value="1.5"
+                step="0.1"
+              />
+              <span id="contrastValue" class="slider-value">1.5</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="camera-display">
+        <div id="emojiOutput" class="emoji-output">
+          <div class="loading-state">
+            🎥 Click "Start Camera" to begin the emoji transformation<br />
+            <small style="color: #444; margin-top: 8px; display: block">
+              Open source project • Real-time camera to emoji conversion
+            </small>
+          </div>
+        </div>
+        <div id="statusOverlay" class="status-overlay hidden">FPS: 0</div>
+      </div>
+
+      <div class="stats-panel">
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-label">Resolution</div>
+            <div id="resolutionStat" class="stat-value">0×0</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Emoji Count</div>
+            <div id="emojiCountStat" class="stat-value">0</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Colors Used</div>
+            <div id="colorsStat" class="stat-value">0</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Frame Rate</div>
+            <div id="fpsStat" class="stat-value">0 FPS</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Aspect Ratio</div>
+            <div id="ratioStat" class="stat-value">16:9</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hidden elements -->
+    <video id="video" style="display: none" autoplay playsinline></video>
+    <canvas id="canvas" style="display: none"></canvas>
+
+    <script>
+      // Comprehensive emoji color map
+      const colorMap = {
+        "❤️": [198, 38, 32],
+        "🧡": [200, 80, 26],
+        "💛": [203, 168, 42],
+        "💚": [1, 167, 83],
+        "🩵": [95, 162, 195],
+        "💙": [5, 89, 147],
+        "💜": [109, 76, 156],
+        "🤎": [86, 51, 37],
+        "🖤": [24, 24, 19],
+        "🩶": [121, 121, 115],
+        "🤍": [190, 190, 188],
+        "🔴": [228, 44, 29],
+        "🟠": [228, 88, 29],
+        "🟡": [228, 191, 44],
+        "🟢": [0, 191, 88],
+        "🔵": [0, 103, 161],
+        "🟣": [125, 88, 176],
+        "🟤": [95, 58, 44],
+        "⚫": [12, 12, 12],
+        "⚪": [224, 224, 217],
+        "🟥": [248, 48, 32],
+        "🟧": [248, 96, 32],
+        "🟨": [248, 176, 32],
+        "🟩": [0, 208, 96],
+        "🟦": [0, 160, 224],
+        "🟪": [192, 144, 240],
+        "🟫": [160, 104, 80],
+        "⬛": [0, 0, 0],
+        "⬜": [248, 248, 240],
+        "◻️": [191, 191, 184],
+        "◾": [20, 20, 19],
+        "◽": [151, 151, 145],
+        "▪️": [11, 11, 11],
+        "▫️": [116, 116, 112],
+        "🔶": [191, 74, 24],
+        "🔸": [79, 30, 10],
+        "🔷": [0, 86, 136],
+        "🔹": [0, 35, 56],
+        "🔺": [87, 17, 11],
+        "🔻": [87, 17, 11],
+        "💗": [201, 77, 134],
+        "💝": [200, 83, 54],
+        "❤️‍🔥": [214, 75, 69],
+        "☮️": [169, 142, 204],
+        "✝️": [146, 111, 195],
+        "☪️": [152, 119, 197],
+        "☯️": [172, 146, 205],
+        "🕒": [162, 156, 157],
+        "💟": [174, 150, 207],
+        "🔼": [58, 178, 225],
+        "⏺️": [89, 189, 227],
+        "⏹️": [108, 196, 228],
+        "📶": [83, 187, 226],
+        "👾": [66, 60, 97],
+        "🤡": [208, 164, 185],
+        "🤢": [44, 160, 96],
+        "😂": [186, 115, 82],
+        "😭": [164, 126, 103],
+        "🥶": [125, 158, 208],
+        "🙈": [154, 96, 81],
+        "🐺": [139, 139, 134],
+        "🦝": [119, 119, 116],
+        "🐰": [158, 146, 158],
+        "🦓": [121, 121, 120],
+        "🐨": [104, 104, 98],
+        "🦍": [81, 81, 81],
+        "🦏": [114, 114, 109],
+        "🦛": [111, 105, 99],
+        "🐄": [122, 117, 118],
+        "🐃": [70, 70, 69],
+        "🦡": [70, 70, 70],
+        "🐬": [9, 107, 147],
+        "🐳": [55, 153, 189],
+        "🐋": [54, 141, 177],
+        "🐟": [0, 120, 169],
+        "🐠": [40, 133, 163],
+        "🪼": [63, 85, 165],
+        "🦋": [118, 59, 64],
+        "🐦": [165, 20, 50],
+        "🦩": [151, 76, 125],
+        "🪱": [86, 48, 46],
+        "🪳": [75, 47, 35],
+        "🦟": [82, 59, 54],
+        "🐌": [156, 104, 69],
+        "🪲": [28, 138, 77],
+        "🐞": [102, 30, 24],
+        "🦠": [0, 166, 101],
+        "👅": [163, 19, 91],
+        "🧠": [217, 80, 161],
+        "🫁": [195, 117, 117],
+        "🎆": [133, 87, 79],
+        "🎇": [119, 86, 88],
+        "🎈": [138, 32, 34],
+        "🎃": [168, 86, 63],
+        "✨": [142, 110, 27],
+        "🧧": [238, 48, 39],
+        "🎁": [210, 103, 45],
+        "🎗️": [178, 143, 33],
+        "🎪": [153, 99, 117],
+        "🎨": [186, 140, 131],
+        "🖼️": [159, 172, 125],
+        "🧶": [0, 83, 120],
+        "🪢": [1, 53, 90],
+        "👓": [64, 80, 102],
+        "👔": [94, 142, 203],
+        "👖": [0, 111, 157],
+        "🧤": [129, 63, 150],
+        "👗": [47, 108, 164],
+        "🥿": [0, 35, 50],
+        "🩲": [10, 152, 185],
+        "🧢": [79, 98, 160],
+        "👑": [158, 118, 36],
+        "🪖": [42, 97, 28],
+        "💎": [48, 135, 175],
+        "⚽": [124, 143, 207],
+        "⚾": [211, 196, 195],
+        "🏉": [225, 146, 38],
+        "🥎": [172, 197, 47],
+        "🏀": [188, 76, 29],
+        "🏐": [203, 203, 201],
+        "🎱": [100, 95, 120],
+        "🦃": [130, 80, 59],
+        "🦑": [160, 8, 91],
+        "🐙": [209, 99, 68],
+        "🦚": [24, 155, 100],
+        "🥌": [156, 80, 83],
+        "🛷": [149, 105, 65],
+        "🥏": [8, 148, 186],
+        "🥊": [185, 52, 45],
+        "🏏": [113, 80, 52],
+        "🏸": [21, 43, 57],
+        "🎾": [79, 36, 29],
+        "🥇": [151, 135, 59],
+        "🥈": [118, 143, 151],
+        "🥉": [123, 106, 72],
+        "🎮": [68, 47, 83],
+        "🔮": [97, 72, 87],
+        "🪄": [26, 24, 23],
+        "🧿": [49, 102, 172],
+        "🪬": [6, 123, 170],
+        "🧩": [138, 165, 40],
+        "🧸": [181, 132, 75],
+        "🪀": [102, 77, 135],
+        "📣": [188, 144, 35],
+        "🔔": [192, 146, 36],
+        "🪘": [165, 112, 58],
+        "🪈": [85, 50, 31],
+        "🪗": [189, 71, 99],
+        "🎷": [145, 116, 37],
+        "📻": [100, 110, 111],
+        "🧱": [230, 145, 110],
+        "🪨": [153, 153, 151],
+        "🪵": [94, 59, 42],
+        "🛖": [150, 104, 63],
+        "🛢️": [3, 124, 173],
+        "🧪": [96, 125, 57],
+        "🧫": [50, 154, 184],
+        "🩹": [8, 128, 169],
+        "💊": [201, 106, 32],
+        "🩼": [39, 38, 42],
+        "⚖️": [139, 122, 76],
+        "📿": [139, 94, 51],
+        "🧰": [212, 55, 43],
+        "🧲": [166, 54, 45],
+        "🪜": [82, 47, 36],
+        "🛡️": [63, 152, 189],
+        "🗡️": [100, 74, 58],
+        "💣": [76, 46, 83],
+        "🫙": [153, 182, 194],
+        "🪃": [111, 55, 27],
+        "🔫": [129, 104, 26],
+        "☎️": [190, 46, 86],
+        "📞": [111, 20, 20],
+        "📳": [244, 177, 91],
+        "📴": [244, 169, 73],
+        "♀️": [237, 37, 140],
+        "♂️": [52, 176, 224],
+        "⚰️": [101, 64, 46],
+        "⚱️": [171, 108, 54],
+        "🗿": [158, 158, 156],
+        "🔋": [111, 158, 52],
+        "🪫": [143, 113, 116],
+        "💻": [80, 178, 199],
+        "📀": [218, 158, 31],
+        "🪔": [193, 130, 41],
+        "🏮": [162, 46, 49],
+        "📕": [169, 6, 54],
+        "📗": [94, 171, 33],
+        "📘": [0, 133, 190],
+        "📙": [202, 67, 32],
+        "📒": [215, 182, 67],
+        "📜": [216, 177, 119],
+        "💰": [172, 133, 80],
+        "💴": [201, 154, 72],
+        "💵": [60, 176, 110],
+        "💶": [95, 158, 170],
+        "👁️‍🗨️": [86, 74, 93],
+        "📦": [181, 133, 75],
+        "📫": [74, 96, 177],
+        "📪": [73, 94, 175],
+        "📬": [95, 105, 156],
+        "📭": [71, 79, 134],
+        "📮": [177, 54, 90],
+        "✏️": [152, 86, 42],
+        "✒️": [114, 107, 108],
+        "🖌️": [89, 33, 38],
+        "🖍️": [70, 93, 34],
+        "💼": [111, 68, 48],
+        "📌": [151, 32, 36],
+        "📍": [114, 24, 70],
+        "✂️": [134, 63, 56],
+        "⌛": [133, 134, 106],
+        "⏳": [148, 148, 120],
+        "⌚": [89, 78, 162],
+        "⏰": [197, 131, 112],
+        "⏱️": [154, 144, 140],
+        "⏲️": [109, 156, 176],
+        "🕰️": [177, 155, 120],
+        "🍕": [185, 125, 48],
+        "🍟": [216, 96, 37],
+        "🍿": [202, 125, 89],
+        "🧂": [137, 151, 157],
+        "🥓": [146, 40, 60],
+        "🥚": [199, 139, 79],
+        "🧇": [154, 113, 46],
+        "🥞": [179, 137, 70],
+        "🧈": [144, 127, 56],
+        "🍞": [213, 160, 98],
+        "🥐": [179, 123, 67],
+        "🥯": [192, 145, 102],
+        "🫓": [218, 151, 81],
+        "🧀": [210, 167, 36],
+        "🥪": [165, 148, 86],
+        "🥫": [201, 142, 131],
+        "🍖": [115, 67, 57],
+        "🍗": [138, 95, 43],
+        "🥩": [214, 107, 95],
+        "🍠": [209, 72, 51],
+        "🥟": [201, 169, 111],
+        "🍘": [157, 109, 83],
+        "🍙": [140, 130, 143],
+        "🍚": [213, 135, 140],
+        "🦪": [163, 137, 108],
+        "🍤": [179, 112, 22],
+        "🍥": [214, 199, 206],
+        "🥮": [193, 137, 80],
+        "🍢": [139, 104, 90],
+        "🧆": [78, 61, 36],
+        "🥘": [121, 101, 60],
+        "🍲": [169, 111, 92],
+        "🫕": [162, 57, 36],
+        "🥣": [29, 121, 163],
+        "🍦": [174, 142, 97],
+        "🍧": [124, 124, 150],
+        "🍩": [96, 69, 52],
+        "🍪": [199, 138, 81],
+        "🎂": [200, 156, 91],
+        "🍰": [205, 152, 91],
+        "🧁": [171, 102, 165],
+        "🍫": [123, 53, 60],
+        "🍬": [186, 87, 29],
+        "🍯": [148, 94, 40],
+        "🧃": [142, 152, 34],
+        "☕": [144, 122, 115],
+        "🫖": [190, 32, 30],
+        "🧉": [111, 80, 64],
+        "🍷": [126, 84, 129],
+        "🍸": [89, 114, 82],
+        "🍹": [145, 101, 76],
+        "🍺": [196, 185, 129],
+        "🍻": [166, 160, 118],
+        "🧊": [24, 136, 192],
+        "🧋": [174, 135, 97],
+        "🥤": [142, 88, 108],
+        "🥢": [50, 3, 18],
+        "💷": [152, 139, 152],
+        "💳": [31, 118, 160],
+        "🏧": [18, 164, 222],
+        "🏺": [101, 61, 25],
+        "🥝": [60, 175, 89],
+        "🥥": [135, 117, 106],
+        "🍇": [80, 47, 96],
+        "🍈": [139, 153, 96],
+        "🍉": [147, 58, 42],
+        "🍊": [190, 107, 28],
+        "🍋": [187, 160, 36],
+        "🍍": [156, 116, 55],
+        "🥭": [191, 142, 27],
+        "🍎": [217, 50, 32],
+        "🍏": [112, 191, 32],
+        "🍐": [132, 167, 36],
+        "🍑": [204, 122, 34],
+        "🍓": [143, 62, 35],
+        "🫐": [105, 72, 140],
+        "🫒": [78, 124, 16],
+        "🍆": [95, 59, 128],
+        "🌽": [116, 128, 25],
+        "🫑": [22, 116, 57],
+        "🍄": [170, 72, 53],
+        "🥑": [111, 154, 44],
+        "🥒": [46, 104, 11],
+        "🥬": [89, 166, 41],
+        "🥦": [0, 96, 68],
+        "🥔": [202, 141, 79],
+        "🧄": [197, 176, 132],
+        "🧅": [184, 127, 68],
+        "🥕": [162, 110, 34],
+        "🌰": [115, 75, 50],
+        "🫚": [165, 106, 42],
+        "🫛": [68, 131, 54],
+        "🥜": [172, 119, 63],
+        "🫘": [95, 50, 40],
+        "🌸": [204, 102, 163],
+        "🏵️": [211, 130, 30],
+        "🌺": [201, 60, 129],
+        "🌼": [153, 153, 114],
+        "🌷": [160, 76, 113],
+        "☘️": [93, 153, 23],
+        "🌲": [38, 78, 10],
+        "🌳": [51, 113, 13],
+        "🍀": [0, 148, 69],
+        "🍁": [170, 26, 29],
+        "🍂": [166, 55, 32],
+        "🪹": [144, 100, 57],
+        "🪺": [117, 123, 99],
+        "🛼": [146, 32, 73],
+        "🚖": [106, 125, 77],
+        "🛴": [6, 26, 30],
+        "🛟": [141, 77, 94],
+        "⛴️": [67, 131, 176],
+        "🛞": [119, 79, 55],
+        "🌌": [18, 77, 131],
+        "🪐": [171, 116, 59],
+        "🌍": [0, 146, 126],
+        "🌎": [0, 131, 138],
+        "🌏": [0, 132, 136],
+        "🗺️": [34, 150, 166],
+        "🏙️": [74, 162, 216],
+        "🕋": [110, 76, 59],
+        "⛩️": [96, 34, 19],
+        "🏯": [186, 119, 121],
+        "🌆": [111, 91, 138],
+        "🗼": [122, 64, 40],
+        "♨️": [107, 20, 14],
+        "🪑": [80, 51, 39],
+        "🚪": [173, 112, 44],
+        "🪟": [135, 191, 215],
+        "🛏️": [50, 48, 103],
+        "🪣": [24, 106, 150],
+        "🧴": [202, 156, 143],
+        "🧽": [189, 137, 46],
+        "🧼": [217, 109, 176],
+        "🫧": [134, 121, 158],
+        "🪒": [42, 67, 129],
+        "🧹": [64, 35, 12],
+        "🧺": [161, 108, 47],
+        "🌑": [69, 41, 84],
+        "🌒": [93, 63, 76],
+        "🌓": [138, 106, 65],
+        "🌔": [186, 151, 53],
+        "🌕": [228, 189, 44],
+        "🌙": [114, 94, 22],
+        "☀️": [210, 160, 37],
+        "🌞": [201, 150, 40],
+        "⭐": [190, 159, 36],
+        "🌬️": [31, 149, 180],
+        "🌀": [10, 43, 119],
+        "❄️": [0, 78, 109],
+        "🔥": [194, 105, 25],
+        "💧": [23, 149, 178],
+        "🌊": [34, 144, 180],
+        "💥": [160, 47, 22],
+        "🕳️": [44, 31, 52],
+        "💤": [20, 60, 77],
+        "☢️": [178, 126, 23],
+        "🔰": [131, 134, 26],
+        "♻️": [0, 110, 58],
+        "☣️": [192, 136, 24],
+        "⚠️": [167, 119, 21],
+        "🚸": [147, 104, 19],
+        "💠": [0, 97, 135],
+        "🌐": [88, 138, 165],
+        "👹": [142, 55, 83],
+        "🔅": [111, 78, 14],
+        "🔆": [113, 80, 14],
+        "🫗": [66, 116, 134],
+        "🎽": [82, 132, 18],
+        "🚏": [100, 149, 174],
+        "🦺": [228, 97, 63],
+        "🛋️": [39, 53, 85],
+        "🈯": [46, 212, 122],
+        "💹": [25, 208, 110],
+        "🎞️": [86, 121, 154],
+        "🤩": [211, 106, 69],
+        "🐢": [18, 101, 56],
+        "💢": [114, 22, 15],
+        "🚫": [227, 144, 133],
+        "💱": [26, 51, 78],
+        "🈚": [244, 159, 88],
+        "🈳": [86, 188, 226],
+        "🈹": [244, 74, 119],
+        "⚛️": [155, 123, 198],
+        "💮": [213, 188, 198],
+      };
+
+      // Convert to array format for faster processing
+      const emojiPalette = Object.entries(colorMap).map(
+        ([emoji, [r, g, b]]) => ({
+          emoji,
+          r,
+          g,
+          b,
+        })
+      );
+
+      // Aspect ratio configurations
+      const aspectRatios = {
+        "16:9": { width: 16, height: 9 },
+        "16:10": { width: 16, height: 10 },
+        "4:3": { width: 4, height: 3 },
+        "1:1": { width: 1, height: 1 },
+        "21:9": { width: 21, height: 9 },
+      };
+
+      // Global variables
+      let video, canvas, ctx, emojiOutput;
+      let animationId = null;
+      let isRunning = false;
+      let availableCameras = [];
+      let selectedCameraId = null;
+      let frameCount = 0;
+      let lastFPSUpdate = 0;
+      let currentFPS = 0;
+      let detailLevel = 8;
+      let contrastFactor = 1.5;
+      let selectedRatio = "16:9";
+
+      // Check HTTPS/localhost
+      function checkHTTPS() {
+        const isHTTPS = location.protocol === "https:";
+        const isLocalhost =
+          location.hostname === "localhost" ||
+          location.hostname === "127.0.0.1";
+
+        if (!isHTTPS && !isLocalhost) {
+          document.getElementById("httpsWarning").classList.remove("hidden");
+          return false;
+        }
+        return true;
+      }
+
+      // Color distance calculation
+      function colorDistance(r1, g1, b1, r2, g2, b2) {
+        const dr = r2 - r1;
+        const dg = g2 - g1;
+        const db = b2 - b1;
+        return Math.sqrt(2 * dr * dr + 4 * dg * dg + 3 * db * db);
+      }
+
+      // Optimized color matching
+      function getClosestEmoji(r, g, b) {
+        let minDistance = Infinity;
+        let closestEmoji = "⬜";
+
+        for (const color of emojiPalette) {
+          const distance = colorDistance(r, g, b, color.r, color.g, color.b);
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestEmoji = color.emoji;
+          }
+        }
+        return closestEmoji;
+      }
+
+      // Enhanced contrast function
+      function enhanceContrast(value, factor = 1.5) {
+        return Math.min(255, Math.max(0, (value - 128) * factor + 128));
+      }
+
+      // Calculate dimensions based on aspect ratio
+      function calculateDimensions(
+        containerWidth,
+        containerHeight,
+        aspectRatio
+      ) {
+        const ratio = aspectRatios[aspectRatio];
+        const targetRatio = ratio.width / ratio.height;
+        const containerRatio = containerWidth / containerHeight;
+
+        let width, height;
+
+        if (containerRatio > targetRatio) {
+          // Container is wider than target ratio
+          height = containerHeight;
+          width = height * targetRatio;
+        } else {
+          // Container is taller than target ratio
+          width = containerWidth;
+          height = width / targetRatio;
+        }
+
+        return { width: Math.floor(width), height: Math.floor(height) };
+      }
+
+      // Get available cameras
+      async function getCameras() {
+        try {
+          await navigator.mediaDevices
+            .getUserMedia({ video: true })
+            .then((stream) => {
+              stream.getTracks().forEach((track) => track.stop());
+            });
+
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          availableCameras = devices.filter(
+            (device) => device.kind === "videoinput"
+          );
+          updateCameraSelect();
+          return availableCameras;
+        } catch (err) {
+          console.warn("Could not enumerate cameras:", err);
+          if (!checkHTTPS()) {
+            showError(
+              "Camera requires HTTPS or localhost. Try using http://localhost:5500"
+            );
+          } else {
+            showError("Unable to access camera. Please check permissions.");
+          }
+          return [];
+        }
+      }
+
+      // Update camera selection dropdown
+      function updateCameraSelect() {
+        const select = document.getElementById("cameraSelect");
+        select.innerHTML = "";
+
+        if (availableCameras.length === 0) {
+          select.innerHTML = '<option value="">No cameras found</option>';
+        } else {
+          availableCameras.forEach((camera, index) => {
+            const option = document.createElement("option");
+            option.value = camera.deviceId;
+            option.textContent = camera.label || `Camera ${index + 1}`;
+            select.appendChild(option);
+          });
+
+          if (!selectedCameraId && availableCameras.length > 0) {
+            selectedCameraId = availableCameras[0].deviceId;
+            select.value = selectedCameraId;
+          }
+        }
+      }
+
+      // Start camera stream
+      async function startCamera() {
+        try {
+          const constraints = {
+            video: {
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+              frameRate: { ideal: 30 },
+            },
+          };
+
+          if (selectedCameraId) {
+            constraints.video.deviceId = { exact: selectedCameraId };
+          }
+
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          video.srcObject = stream;
+
+          return new Promise((resolve) => {
+            video.onloadedmetadata = () => {
+              resolve();
+            };
+          });
+        } catch (err) {
+          console.error("Camera error:", err);
+          if (!checkHTTPS()) {
+            showError(
+              "Camera requires HTTPS or localhost. Try using http://localhost:5500"
+            );
+          } else if (err.name === "NotAllowedError") {
+            showError(
+              "Camera permission denied. Please allow camera access and try again."
+            );
+          } else if (err.name === "NotFoundError") {
+            showError(
+              "No camera found. Please connect a camera and try again."
+            );
+          } else {
+            showError("Unable to access camera: " + err.message);
+          }
+          throw err;
+        }
+      }
+
+      // Stop camera stream
+      function stopCamera() {
+        isRunning = false;
+        if (animationId) {
+          cancelAnimationFrame(animationId);
+          animationId = null;
+        }
+
+        if (video && video.srcObject) {
+          video.srcObject.getTracks().forEach((track) => track.stop());
+          video.srcObject = null;
+        }
+
+        resetStats();
+      }
+
+      // Reset statistics
+      function resetStats() {
+        const elements = {
+          resolutionStat: "0×0",
+          emojiCountStat: "0",
+          colorsStat: "0",
+          fpsStat: "0 FPS",
+        };
+
+        for (const [id, value] of Object.entries(elements)) {
+          const element = document.getElementById(id);
+          if (element) element.textContent = value;
+        }
+
+        currentFPS = 0;
+        frameCount = 0;
+      }
+
+      // Main processing loop with aspect ratio support
+      function processFrame() {
+        if (!isRunning || !video || !emojiOutput || document.hidden) {
+          if (isRunning && document.hidden) {
+            setTimeout(() => {
+              if (isRunning && !document.hidden) {
+                processFrame();
+              }
+            }, 100);
+          }
+          return;
+        }
+
+        try {
+          const now = performance.now();
+          frameCount++;
+
+          // Calculate FPS
+          if (now - lastFPSUpdate > 1000) {
+            currentFPS = Math.round(
+              (frameCount * 1000) / (now - lastFPSUpdate)
+            );
+
+            const statusOverlay = document.getElementById("statusOverlay");
+            const fpsStat = document.getElementById("fpsStat");
+
+            if (statusOverlay) statusOverlay.textContent = `FPS: ${currentFPS}`;
+            if (fpsStat) fpsStat.textContent = `${currentFPS} FPS`;
+
+            frameCount = 0;
+            lastFPSUpdate = now;
+          }
+
+          // Check video readiness
+          if (video.readyState < 2) {
+            animationId = requestAnimationFrame(processFrame);
+            return;
+          }
+
+          // Calculate dimensions based on aspect ratio and detail level
+          const maxBaseWidth =
+            Math.floor(window.innerWidth * 0.08) * detailLevel;
+          const maxBaseHeight =
+            Math.floor(window.innerHeight * 0.06) * detailLevel;
+
+          const dimensions = calculateDimensions(
+            maxBaseWidth,
+            maxBaseHeight,
+            selectedRatio
+          );
+
+          let scale = 1;
+          while (
+            video.videoWidth / scale > dimensions.width ||
+            video.videoHeight / scale > dimensions.height
+          ) {
+            scale *= 1.02;
+          }
+
+          const w = Math.floor(video.videoWidth / scale);
+          const h = Math.floor(video.videoHeight / scale);
+
+          // Validate dimensions
+          if (w <= 0 || h <= 0) {
+            animationId = requestAnimationFrame(processFrame);
+            return;
+          }
+
+          // Apply aspect ratio constraints
+          const targetRatio = aspectRatios[selectedRatio];
+          const currentRatio = w / h;
+          const targetRatioValue = targetRatio.width / targetRatio.height;
+
+          let finalW = w;
+          let finalH = h;
+
+          if (currentRatio > targetRatioValue) {
+            // Too wide, constrain width
+            finalW = Math.floor(h * targetRatioValue);
+          } else {
+            // Too tall, constrain height
+            finalH = Math.floor(w / targetRatioValue);
+          }
+
+          // Update canvas size
+          canvas.width = finalW;
+          canvas.height = finalH;
+
+          // Draw video frame to canvas (centered crop)
+          const sourceX = (video.videoWidth - finalW * scale) / 2;
+          const sourceY = (video.videoHeight - finalH * scale) / 2;
+
+          ctx.drawImage(
+            video,
+            sourceX,
+            sourceY,
+            finalW * scale,
+            finalH * scale,
+            0,
+            0,
+            finalW,
+            finalH
+          );
+
+          // Get image data
+          const imageData = ctx.getImageData(0, 0, finalW, finalH);
+          const data = imageData.data;
+
+          // Process pixels
+          let output = "";
+          const usedColors = new Set();
+
+          for (let y = 0; y < finalH; y++) {
+            for (let x = 0; x < finalW; x++) {
+              const idx = (y * finalW + x) * 4;
+              let r = data[idx];
+              let g = data[idx + 1];
+              let b = data[idx + 2];
+
+              // Apply contrast enhancement
+              r = enhanceContrast(r, contrastFactor);
+              g = enhanceContrast(g, contrastFactor);
+              b = enhanceContrast(b, contrastFactor);
+
+              const emoji = getClosestEmoji(
+                Math.round(r),
+                Math.round(g),
+                Math.round(b)
+              );
+              output += emoji;
+              usedColors.add(emoji);
+            }
+            output += "\n";
+          }
+
+          // Update display
+          if (emojiOutput) {
+            emojiOutput.textContent = output;
+          }
+
+          // Update stats
+          updateStats(finalW, finalH, usedColors.size);
+
+          // Schedule next frame
+          if (isRunning) {
+            animationId = requestAnimationFrame(processFrame);
+          }
+        } catch (error) {
+          console.error("Error in processFrame:", error);
+          isRunning = false;
+          if (animationId) {
+            cancelAnimationFrame(animationId);
+            animationId = null;
+          }
+          showError("Camera processing error. Please restart.");
+        }
+      }
+
+      // Update statistics
+      function updateStats(width, height, colorCount) {
+        const stats = {
+          resolutionStat: `${width}×${height}`,
+          emojiCountStat: (width * height).toLocaleString(),
+          colorsStat: colorCount,
+          ratioStat: selectedRatio,
+        };
+
+        for (const [id, value] of Object.entries(stats)) {
+          const element = document.getElementById(id);
+          if (element) element.textContent = value;
+        }
+      }
+
+      // Toggle camera on/off
+      async function toggleCamera() {
+        const button = document.getElementById("toggleCamera");
+        const switchBtn = document.getElementById("switchCamera");
+        const cameraSelect = document.getElementById("cameraSelect");
+        const statusOverlay = document.getElementById("statusOverlay");
+
+        if (!isRunning) {
+          if (!checkHTTPS()) {
+            return;
+          }
+
+          try {
+            button.textContent = "⏳ Starting...";
+            button.disabled = true;
+
+            await getCameras();
+            selectedCameraId = document.getElementById("cameraSelect").value;
+            await startCamera();
+
+            if (!emojiOutput || !video) {
+              throw new Error("Required elements not found");
+            }
+
+            isRunning = true;
+            button.textContent = "🛑 Stop Camera";
+            button.classList.add("stop");
+            button.disabled = false;
+
+            if (switchBtn) switchBtn.classList.remove("hidden");
+            if (cameraSelect) cameraSelect.classList.remove("hidden");
+            if (statusOverlay) statusOverlay.classList.remove("hidden");
+
+            frameCount = 0;
+            lastFPSUpdate = performance.now();
+
+            setTimeout(() => {
+              if (isRunning) {
+                processFrame();
+              }
+            }, 100);
+          } catch (err) {
+            console.error("Failed to start camera:", err);
+            isRunning = false;
+            button.textContent = "📷 Start Camera";
+            button.disabled = false;
+            button.classList.remove("stop");
+          }
+        } else {
+          stopCamera();
+
+          button.textContent = "📷 Start Camera";
+          button.classList.remove("stop");
+
+          if (switchBtn) switchBtn.classList.add("hidden");
+          if (statusOverlay) statusOverlay.classList.add("hidden");
+
+          if (emojiOutput) {
+            emojiOutput.innerHTML = `
+                        <div class="loading-state">
+                            🎥 Click "Start Camera" to begin the emoji transformation<br>
+                            <small style="color: #444; margin-top: 8px; display: block;">
+                                Open source project • Real-time camera to emoji conversion
+                            </small>
+                        </div>
+                    `;
+          }
+        }
+      }
+
+      // Switch to next camera
+      async function switchCamera() {
+        if (!isRunning || availableCameras.length <= 1) return;
+
+        try {
+          const currentIndex = availableCameras.findIndex(
+            (cam) => cam.deviceId === selectedCameraId
+          );
+          const nextIndex = (currentIndex + 1) % availableCameras.length;
+          selectedCameraId = availableCameras[nextIndex].deviceId;
+
+          const cameraSelect = document.getElementById("cameraSelect");
+          if (cameraSelect) {
+            cameraSelect.value = selectedCameraId;
+          }
+
+          if (video && video.srcObject) {
+            video.srcObject.getTracks().forEach((track) => track.stop());
+          }
+
+          await startCamera();
+
+          frameCount = 0;
+          lastFPSUpdate = performance.now();
+        } catch (err) {
+          console.error("Error switching camera:", err);
+          showError("Failed to switch camera");
+        }
+      }
+
+      // Show error message
+      function showError(message) {
+        const errorDiv = document.createElement("div");
+        errorDiv.className = "error";
+        errorDiv.textContent = message;
+        document.body.appendChild(errorDiv);
+
+        setTimeout(() => {
+          errorDiv.remove();
+        }, 7000);
+      }
+
+      // Initialize the application
+      function init() {
+        video = document.getElementById("video");
+        canvas = document.getElementById("canvas");
+        ctx = canvas.getContext("2d");
+        emojiOutput = document.getElementById("emojiOutput");
+
+        checkHTTPS();
+
+        // Handle page visibility changes
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden && isRunning) {
+            frameCount = 0;
+            lastFPSUpdate = performance.now();
+          }
+        });
+
+        // Event listeners
+        document
+          .getElementById("toggleCamera")
+          .addEventListener("click", toggleCamera);
+        document
+          .getElementById("switchCamera")
+          .addEventListener("click", switchCamera);
+
+        // Camera selection
+        document
+          .getElementById("cameraSelect")
+          .addEventListener("change", (e) => {
+            selectedCameraId = e.target.value;
+            if (isRunning) {
+              switchCamera();
+            }
+          });
+
+        // Aspect ratio control (real-time)
+        document
+          .getElementById("aspectRatio")
+          .addEventListener("change", (e) => {
+            selectedRatio = e.target.value;
+            // No need to restart, will apply on next frame
+          });
+
+        // Detail level control (real-time)
+        const detailSlider = document.getElementById("detailSlider");
+        const detailValue = document.getElementById("detailValue");
+
+        detailSlider.addEventListener("input", (e) => {
+          detailLevel = parseInt(e.target.value);
+          detailValue.textContent = detailLevel;
+          // No need to restart, will apply on next frame
+        });
+
+        // Contrast control (real-time)
+        const contrastSlider = document.getElementById("contrastSlider");
+        const contrastValue = document.getElementById("contrastValue");
+
+        contrastSlider.addEventListener("input", (e) => {
+          contrastFactor = parseFloat(e.target.value);
+          contrastValue.textContent = contrastFactor;
+          // No need to restart, will apply on next frame
+        });
+
+        console.log("🎨 Real-Time Emoji Camera initialized!");
+        console.log(`📊 ${emojiPalette.length} emoji colors available`);
+      }
+
+      // Start the application
+      document.addEventListener("DOMContentLoaded", init);
+    </script>
+  </body>
+</html>
