@@ -45,6 +45,7 @@ const CONFIG = {
     MAX_ROOM_NAME_LENGTH: 25,
     MAX_MESSAGE_LENGTH: 15000,
     MAX_ROOM_CAPACITY: 5,
+    MAX_SERVER_ROOMS: 15, // NEW: Limit number of rooms that the server can have
     MAX_CONNECTIONS_PER_IP: 30,
     SOCKET_MAX_REQUESTS_WINDOW: 1,
     SOCKET_MAX_REQUESTS_PER_WINDOW: 75,
@@ -72,7 +73,7 @@ const CONFIG = {
   },
   VERSIONS: {
     API: "v1",
-    SERVER: "1.3.3",
+    SERVER: "1.3.4",
   },
 };
 
@@ -1700,6 +1701,31 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
       );
     }
 
+    // Check for room count limits
+    if (rooms.size >= CONFIG.LIMITS.MAX_SERVER_ROOMS) {
+      return sendErrorResponse(
+        res,
+        ERROR_CODES.UNAUTHORIZED,
+        "The server hit its maximum room limit.",
+        500
+      );
+    }
+
+    // Check for room creation cooldown
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const now = Date.now();
+    if (
+      now - (lastRoomCreationTimes.get(ip) || 0) <
+      CONFIG.TIMING.ROOM_CREATION_COOLDOWN
+    ) {
+      return sendErrorResponse(
+        res,
+        ERROR_CODES.UNAUTHORIZED,
+        "Creating rooms too frequently.",
+        500
+      );
+    }
+
     let roomName = enforceRoomNameLimit(data.name);
     if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
       const roomNameCheck = wordFilter.checkText(roomName);
@@ -1722,13 +1748,14 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
         console.error("API: Failed to generate unique room ID.");
         return sendErrorResponse(
           res,
-          ERROR_CODES.SERVER_ERROR,
+          ERROR_CODES.UNAUTHORIZED,
           "Could not create room, server busy. Try again.",
           500
         );
       }
     } while (rooms.has(roomId));
 
+    lastRoomCreationTimes.set(ip, now);
     const newRoom = {
       id: roomId,
       name: roomName,
@@ -2084,6 +2111,18 @@ io.on("connection", (socket) => {
           createErrorResponse(
             ERROR_CODES.FORBIDDEN,
             "Anonymous users cannot create rooms."
+          )
+        );
+        return;
+      }
+
+      // Check for room count limits
+      if (rooms.size >= CONFIG.LIMITS.MAX_SERVER_ROOMS) {
+        socket.emit(
+          "error",
+          createErrorResponse(
+            ERROR_CODES.FORBIDDEN,
+            "The server hit its maximum room limit."
           )
         );
         return;
