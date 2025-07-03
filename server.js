@@ -17,7 +17,9 @@ const WordFilter = require("./public/js/word-filter.js");
 const util = require("util");
 const { RateLimiterMemory } = require("rate-limiter-flexible");
 
-// Global error handlers - last line of defense
+// ============================================================================
+// GLOBAL ERROR HANDLERS
+// ============================================================================
 process.on("unhandledRejection", (reason, promise) => {
   console.error("=== UNHANDLED PROMISE REJECTION ===");
   console.error("Reason:", reason);
@@ -36,16 +38,19 @@ process.on("uncaughtException", (error) => {
   console.error("===========================");
 });
 
-// Configuration - OPTIMIZED VALUES
+// ============================================================================
+// CONFIGURATION & CONSTANTS
+// ============================================================================
 const CONFIG = {
   LIMITS: {
     MAX_USERNAME_LENGTH: 15,
-    MAX_AFK_TIME: 180000, // Set to 3 minutes (180000ms) for inactive users
+    MAX_AFK_TIME: 180000, // 3 minutes
     MAX_LOCATION_LENGTH: 20,
     MAX_ROOM_NAME_LENGTH: 25,
     MAX_MESSAGE_LENGTH: 15000,
     MAX_ROOM_CAPACITY: 5,
-    MAX_SERVER_ROOMS: 15, // NEW: Limit number of rooms that the server can have
+    BASE_MAX_ROOMS: 15, // Starting room limit
+    ROOM_SCALING_INCREMENT: 5, // How many rooms to add each scaling
     MAX_CONNECTIONS_PER_IP: 30,
     SOCKET_MAX_REQUESTS_WINDOW: 1,
     SOCKET_MAX_REQUESTS_PER_WINDOW: 75,
@@ -54,14 +59,15 @@ const CONFIG = {
     CONNECTION_DELAY: 100,
     MAX_ID_GEN_ATTEMPTS: 100,
     BATCH_SIZE_LIMIT: 50,
-    MAX_ROOMS_PER_USER: 1, // NEW: Limit users to 1 room only
-    BOT_DETECTION_JOIN_THRESHOLD: 10, // NEW: Max room joins per minute
-    BOT_DETECTION_WINDOW: 60000, // NEW: 1 minute window for bot detection
+    MAX_ROOMS_PER_USER: 1,
+    BOT_DETECTION_JOIN_THRESHOLD: 10,
+    BOT_DETECTION_WINDOW: 60000, // 1 minute
   },
   FEATURES: {
     ENABLE_WORD_FILTER: true,
     LOAD_ROOMS_ON_STARTUP: false,
-    ENABLE_BOT_PROTECTION: true, // NEW: Enable bot protection
+    ENABLE_BOT_PROTECTION: true,
+    ENABLE_DYNAMIC_SCALING: true,
   },
   TIMING: {
     ROOM_CREATION_COOLDOWN: 10000,
@@ -69,11 +75,11 @@ const CONFIG = {
     TYPING_TIMEOUT: 2000,
     BATCH_PROCESSING_INTERVAL: 20,
     AFK_WARNING_TIME: 150000,
-    BOT_BLOCK_DURATION: 300000, // NEW: 5 minutes bot block
+    BOT_BLOCK_DURATION: 300000, // 5 minutes
   },
   VERSIONS: {
     API: "v1",
-    SERVER: "1.3.4",
+    SERVER: "1.4.0", // Updated version
   },
 };
 
@@ -90,9 +96,13 @@ const ERROR_CODES = {
   CIRCUIT_OPEN: "CIRCUIT_OPEN",
   AFK_WARNING: "AFK_WARNING",
   AFK_TIMEOUT: "AFK_TIMEOUT",
+  ROOM_NAME_EXISTS: "ROOM_NAME_EXISTS",
+  ROOM_LIMIT_REACHED: "ROOM_LIMIT_REACHED",
 };
 
-// Load word filter
+// ============================================================================
+// WORD FILTER INITIALIZATION
+// ============================================================================
 let wordFilter;
 try {
   wordFilter = new WordFilter(
@@ -111,7 +121,9 @@ try {
   CONFIG.FEATURES.ENABLE_WORD_FILTER = false;
 }
 
-// State management
+// ============================================================================
+// STATE MANAGEMENT
+// ============================================================================
 const lastRoomCreationTimes = new Map();
 let rooms = new Map();
 const users = new Map();
@@ -121,11 +133,11 @@ const userMessageBuffers = new Map();
 const pendingChatUpdates = new Map();
 const batchProcessingTimers = new Map();
 
-// Track AFK timers and warnings
+// AFK tracking
 const afkTimers = new Map();
 const afkWarningTimers = new Map();
 
-// Circuit breaker state with more lenient thresholds
+// Circuit breaker state
 const chatCircuitState = {
   failures: 0,
   lastFailure: 0,
@@ -134,17 +146,144 @@ const chatCircuitState = {
   resetTimeout: 15000,
 };
 
-// Connection and rate limiting trackers
+// Connection and security tracking
 const ipConnections = new Map();
 const ipLastConnectionTime = new Map();
 const blockedIPs = new Map();
+const userJoinAttempts = new Map();
+const ipJoinAttempts = new Map();
+const suspiciousUsers = new Map();
+const botBlacklist = new Set();
 
-const userJoinAttempts = new Map(); // Track join attempts per user
-const ipJoinAttempts = new Map(); // Track join attempts per IP
-const suspiciousUsers = new Map(); // Track users with suspicious behavior
-const botBlacklist = new Set(); // Blacklisted bot IPs/users
+// ============================================================================
+// ROOM MANAGEMENT UTILITIES
+// ============================================================================
 
-// Rate limiters - OPTIMIZED SETTINGS
+/**
+ * Calculate the current maximum number of rooms allowed based on usage
+ * Uses dynamic scaling: when rooms are full, increase the limit
+ */
+function calculateCurrentRoomLimit() {
+  if (!CONFIG.FEATURES.ENABLE_DYNAMIC_SCALING) {
+    return CONFIG.LIMITS.BASE_MAX_ROOMS;
+  }
+
+  const totalUsers = getTotalUserCount();
+  const currentRoomCount = rooms.size;
+
+  // Calculate how many "full capacity cycles" we've completed
+  // Each cycle = number of rooms that can hold 5 users each
+  const usersPerCycle =
+    CONFIG.LIMITS.BASE_MAX_ROOMS * CONFIG.LIMITS.MAX_ROOM_CAPACITY;
+  const completedCycles = Math.floor(totalUsers / usersPerCycle);
+
+  // Base limit + additional rooms for each completed cycle
+  const calculatedLimit =
+    CONFIG.LIMITS.BASE_MAX_ROOMS +
+    completedCycles * CONFIG.LIMITS.ROOM_SCALING_INCREMENT;
+
+  // Ensure we never go below the base limit
+  return Math.max(calculatedLimit, CONFIG.LIMITS.BASE_MAX_ROOMS);
+}
+
+/**
+ * Get total number of users across all rooms
+ */
+function getTotalUserCount() {
+  let total = 0;
+  for (const [, room] of rooms) {
+    if (room.users && Array.isArray(room.users)) {
+      total += room.users.length;
+    }
+  }
+  return total;
+}
+
+/**
+ * Check if a room name already exists (case-insensitive)
+ */
+function roomNameExists(roomName) {
+  const normalizedName = normalize(roomName);
+  for (const [, room] of rooms) {
+    if (normalize(room.name) === normalizedName) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Get room statistics for monitoring
+ */
+function getRoomStatistics() {
+  const totalRooms = rooms.size;
+  const totalUsers = getTotalUserCount();
+  const currentLimit = calculateCurrentRoomLimit();
+  const roomTypes = { public: 0, "semi-private": 0, private: 0 };
+  const roomsWithUsers = Array.from(rooms.values()).filter(
+    (room) => room.users && room.users.length > 0
+  ).length;
+
+  for (const [, room] of rooms) {
+    if (roomTypes[room.type] !== undefined) {
+      roomTypes[room.type]++;
+    }
+  }
+
+  return {
+    totalRooms,
+    totalUsers,
+    currentLimit,
+    roomsWithUsers,
+    emptyRooms: totalRooms - roomsWithUsers,
+    roomTypes,
+    utilizationPercentage:
+      totalRooms > 0
+        ? Math.round(
+            (totalUsers / (totalRooms * CONFIG.LIMITS.MAX_ROOM_CAPACITY)) * 100
+          )
+        : 0,
+  };
+}
+
+/**
+ * Clean up empty rooms and expired resources
+ */
+async function cleanupEmptyRooms() {
+  const now = Date.now();
+  const roomsToDelete = [];
+
+  for (const [roomId, room] of rooms) {
+    // Mark rooms for deletion if they're empty and past timeout
+    if (
+      (!room.users || room.users.length === 0) &&
+      now - room.lastActiveTime > CONFIG.TIMING.ROOM_DELETION_TIMEOUT
+    ) {
+      roomsToDelete.push(roomId);
+    }
+  }
+
+  // Delete marked rooms
+  for (const roomId of roomsToDelete) {
+    rooms.delete(roomId);
+    if (roomDeletionTimers.has(roomId)) {
+      clearTimeout(roomDeletionTimers.get(roomId));
+      roomDeletionTimers.delete(roomId);
+    }
+    console.log(`Cleaned up empty room: ${roomId}`);
+  }
+
+  if (roomsToDelete.length > 0) {
+    updateLobby();
+    await debouncedSaveRooms();
+  }
+
+  return roomsToDelete.length;
+}
+
+// ============================================================================
+// RATE LIMITERS
+// ============================================================================
 const socketRateLimiter = new RateLimiterMemory({
   points: CONFIG.LIMITS.SOCKET_MAX_REQUESTS_PER_WINDOW,
   duration: CONFIG.LIMITS.SOCKET_MAX_REQUESTS_WINDOW,
@@ -168,10 +307,13 @@ const ipRateLimiter = new RateLimiterMemory({
   blockDuration: 30,
 });
 
+// ============================================================================
+// EXPRESS APP SETUP
+// ============================================================================
 const app = express();
 const server = http.createServer(app);
 
-// Improved proxy trust setting for production
+// Proxy trust configuration
 const trustProxyConfig =
   process.env.NODE_ENV === "production"
     ? process.env.CLOUDFLARE_ENABLED === "true"
@@ -206,16 +348,18 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization", "x-api-key"],
 };
 
-// Express middleware - OPTIMIZED
+// Express middleware
 app.use(express.json({ limit: "100kb" }));
 app.use(cors(corsOptions));
 app.use(cookieParser());
+
+// Security nonce middleware
 app.use((req, res, next) => {
   res.locals.nonce = crypto.randomBytes(16).toString("base64");
   next();
 });
 
-// Security middleware - OPTIMIZED
+// Security middleware
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -263,10 +407,11 @@ app.use(
     crossOriginOpenerPolicy: false,
   })
 );
+
 app.use(xss());
 app.use(hpp());
 
-// Global rate limiter - OPTIMIZED
+// Global rate limiter
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 2000,
@@ -295,7 +440,9 @@ const sessionMiddleware = session({
 });
 app.use(sessionMiddleware);
 
-// Socket.IO setup with improved configuration
+// ============================================================================
+// SOCKET.IO SETUP
+// ============================================================================
 const io = socketIo(server, {
   cors: {
     origin: function (origin, callback) {
@@ -317,14 +464,11 @@ const io = socketIo(server, {
   connectTimeout: 45000,
   maxHttpBufferSize: 2e6,
   transports: ["websocket", "polling"],
-  // Performance optimizations
-  perMessageDeflate: {
-    threshold: 1024,
-  },
+  perMessageDeflate: { threshold: 1024 },
   httpCompression: true,
 });
 
-// Socket.IO middleware for connection control and rate limiting - OPTIMIZED
+// Socket.IO middleware for connection control
 io.use((socket, next) => {
   try {
     const clientIp =
@@ -342,7 +486,7 @@ io.use((socket, next) => {
       }
     }
 
-    // IP rate limiting - OPTIMIZED
+    // IP rate limiting
     ipRateLimiter
       .consume(clientIp)
       .then(() => {
@@ -352,10 +496,11 @@ io.use((socket, next) => {
           console.warn(`Rate limit (max connections): ${clientIp}`);
           return next(new Error("Too many connections from this IP"));
         }
+
         ipConnections.set(clientIp, connectionsCount + 1);
         socket.clientIp = clientIp;
 
-        // Socket event rate limiting - OPTIMIZED with faster bypass
+        // Socket event rate limiting
         socket.use((packet, nextMiddleware) => {
           const eventName = packet[0];
           if (
@@ -366,7 +511,7 @@ io.use((socket, next) => {
             return nextMiddleware();
           }
 
-          // Fast path for low-impact events without rate limiting
+          // Fast path for low-impact events
           if (["typing", "get rooms", "get room state"].includes(eventName)) {
             return nextMiddleware();
           }
@@ -402,11 +547,12 @@ io.use((socket, next) => {
 
 io.use(sharedsession(sessionMiddleware, { autoSave: true }));
 
-// Serve static files with optimized caching
+// ============================================================================
+// STATIC FILE SERVING
+// ============================================================================
 app.use(
   express.static(path.join(__dirname, "public"), {
     setHeaders: (res, filePath) => {
-      // Enhanced caching for static assets
       if (filePath.endsWith(".js")) {
         res.setHeader("Content-Type", "application/javascript; charset=utf-8");
         res.setHeader("Cache-Control", "public, max-age=31536000");
@@ -415,7 +561,6 @@ app.use(
       } else if (filePath.match(/\.(jpg|jpeg|png|gif|ico|svg)$/)) {
         res.setHeader("Cache-Control", "public, max-age=31536000");
       }
-
       if (filePath.endsWith(".ttf")) {
         res.setHeader("Content-Type", "font/ttf");
       }
@@ -423,7 +568,9 @@ app.use(
   })
 );
 
-// Utility functions
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
 function createErrorResponse(
   code,
   message,
@@ -439,7 +586,7 @@ function sendErrorResponse(res, code, message, status = 400, details = null) {
   return res.status(status).json(createErrorResponse(code, message, details));
 }
 
-// OPTIMIZED validation functions
+// Validation rules
 const validationRules = {
   username: (value) => {
     if (!value || typeof value !== "string")
@@ -521,11 +668,10 @@ function validateObject(obj, rules) {
   return Object.keys(errors).length > 0 ? errors : null;
 }
 
-// OPTIMIZED string normalization - Using a cache for common values
+// String normalization with caching
 const normalizeCache = new Map();
 function normalize(str) {
   if (!str) return "";
-
   const cacheKey = str;
   if (normalizeCache.has(cacheKey)) {
     return normalizeCache.get(cacheKey);
@@ -533,10 +679,9 @@ function normalize(str) {
 
   const normalized = str.trim().toLowerCase();
 
-  // Only cache if string is worth caching (not too long)
+  // Only cache if string is worth caching
   if (str.length <= 30) {
     normalizeCache.set(cacheKey, normalized);
-
     // Keep cache size reasonable
     if (normalizeCache.size > 1000) {
       const keysToDelete = Array.from(normalizeCache.keys()).slice(0, 200);
@@ -547,14 +692,13 @@ function normalize(str) {
   return normalized;
 }
 
-// OPTIMIZED user counting functions
+// User counting functions
 function getUserRoomsCount(userId) {
   let count = 0;
   for (const [, room] of rooms) {
-    if (room.users.some((u) => u.id === userId)) {
+    if (room.users && room.users.some((u) => u.id === userId)) {
       count++;
-      // Early exit since we only allow 1 room now
-      if (count >= 1) break;
+      if (count >= 1) break; // Early exit since we only allow 1 room
     }
   }
   return count;
@@ -565,14 +709,15 @@ function getUsernameLocationRoomsCount(username, location) {
   const locLower = normalize(location);
   let count = 0;
   for (const [, room] of rooms) {
-    for (const u of room.users) {
-      if (
-        normalize(u.username) === userLower &&
-        normalize(u.location) === locLower
-      ) {
-        count++;
-        // Early exit since we only allow 1 room now
-        if (count >= 1) return count;
+    if (room.users && Array.isArray(room.users)) {
+      for (const u of room.users) {
+        if (
+          normalize(u.username) === userLower &&
+          normalize(u.location) === locLower
+        ) {
+          count++;
+          if (count >= 1) return count; // Early exit
+        }
       }
     }
   }
@@ -581,13 +726,14 @@ function getUsernameLocationRoomsCount(username, location) {
 
 function getUserCurrentRoom(userId) {
   for (const [roomId, room] of rooms) {
-    if (room.users.some((u) => u.id === userId)) {
+    if (room.users && room.users.some((u) => u.id === userId)) {
       return roomId;
     }
   }
   return null;
 }
 
+// Bot detection and blacklisting
 function detectBotBehavior(userId, clientIp) {
   const now = Date.now();
 
@@ -598,7 +744,7 @@ function detectBotBehavior(userId, clientIp) {
   const userAttempts = userJoinAttempts.get(userId);
   userAttempts.push(now);
 
-  // Clean old attempts (outside detection window)
+  // Clean old attempts
   const validAttempts = userAttempts.filter(
     (time) => now - time < CONFIG.LIMITS.BOT_DETECTION_WINDOW
   );
@@ -611,7 +757,6 @@ function detectBotBehavior(userId, clientIp) {
   const ipAttempts = ipJoinAttempts.get(clientIp);
   ipAttempts.push(now);
 
-  // Clean old attempts
   const validIpAttempts = ipAttempts.filter(
     (time) => now - time < CONFIG.LIMITS.BOT_DETECTION_WINDOW
   );
@@ -628,14 +773,12 @@ function detectBotBehavior(userId, clientIp) {
       `Bot behavior detected - User: ${userId}, IP: ${clientIp}, UserAttempts: ${validAttempts.length}, IPAttempts: ${validIpAttempts.length}`
     );
 
-    // Add to suspicious users
     suspiciousUsers.set(userId, {
       ip: clientIp,
       firstDetection: now,
       attempts: validAttempts.length,
     });
 
-    // Blacklist if severe
     if (validAttempts.length > CONFIG.LIMITS.BOT_DETECTION_JOIN_THRESHOLD * 2) {
       botBlacklist.add(userId);
       botBlacklist.add(clientIp);
@@ -647,12 +790,11 @@ function detectBotBehavior(userId, clientIp) {
   return false;
 }
 
-// NEW: Check if user/IP is blacklisted
 function isBlacklisted(userId, clientIp) {
   return botBlacklist.has(userId) || botBlacklist.has(clientIp);
 }
 
-// OPTIMIZED string truncation functions
+// String length enforcement
 function enforceCharacterLimit(message) {
   return typeof message === "string"
     ? message.slice(0, CONFIG.LIMITS.MAX_MESSAGE_LENGTH)
@@ -677,13 +819,14 @@ function enforceRoomNameLimit(roomName) {
     : "";
 }
 
-// AFK handling functions
+// ============================================================================
+// AFK HANDLING
+// ============================================================================
 function setupAFKTimers(socket, userId) {
   clearAFKTimers(userId);
-
   if (!socket || !socket.roomId) return;
 
-  // Set warning timer (fires 30 seconds before timeout)
+  // Set warning timer
   const warningTimer = setTimeout(() => {
     if (socket && socket.connected) {
       socket.emit("afk warning", {
@@ -699,18 +842,15 @@ function setupAFKTimers(socket, userId) {
     handleAFKTimeout(socket, userId);
   }, CONFIG.LIMITS.MAX_AFK_TIME);
 
-  // Store timers for cleanup
   afkWarningTimers.set(userId, warningTimer);
   afkTimers.set(userId, afkTimer);
 }
 
 function clearAFKTimers(userId) {
-  // Clear existing timers if any
   if (afkWarningTimers.has(userId)) {
     clearTimeout(afkWarningTimers.get(userId));
     afkWarningTimers.delete(userId);
   }
-
   if (afkTimers.has(userId)) {
     clearTimeout(afkTimers.get(userId));
     afkTimers.delete(userId);
@@ -719,27 +859,24 @@ function clearAFKTimers(userId) {
 
 async function handleAFKTimeout(socket, userId) {
   if (!socket || !socket.roomId) return;
-
   console.log(`AFK timeout for user ${userId} in room ${socket.roomId}`);
 
   try {
-    // Send notification to user
     socket.emit("afk timeout", {
       message: "You have been removed from the room due to inactivity.",
       redirectTo: "/",
     });
 
-    // Remove from room but don't disconnect
     await leaveRoom(socket, userId);
-
-    // Clear the timers
     clearAFKTimers(userId);
   } catch (err) {
     console.error(`Error in handleAFKTimeout for user ${userId}:`, err);
   }
 }
 
-// OPTIMIZED chat update batch processing
+// ============================================================================
+// CHAT UPDATE PROCESSING
+// ============================================================================
 async function processPendingChatUpdates(userId, socket) {
   try {
     if (!pendingChatUpdates.has(userId) || !socket || !socket.roomId) return;
@@ -753,25 +890,19 @@ async function processPendingChatUpdates(userId, socket) {
       batchProcessingTimers.delete(userId);
     }
 
-    // Get current message state
     let userMessage = userMessageBuffers.get(userId) || "";
     const username = socket.handshake.session.username || "Anonymous";
 
-    // Process rate limiting once for the batch - OPTIMIZED
+    // Process rate limiting
     let shouldRateLimit = false;
     try {
-      // Adjust points based on batch size with lower consumption rate
       const pointsToConsume = Math.min(
         1 + Math.floor(pendingData.diffs.length / 10),
         2
       );
-
       await chatUpdateLimiter.consume(userId, pointsToConsume);
     } catch (rateErr) {
-      // Instead of failing, just mark that we should limit
       shouldRateLimit = true;
-
-      // Only emit warning if seriously rate limited (don't spam users)
       if (rateErr.msBeforeNext > 1000) {
         socket.emit("message", {
           type: "warning",
@@ -780,21 +911,15 @@ async function processPendingChatUpdates(userId, socket) {
       }
     }
 
-    // If rate limited, process a smaller batch
     const batchLimit = shouldRateLimit
       ? Math.min(10, CONFIG.LIMITS.BATCH_SIZE_LIMIT)
       : CONFIG.LIMITS.BATCH_SIZE_LIMIT;
-
-    // Limit batch size for processing
     const batchToProcess = pendingData.diffs.slice(0, batchLimit);
     pendingData.diffs = pendingData.diffs.slice(batchLimit);
 
-    // Create a consolidated diff for the entire batch
+    // Process diffs
     let consolidatedMessage = userMessage;
-
-    // Process each diff in the batch
     for (const diff of batchToProcess) {
-      // Apply the same processing logic from your original 'chat update' handler
       if (diff.type === "full-replace") {
         consolidatedMessage = diff.text || "";
       } else if (diff.type === "add") {
@@ -854,19 +979,14 @@ async function processPendingChatUpdates(userId, socket) {
       }
     }
 
-    // Clean up and store the final message
     consolidatedMessage = consolidatedMessage.replace(/\r/g, "");
     consolidatedMessage = enforceCharacterLimit(consolidatedMessage);
     userMessageBuffers.set(userId, consolidatedMessage);
 
-    // Create a simplified full-replace diff to broadcast
-    const broadcastDiff = {
-      type: "full-replace",
-      text: consolidatedMessage,
-    };
-
+    const broadcastDiff = { type: "full-replace", text: consolidatedMessage };
     let messageIsAppropriate = true;
-    // Filter offensive words if enabled
+
+    // Filter offensive words
     if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
       const filterResult = wordFilter.checkText(consolidatedMessage);
       if (filterResult.hasOffensiveWord) {
@@ -876,24 +996,20 @@ async function processPendingChatUpdates(userId, socket) {
         io.to(socket.roomId).emit("chat update", {
           userId,
           username,
-          diff: {
-            type: "full-replace",
-            text: censoredText,
-          },
+          diff: { type: "full-replace", text: censoredText },
         });
       }
     }
+
     if (messageIsAppropriate) {
-      // Broadcast unfiltered message to others, since we know it's appropriate
       socket
         .to(socket.roomId)
         .emit("chat update", { userId, username, diff: broadcastDiff });
     }
 
-    // Reset user's AFK timers since they're active
     setupAFKTimers(socket, userId);
 
-    // If there are remaining diffs, schedule another batch with reduced interval
+    // Schedule next batch if needed
     if (pendingData.diffs.length > 0) {
       batchProcessingTimers.set(
         userId,
@@ -905,7 +1021,6 @@ async function processPendingChatUpdates(userId, socket) {
       pendingChatUpdates.delete(userId);
     }
 
-    // Reset circuit breaker failures counter on successful updates
     if (chatCircuitState.failures > 0) {
       chatCircuitState.failures--;
     }
@@ -915,11 +1030,9 @@ async function processPendingChatUpdates(userId, socket) {
   }
 }
 
-// OPTIMIZED circuit breaker
+// Circuit breaker
 function checkChatCircuit() {
   const now = Date.now();
-
-  // Reset after configured timeout
   if (
     chatCircuitState.isOpen &&
     now - chatCircuitState.lastFailure > chatCircuitState.resetTimeout
@@ -929,7 +1042,6 @@ function checkChatCircuit() {
     console.log("Chat circuit breaker reset");
   }
 
-  // Only open circuit if above threshold
   if (
     !chatCircuitState.isOpen &&
     chatCircuitState.failures > chatCircuitState.threshold
@@ -944,17 +1056,18 @@ function checkChatCircuit() {
   return !chatCircuitState.isOpen;
 }
 
-// OPTIMIZED room state management with debouncing
+// ============================================================================
+// ROOM STATE MANAGEMENT
+// ============================================================================
 let saveRoomsPending = false;
 let lastSaveTimestamp = 0;
-const SAVE_INTERVAL_MIN = 30000; // Min 30 seconds between full saves
+const SAVE_INTERVAL_MIN = 30000; // 30 seconds
 
 async function saveRooms() {
   try {
     const now = Date.now();
     const timeSinceLastSave = now - lastSaveTimestamp;
 
-    // Skip if last save was too recent
     if (timeSinceLastSave < SAVE_INTERVAL_MIN) {
       console.log(
         `Skipping room save (last save was ${timeSinceLastSave}ms ago)`
@@ -976,18 +1089,16 @@ async function saveRooms() {
     try {
       await fs.unlink(path.join(__dirname, "rooms.json.tmp"));
     } catch (cleanupError) {
-      /* ignore */
+      // Ignore cleanup errors
     }
     throw error;
   }
 }
 
 const debouncedSaveRooms = async () => {
-  if (saveRoomsPending) return; // Already scheduled
-
+  if (saveRoomsPending) return;
   saveRoomsPending = true;
 
-  // Wait to coalesce multiple save requests
   setTimeout(async () => {
     try {
       await saveRooms();
@@ -996,10 +1107,9 @@ const debouncedSaveRooms = async () => {
     } finally {
       saveRoomsPending = false;
     }
-  }, 10000); // 10 second debounce
+  }, 10000);
 };
 
-// Modified to NOT load rooms on server startup based on config flag
 async function loadRooms() {
   if (!CONFIG.FEATURES.LOAD_ROOMS_ON_STARTUP) {
     console.log("Starting with empty rooms (room loading disabled)");
@@ -1085,10 +1195,8 @@ async function startRoomDeletionTimer(roomId) {
   roomDeletionTimers.set(roomId, timer);
 }
 
-// OPTIMIZED update functions
 function updateLobby() {
   try {
-    // Only include necessary room data for lobby updates
     const publicRooms = Array.from(rooms.values())
       .filter((room) => room.type !== "private")
       .map((room) => ({
@@ -1147,13 +1255,14 @@ const promisifySessionSave = (sessionInstance) => {
   return util.promisify(sessionInstance.save).bind(sessionInstance)();
 };
 
-// OPTIMIZED leaveRoom function
+// ============================================================================
+// ENHANCED ROOM OPERATIONS
+// ============================================================================
 async function leaveRoom(socket, userId) {
   try {
     const currentRoomId = socket.roomId;
     if (!currentRoomId) return;
 
-    // Clear AFK timers for this user
     clearAFKTimers(userId);
 
     const room = rooms.get(currentRoomId);
@@ -1165,18 +1274,15 @@ async function leaveRoom(socket, userId) {
       // Clean up votes
       if (room.votes) {
         delete room.votes[userId];
-        // Remove votes for this user
         for (let voterId in room.votes) {
           if (room.votes[voterId] === userId) delete room.votes[voterId];
         }
         io.to(currentRoomId).emit("update votes", room.votes);
       }
 
-      // Leave room and notify
       socket.leave(currentRoomId);
       io.to(currentRoomId).emit("user left", userId);
 
-      // Update room and potentially start deletion timer
       updateRoom(currentRoomId);
       if (room.users.length === 0) {
         await startRoomDeletionTimer(currentRoomId);
@@ -1191,21 +1297,16 @@ async function leaveRoom(socket, userId) {
       ) {
         delete socket.handshake.session.validatedRooms[currentRoomId];
       }
-
       socket.handshake.session.currentRoom = null;
       await promisifySessionSave(socket.handshake.session).catch((err) =>
         console.error("Session save failed in leaveRoom:", err)
       );
     }
 
-    // Remove user message buffer
     userMessageBuffers.delete(userId);
-
-    // Reset socket state
     socket.roomId = null;
     socket.join("lobby");
 
-    // Update lobby and save rooms
     updateLobby();
     await debouncedSaveRooms();
   } catch (err) {
@@ -1222,8 +1323,6 @@ async function leaveRoom(socket, userId) {
   }
 }
 
-// OPTIMIZED joinRoom function
-// UPDATED: joinRoom function with stricter room limits and bot protection
 function joinRoom(socket, roomId, userId) {
   try {
     if (!roomId || typeof roomId !== "string" || roomId.length !== 6) {
@@ -1268,10 +1367,9 @@ function joinRoom(socket, roomId, userId) {
       }
     }
 
-    // Bot detection check
+    // Bot detection
     const clientIp = socket.clientIp || socket.handshake.address;
     if (CONFIG.FEATURES.ENABLE_BOT_PROTECTION) {
-      // Check blacklist first
       if (isBlacklisted(userId, clientIp)) {
         socket.emit(
           "error",
@@ -1283,7 +1381,6 @@ function joinRoom(socket, roomId, userId) {
         return;
       }
 
-      // Detect bot behavior
       if (detectBotBehavior(userId, clientIp)) {
         socket.emit(
           "error",
@@ -1296,11 +1393,9 @@ function joinRoom(socket, roomId, userId) {
       }
     }
 
-    // Quick check if this is an anonymous user
     const isAnonymous = username === "Anonymous" && location === "On The Web";
-
     if (!isAnonymous) {
-      // UPDATED: Check if user is already in ANY room (strict limit of 1)
+      // Check if user is already in any room
       const currentRoomId = getUserCurrentRoom(userId);
       if (currentRoomId && currentRoomId !== roomId) {
         const currentRoom = rooms.get(currentRoomId);
@@ -1317,7 +1412,6 @@ function joinRoom(socket, roomId, userId) {
         return;
       }
 
-      // UPDATED: Check username/location room limits (strict limit of 1)
       const sameNameLocCount = getUsernameLocationRoomsCount(
         username,
         location
@@ -1334,7 +1428,7 @@ function joinRoom(socket, roomId, userId) {
       }
     }
 
-    // Initialize room properties if needed
+    // Initialize room properties
     if (!room.users) room.users = [];
     if (!room.votes) room.votes = {};
 
@@ -1347,7 +1441,6 @@ function joinRoom(socket, roomId, userId) {
       return;
     }
 
-    // Clear existing AFK timers if user is joining from another room
     clearAFKTimers(userId);
 
     // Remove user from room if already there
@@ -1359,7 +1452,6 @@ function joinRoom(socket, roomId, userId) {
     room.lastActiveTime = Date.now();
     socket.roomId = roomId;
 
-    // Set up AFK timer for the user in this room
     setupAFKTimers(socket, userId);
 
     // Update session
@@ -1384,7 +1476,6 @@ function joinRoom(socket, roomId, userId) {
       emitJoinRoomSuccess(socket, room, userId, username, location);
     }
 
-    // Save room state
     debouncedSaveRooms().catch((err) =>
       console.error("Failed to save rooms after join:", err)
     );
@@ -1434,12 +1525,10 @@ function emitJoinRoomSuccess(socket, room, userId, username, location) {
   }
 }
 
-// OPTIMIZED typing handler
 function handleTyping(socket, userId, username, isTyping) {
   try {
     if (!socket.roomId) return;
 
-    // Reset AFK timers when user is typing
     setupAFKTimers(socket, userId);
 
     if (typingTimeouts.has(userId)) {
@@ -1450,7 +1539,6 @@ function handleTyping(socket, userId, username, isTyping) {
       socket
         .to(socket.roomId)
         .emit("user typing", { userId, username, isTyping: true });
-
       typingTimeouts.set(
         userId,
         setTimeout(() => {
@@ -1471,18 +1559,19 @@ function handleTyping(socket, userId, username, isTyping) {
   }
 }
 
-// Initialize
+// ============================================================================
+// API ENDPOINTS WITH ENHANCED ROOM LIMITS
+// ============================================================================
+const apiCache = new Map();
+const API_CACHE_TTL = 10000; // 10 seconds
+
+// Initialize the application
 loadRooms().catch((err) => {
   console.error("Failed to load rooms on startup:", err);
 });
 
-// API Endpoints - OPTIMIZED with caching
-const apiCache = new Map();
-const API_CACHE_TTL = 10000; // 10 seconds
-
 app.get(`/api/${CONFIG.VERSIONS.API}/config`, (req, res) => {
   const cacheKey = "config";
-
   if (apiCache.has(cacheKey)) {
     const cached = apiCache.get(cacheKey);
     if (Date.now() - cached.timestamp < API_CACHE_TTL) {
@@ -1494,22 +1583,21 @@ app.get(`/api/${CONFIG.VERSIONS.API}/config`, (req, res) => {
     limits: CONFIG.LIMITS,
     features: CONFIG.FEATURES,
     versions: CONFIG.VERSIONS,
+    roomStatistics: getRoomStatistics(),
   };
 
-  apiCache.set(cacheKey, {
-    timestamp: Date.now(),
-    data: configData,
-  });
-
+  apiCache.set(cacheKey, { timestamp: Date.now(), data: configData });
   res.json(configData);
 });
 
 app.get(`/api/${CONFIG.VERSIONS.API}/health`, (req, res) => {
+  const stats = getRoomStatistics();
   res.json({
     status: "ok",
     uptime: process.uptime(),
     timestamp: Date.now(),
     version: CONFIG.VERSIONS.SERVER,
+    roomStatistics: stats,
   });
 });
 
@@ -1522,15 +1610,10 @@ app.get(`/api/${CONFIG.VERSIONS.API}/me`, (req, res) => {
   }
 });
 
-// Caching for static JSON resources
-const emojiListCache = {
-  data: null,
-  timestamp: 0,
-};
-
+// Emoji list caching
+const emojiListCache = { data: null, timestamp: 0 };
 app.get("/js/emojiList.json", async (req, res) => {
   try {
-    // Check cache
     if (
       emojiListCache.data &&
       Date.now() - emojiListCache.timestamp < 3600000
@@ -1548,7 +1631,6 @@ app.get("/js/emojiList.json", async (req, res) => {
     );
     const data = await fs.readFile(emojiListPath, "utf8");
 
-    // Update cache
     emojiListCache.data = data;
     emojiListCache.timestamp = Date.now();
 
@@ -1576,15 +1658,13 @@ function apiAuth(req, res, next) {
       403
     );
   }
-
   next();
 }
 
-// OPTIMIZED API endpoints with caching
+// Enhanced API endpoints with room limits
 app.get(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, (req, res) => {
   try {
     const cacheKey = "public_rooms";
-
     if (apiCache.has(cacheKey)) {
       const cached = apiCache.get(cacheKey);
       if (Date.now() - cached.timestamp < API_CACHE_TTL) {
@@ -1610,11 +1690,7 @@ app.get(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, (req, res) => {
           CONFIG.LIMITS.MAX_ROOM_CAPACITY,
       }));
 
-    apiCache.set(cacheKey, {
-      timestamp: Date.now(),
-      data: publicRooms,
-    });
-
+    apiCache.set(cacheKey, { timestamp: Date.now(), data: publicRooms });
     return res.json(publicRooms);
   } catch (err) {
     console.error("Error in GET /api/v1/rooms:", err);
@@ -1664,11 +1740,7 @@ app.get(`/api/${CONFIG.VERSIONS.API}/rooms/:id`, apiAuth, (req, res) => {
         CONFIG.LIMITS.MAX_ROOM_CAPACITY,
     };
 
-    apiCache.set(cacheKey, {
-      timestamp: Date.now(),
-      data: roomData,
-    });
-
+    apiCache.set(cacheKey, { timestamp: Date.now(), data: roomData });
     return res.json(roomData);
   } catch (err) {
     console.error(`Error in GET /api/v1/rooms/${req.params.id}:`, err);
@@ -1701,18 +1773,20 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
       );
     }
 
-    // Check for room count limits
-    if (rooms.size >= CONFIG.LIMITS.MAX_SERVER_ROOMS) {
+    // Enhanced room limit check with dynamic scaling
+    const currentLimit = calculateCurrentRoomLimit();
+    if (rooms.size >= currentLimit) {
+      const stats = getRoomStatistics();
       return sendErrorResponse(
         res,
-        ERROR_CODES.UNAUTHORIZED,
-        "The server hit its maximum room limit.",
-        500
+        ERROR_CODES.ROOM_LIMIT_REACHED,
+        `Server has reached its current room limit (${currentLimit} rooms). Current usage: ${stats.totalUsers} users in ${stats.totalRooms} rooms.`,
+        429
       );
     }
 
     // Check for room creation cooldown
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
     const now = Date.now();
     if (
       now - (lastRoomCreationTimes.get(ip) || 0) <
@@ -1720,13 +1794,24 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
     ) {
       return sendErrorResponse(
         res,
-        ERROR_CODES.UNAUTHORIZED,
+        ERROR_CODES.RATE_LIMITED,
         "Creating rooms too frequently.",
-        500
+        429
       );
     }
 
     let roomName = enforceRoomNameLimit(data.name);
+
+    // Check for duplicate room name
+    if (roomNameExists(roomName)) {
+      return sendErrorResponse(
+        res,
+        ERROR_CODES.ROOM_NAME_EXISTS,
+        "A room with this name already exists. Please choose a different name.",
+        409
+      );
+    }
+
     if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
       const roomNameCheck = wordFilter.checkText(roomName);
       if (roomNameCheck.hasOffensiveWord) {
@@ -1748,7 +1833,7 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
         console.error("API: Failed to generate unique room ID.");
         return sendErrorResponse(
           res,
-          ERROR_CODES.UNAUTHORIZED,
+          ERROR_CODES.SERVER_ERROR,
           "Could not create room, server busy. Try again.",
           500
         );
@@ -1756,6 +1841,7 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
     } while (rooms.has(roomId));
 
     lastRoomCreationTimes.set(ip, now);
+
     const newRoom = {
       id: roomId,
       name: roomName,
@@ -1778,13 +1864,22 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
       );
     }
 
-    // Invalidate room cache
+    // Invalidate caches
     apiCache.delete("public_rooms");
-
     updateLobby();
     await debouncedSaveRooms();
 
-    return res.status(201).json({ success: true, roomId });
+    // Log room creation with statistics
+    const stats = getRoomStatistics();
+    console.log(
+      `Room created: ${roomId} (${roomName}) | Current: ${stats.totalRooms}/${stats.currentLimit} rooms, ${stats.totalUsers} users`
+    );
+
+    return res.status(201).json({
+      success: true,
+      roomId,
+      currentStatistics: stats,
+    });
   } catch (err) {
     console.error("Error in POST /api/v1/rooms:", err);
     return sendErrorResponse(
@@ -1884,11 +1979,13 @@ app.post(
   }
 );
 
-// Socket.IO Event Handlers - OPTIMIZED
+// ============================================================================
+// SOCKET.IO EVENT HANDLERS WITH ENHANCED LOGIC
+// ============================================================================
 io.on("connection", (socket) => {
   const clientIp = socket.clientIp || socket.handshake.address;
 
-  // Helper to wrap all socket handlers for safety
+  // Safe wrapper for socket handlers
   function safe(fn) {
     return async (...args) => {
       try {
@@ -1900,7 +1997,6 @@ io.on("connection", (socket) => {
           } from ${clientIp}:`,
           err
         );
-
         try {
           socket.emit(
             "error",
@@ -1909,21 +2005,12 @@ io.on("connection", (socket) => {
               "Internal server error processing your request."
             )
           );
-
-          // Only track serious errors to avoid unnecessary disconnections
-          if (
-            err.stack &&
-            !(err instanceof TypeError || err instanceof ReferenceError)
-          ) {
-            socket._errorCount = (socket._errorCount || 0) + 1;
-
-            // Only disconnect on repeated serious errors
-            if (socket._errorCount > 10) {
-              console.warn(
-                `Disconnecting socket ${socket.id} after multiple errors`
-              );
-              socket.disconnect(true);
-            }
+          socket._errorCount = (socket._errorCount || 0) + 1;
+          if (socket._errorCount > 10) {
+            console.warn(
+              `Disconnecting socket ${socket.id} after multiple errors`
+            );
+            socket.disconnect(true);
           }
         } catch (emitErr) {
           console.error("Failed to send error to client:", emitErr);
@@ -1940,7 +2027,6 @@ io.on("connection", (socket) => {
         socket.handshake.session &&
         socket.handshake.session.userId
       ) {
-        // Reset AFK timers when user is active
         setupAFKTimers(socket, socket.handshake.session.userId);
       }
     } catch (err) {
@@ -2043,7 +2129,7 @@ io.on("connection", (socket) => {
             "Failed to save session."
           )
         );
-        throw err; // This will be caught by the outer safe wrapper
+        throw err;
       });
 
       users.set(userId, { id: userId, username, location });
@@ -2076,7 +2162,6 @@ io.on("connection", (socket) => {
       const userId = socket.handshake.session
         ? socket.handshake.session.userId
         : null;
-
       if (!userId) {
         socket.emit(
           "error",
@@ -2116,19 +2201,21 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // Check for room count limits
-      if (rooms.size >= CONFIG.LIMITS.MAX_SERVER_ROOMS) {
+      // Enhanced room limit check with dynamic scaling
+      const currentLimit = calculateCurrentRoomLimit();
+      if (rooms.size >= currentLimit) {
+        const stats = getRoomStatistics();
         socket.emit(
           "error",
           createErrorResponse(
-            ERROR_CODES.FORBIDDEN,
-            "The server hit its maximum room limit."
+            ERROR_CODES.ROOM_LIMIT_REACHED,
+            `Server has reached its current room limit (${currentLimit} rooms). Current usage: ${stats.totalUsers} users in ${stats.totalRooms} rooms.`
           )
         );
         return;
       }
 
-      // Quick check for maximum rooms
+      // Check for existing room membership
       if (
         getUsernameLocationRoomsCount(username, location) >=
         CONFIG.LIMITS.MAX_ROOMS_PER_USER
@@ -2171,6 +2258,19 @@ io.on("connection", (socket) => {
       }
 
       let roomName = enforceRoomNameLimit(data.name);
+
+      // Check for duplicate room name
+      if (roomNameExists(roomName)) {
+        socket.emit(
+          "error",
+          createErrorResponse(
+            ERROR_CODES.ROOM_NAME_EXISTS,
+            "A room with this name already exists. Please choose a different name."
+          )
+        );
+        return;
+      }
+
       if (
         CONFIG.FEATURES.ENABLE_WORD_FILTER &&
         wordFilter.checkText(roomName).hasOffensiveWord
@@ -2226,18 +2326,23 @@ io.on("connection", (socket) => {
         if (!socket.handshake.session.validatedRooms)
           socket.handshake.session.validatedRooms = {};
         socket.handshake.session.validatedRooms[roomId] = data.accessCode;
-
-        await promisifySessionSave(socket.handshake.session).catch((err) => {
-          console.error("Session save error (create room):", err);
-        });
+        await promisifySessionSave(socket.handshake.session).catch((err) =>
+          console.error("Session save error (create room):", err)
+        );
       }
 
-      // Invalidate room cache
+      // Invalidate caches
       apiCache.delete("public_rooms");
 
       socket.emit("room created", roomId);
       updateLobby();
       await debouncedSaveRooms();
+
+      // Log room creation with statistics
+      const stats = getRoomStatistics();
+      console.log(
+        `Room created via socket: ${roomId} (${roomName}) | Current: ${stats.totalRooms}/${stats.currentLimit} rooms, ${stats.totalUsers} users`
+      );
     })
   );
 
@@ -2290,7 +2395,7 @@ io.on("connection", (socket) => {
       username = username || "Anonymous";
       location = location || "On The Web";
 
-      // UPDATED: Early check for existing room membership
+      // Early check for existing room membership
       const isAnonymous = username === "Anonymous" && location === "On The Web";
       if (!isAnonymous) {
         const currentRoomId = getUserCurrentRoom(userId);
@@ -2318,6 +2423,7 @@ io.on("connection", (socket) => {
           socket.handshake.session.validatedRooms &&
           socket.handshake.session.validatedRooms[data.roomId];
         let codeToUse = data.accessCode;
+
         if (validatedAccessCode) {
           codeToUse = validatedAccessCode;
         } else if (!codeToUse) {
@@ -2352,15 +2458,18 @@ io.on("connection", (socket) => {
           if (!socket.handshake.session.validatedRooms)
             socket.handshake.session.validatedRooms = {};
           socket.handshake.session.validatedRooms[data.roomId] = codeToUse;
-          await promisifySessionSave(socket.handshake.session).catch((err) => {
-            console.error("Session save error (join room access code):", err);
-          });
+          await promisifySessionSave(socket.handshake.session).catch((err) =>
+            console.error("Session save error (join room access code):", err)
+          );
         }
       }
 
       joinRoom(socket, data.roomId, userId);
     })
   );
+
+  // Rest of socket handlers (vote, leave room, chat update, typing, etc.)
+  // ... [Continue with remaining socket handlers]
 
   socket.on(
     "vote",
@@ -2381,6 +2490,7 @@ io.on("connection", (socket) => {
 
       const room = rooms.get(roomId);
       if (!room || !room.users.find((u) => u.id === userId)) return;
+
       if (userId === targetUserId) return;
 
       if (!room.votes) room.votes = {};
@@ -2398,14 +2508,13 @@ io.on("connection", (socket) => {
       const votesAgainstTarget = Object.values(room.votes).filter(
         (v) => v === targetUserId
       ).length;
-
       const totalUsers = room.users.length;
+
       if (totalUsers >= 3 && votesAgainstTarget > Math.floor(totalUsers / 2)) {
         const targetSocket = [...io.sockets.sockets.values()].find(
           (s) =>
             s.handshake.session.userId === targetUserId && s.roomId === roomId
         );
-
         if (targetSocket) {
           targetSocket.emit("kicked");
           if (!room.bannedUserIds) room.bannedUserIds = new Set();
@@ -2422,7 +2531,6 @@ io.on("connection", (socket) => {
       const userId = socket.handshake.session
         ? socket.handshake.session.userId
         : null;
-
       if (userId) {
         clearAFKTimers(userId);
         await leaveRoom(socket, userId);
@@ -2430,11 +2538,9 @@ io.on("connection", (socket) => {
     })
   );
 
-  // OPTIMIZED chat update event handler with batching
   socket.on(
     "chat update",
     safe(async (data) => {
-      // Circuit breaker check
       if (!checkChatCircuit()) {
         socket.emit(
           "error",
@@ -2454,7 +2560,6 @@ io.on("connection", (socket) => {
         return;
 
       const userId = socket.handshake.session.userId;
-
       if (
         !data ||
         typeof data !== "object" ||
@@ -2482,7 +2587,7 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // Text validation for types that include text
+      // Text validation
       if (
         (diff.type === "add" ||
           diff.type === "replace" ||
@@ -2502,7 +2607,7 @@ io.on("connection", (socket) => {
       // Apply character limit
       if (diff.text) diff.text = enforceCharacterLimit(diff.text);
 
-      // Validate index for non-full-replace types
+      // Validate index
       if (
         diff.type !== "full-replace" &&
         (typeof diff.index !== "number" || diff.index < 0)
@@ -2514,7 +2619,7 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // Validate count for delete type
+      // Validate count for delete
       if (
         diff.type === "delete" &&
         (typeof diff.count !== "number" || diff.count < 0)
@@ -2529,17 +2634,15 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // Reset AFK timers since user is typing
       setupAFKTimers(socket, userId);
 
       // Add to pending updates
       if (!pendingChatUpdates.has(userId)) {
         pendingChatUpdates.set(userId, { diffs: [] });
       }
-
       pendingChatUpdates.get(userId).diffs.push(diff);
 
-      // Schedule processing if not already scheduled
+      // Schedule processing
       if (!batchProcessingTimers.has(userId)) {
         batchProcessingTimers.set(
           userId,
@@ -2564,7 +2667,6 @@ io.on("connection", (socket) => {
       const userId = socket.handshake.session.userId;
       const username = socket.handshake.session.username || "Anonymous";
 
-      // Reset AFK timers since user is active
       setupAFKTimers(socket, userId);
 
       // Fast path for stopping typing
@@ -2575,7 +2677,7 @@ io.on("connection", (socket) => {
 
       // Rate limit for starting typing
       await typingLimiter.consume(userId).catch(() => {
-        return; // Silently fail on rate limiting for typing events
+        return; // Silently fail on rate limiting
       });
 
       if (!data || typeof data.isTyping !== "boolean") return;
@@ -2615,10 +2717,7 @@ io.on("connection", (socket) => {
               : [],
           }));
 
-        apiCache.set(cacheKey, {
-          timestamp: Date.now(),
-          data: publicRooms,
-        });
+        apiCache.set(cacheKey, { timestamp: Date.now(), data: publicRooms });
       }
 
       socket.emit("initial rooms", publicRooms);
@@ -2666,22 +2765,15 @@ io.on("connection", (socket) => {
         : null;
 
       if (userId) {
-        // Clean up all timers
         clearAFKTimers(userId);
-
-        // Leave room if in one
         await leaveRoom(socket, userId);
-
-        // Clean up user data
         userMessageBuffers.delete(userId);
 
-        // Clear typing timeouts
         if (typingTimeouts.has(userId)) {
           clearTimeout(typingTimeouts.get(userId));
           typingTimeouts.delete(userId);
         }
 
-        // Clean up batch processing
         if (batchProcessingTimers.has(userId)) {
           clearTimeout(batchProcessingTimers.get(userId));
           batchProcessingTimers.delete(userId);
@@ -2705,24 +2797,23 @@ io.on("connection", (socket) => {
     })
   );
 
-  // Add handler for AFK acknowledgment from client
   socket.on(
     "afk response",
     safe(async (data) => {
       const userId = socket.handshake.session?.userId;
       if (!userId || !socket.roomId) return;
 
-      // If user responded, reset their AFK timers
       setupAFKTimers(socket, userId);
-
-      // Log the response for debugging
       console.log(`AFK response from user ${userId}: ${JSON.stringify(data)}`);
     })
   );
 });
 
-// OPTIMIZED periodic tasks with staggered intervals
-// Periodic cleanup for empty rooms
+// ============================================================================
+// PERIODIC CLEANUP TASKS
+// ============================================================================
+
+// Bot detection cleanup
 setInterval(() => {
   const now = Date.now();
 
@@ -2749,22 +2840,16 @@ setInterval(() => {
     }
   }
 
-  // Clean up old suspicious users (remove after 5 minutes of no activity)
+  // Clean up suspicious users
   for (const [userId, data] of suspiciousUsers.entries()) {
     if (now - data.firstDetection > CONFIG.TIMING.BOT_BLOCK_DURATION) {
       suspiciousUsers.delete(userId);
     }
   }
-
-  // Clean up blacklist after extended period (1 hour)
-  // Note: You might want to persist this to a database for longer-term blocking
-  const ONE_HOUR = 3600000;
-  // This is a simple approach - in production you'd want more sophisticated blacklist management
 }, 120000); // Every 2 minutes
 
-// Cleanup abandoned resources with staggered cleanup
+// Resource cleanup
 setInterval(() => {
-  // Find active user IDs from all rooms
   const activeUserIds = new Set();
   for (const [, room] of rooms.entries()) {
     if (Array.isArray(room.users)) {
@@ -2789,7 +2874,7 @@ setInterval(() => {
     }
   }
 
-  // Clean up AFK timers for users no longer in rooms
+  // Clean up AFK timers
   for (const userId of afkTimers.keys()) {
     if (!activeUserIds.has(userId)) {
       clearAFKTimers(userId);
@@ -2797,7 +2882,7 @@ setInterval(() => {
   }
 }, 300000); // Every 5 minutes
 
-// Clean up batch processing timers in a separate interval
+// Batch processing and cache cleanup
 setInterval(() => {
   const activeUserIds = new Set();
   for (const [, room] of rooms.entries()) {
@@ -2808,7 +2893,7 @@ setInterval(() => {
     }
   }
 
-  // Clean up batch processing timers and pending updates
+  // Clean up batch processing timers
   for (const userId of batchProcessingTimers.keys()) {
     if (!activeUserIds.has(userId)) {
       clearTimeout(batchProcessingTimers.get(userId));
@@ -2817,13 +2902,13 @@ setInterval(() => {
     }
   }
 
-  // Clean up the normalize cache to prevent memory leaks
+  // Clean up normalize cache
   if (normalizeCache.size > 1000) {
     const keysToDelete = Array.from(normalizeCache.keys()).slice(0, 200);
     keysToDelete.forEach((key) => normalizeCache.delete(key));
   }
 
-  // Clean up API cache if it gets too large
+  // Clean up API cache
   if (apiCache.size > 100) {
     const now = Date.now();
     for (const [key, entry] of apiCache.entries()) {
@@ -2834,24 +2919,53 @@ setInterval(() => {
   }
 }, 180000); // Every 3 minutes
 
-// Server crash protection monitor - OPTIMIZED
+// Enhanced room cleanup with statistics
+setInterval(async () => {
+  try {
+    const deletedCount = await cleanupEmptyRooms();
+    if (deletedCount > 0) {
+      const stats = getRoomStatistics();
+      console.log(
+        `Cleaned up ${deletedCount} empty rooms. Current: ${stats.totalRooms}/${stats.currentLimit} rooms, ${stats.totalUsers} users`
+      );
+    }
+  } catch (err) {
+    console.error("Error during room cleanup:", err);
+  }
+}, 600000); // Every 10 minutes
+
+// Server monitoring with enhanced statistics
 setInterval(() => {
   try {
     const memoryUsage = process.memoryUsage();
     const heapUsedPercentage = Math.round(
       (memoryUsage.heapUsed / memoryUsage.heapTotal) * 100
     );
+    const stats = getRoomStatistics();
 
-    // Only log when usage is concerning
+    // Log current server status
+    console.log(`=== SERVER STATUS ===`);
+    console.log(`Connected clients: ${io.sockets.sockets.size}`);
+    console.log(
+      `Rooms: ${stats.totalRooms}/${stats.currentLimit} (${stats.emptyRooms} empty)`
+    );
+    console.log(
+      `Users: ${stats.totalUsers} (${stats.utilizationPercentage}% utilization)`
+    );
+    console.log(
+      `Room types: Public: ${stats.roomTypes.public}, Semi-Private: ${stats.roomTypes["semi-private"]}, Private: ${stats.roomTypes.private}`
+    );
+    console.log(`Memory: ${heapUsedPercentage}% heap usage`);
+    console.log(`====================`);
+
+    // Memory warnings
     if (heapUsedPercentage > 85) {
       console.warn(`MEMORY WARNING: Heap usage at ${heapUsedPercentage}%`);
 
-      // Emergency cleanup of large message buffers
       if (heapUsedPercentage > 90) {
         console.warn(
           "EMERGENCY MEMORY CLEANUP: Clearing large message buffers"
         );
-
         for (const [userId, message] of userMessageBuffers.entries()) {
           if (message.length > 1000) {
             userMessageBuffers.set(
@@ -2862,11 +2976,9 @@ setInterval(() => {
           }
         }
 
-        // Purge caches
         normalizeCache.clear();
         apiCache.clear();
 
-        // Force garbage collection if available (Node with --expose-gc flag)
         if (global.gc) {
           console.log("Forcing garbage collection");
           global.gc();
@@ -2874,13 +2986,8 @@ setInterval(() => {
       }
     }
 
-    // Only log connected clients periodically
+    // Connection warnings
     const connectedClients = io.sockets.sockets.size;
-    console.log(
-      `Server status: ${connectedClients} connected clients, heap usage: ${heapUsedPercentage}%`
-    );
-
-    // Only check for excessive connections when needed
     if (connectedClients > 50) {
       for (const [ip, count] of ipConnections.entries()) {
         if (count > CONFIG.LIMITS.MAX_CONNECTIONS_PER_IP * 0.8) {
@@ -2895,9 +3002,38 @@ setInterval(() => {
   }
 }, 120000); // Every 2 minutes
 
+// ============================================================================
+// SERVER STARTUP
+// ============================================================================
 const PORT = process.env.PORT || 3000;
+
 server.listen(PORT, () => {
-  console.log(`Talkomatic server is running on port ${PORT}`);
-  console.log(`Server version: ${CONFIG.VERSIONS.SERVER}`);
-  console.log(`Node.js version: ${process.version}`);
+  console.log(`
+═══════════════════════════════════════════════════════════════
+🚀 Talkomatic Enhanced Server Started!
+═══════════════════════════════════════════════════════════════
+Port: ${PORT}
+Version: ${CONFIG.VERSIONS.SERVER}
+Node.js: ${process.version}
+
+Enhanced Features:
+✅ Dynamic Room Scaling (Base: ${CONFIG.LIMITS.BASE_MAX_ROOMS} rooms)
+✅ Unique Room Name Validation
+✅ Improved Resource Management
+✅ Enhanced Bot Protection
+✅ Real-time Statistics
+
+Room Scaling Logic:
+- Base limit: ${CONFIG.LIMITS.BASE_MAX_ROOMS} rooms
+- Scales by +${CONFIG.LIMITS.ROOM_SCALING_INCREMENT} rooms when capacity is reached
+- Current limit will adjust based on user demand
+
+═══════════════════════════════════════════════════════════════
+`);
+
+  // Log initial statistics
+  const stats = getRoomStatistics();
+  console.log(
+    `Initial state: ${stats.totalRooms}/${stats.currentLimit} rooms, ${stats.totalUsers} users`
+  );
 });

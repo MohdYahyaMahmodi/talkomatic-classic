@@ -1782,8 +1782,12 @@ socket.on("chat update", (data) => {
 socket.on("offensive word detected", (data) => {
   // DEPRECATED
 
-  console.warn("For talkomatic developers: the 'offensive word detected' event is now deprecated in favor of directly sending the censored text in the 'chat update' event as a bugfix.");
-  console.info("This is kept for compatibility, but avoid calling this event if necessary.");
+  console.warn(
+    "For talkomatic developers: the 'offensive word detected' event is now deprecated in favor of directly sending the censored text in the 'chat update' event as a bugfix."
+  );
+  console.info(
+    "This is kept for compatibility, but avoid calling this event if necessary."
+  );
 
   const { userId, filteredMessage } = data;
   const chatDiv = document.querySelector(
