@@ -387,6 +387,7 @@ app.use(
         ],
         objectSrc: ["'none'"],
         mediaSrc: ["'self'"],
+        frameAncestors: ["'self'", "*"], // allow others to iframe our site
         frameSrc: ["'none'"],
         styleSrcElem: [
           "'self'",
