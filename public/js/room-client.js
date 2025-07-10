@@ -106,7 +106,7 @@ let appDirectoryDropdown = null;
 // Load emotes from JSON file
 async function loadEmotes() {
   try {
-    const response = await fetch("/js/emojiList.json");
+    const response = await fetch("/js/emojiList.json?v=1.0.1");
     if (!response.ok) {
       throw new Error(`HTTP error! Status: ${response.status}`);
     }
