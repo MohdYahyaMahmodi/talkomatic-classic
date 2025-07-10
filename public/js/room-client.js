@@ -567,7 +567,7 @@ function replaceEmotes(element) {
               alt=":${emoteCode}:" 
               title=":${emoteCode}:" 
               class="emote" 
-              style="display:inline-block;vertical-align:middle;width:20px;height:20px;margin:0 2px;" 
+              style="display:inline-block;vertical-align:middle;width:auto;height:20px;margin:0 2px;" 
               data-emote-code="${emoteCode}">`;
 
       lastIndex = match.index + match[0].length;
@@ -731,7 +731,7 @@ function showAutocomplete(prefix) {
     const img = document.createElement("img");
     img.src = emoteList[code];
     img.alt = `:${code}:`;
-    img.style.width = "20px";
+    img.style.width = "auto";
     img.style.height = "20px";
     img.style.marginRight = "10px";
     img.style.verticalAlign = "middle";
@@ -881,7 +881,7 @@ function insertEmoteFromAutocompleteClick(emoteCode, capturedEmoteInfo) {
         alt=":${emoteCode}:" 
         title=":${emoteCode}:" 
         class="emote" 
-        style="display:inline-block;vertical-align:middle;width:20px;height:20px;margin:0 2px;" 
+        style="display:inline-block;vertical-align:middle;width:auto;height:20px;margin:0 2px;" 
         data-emote-code="${emoteCode}">`;
 
   try {
@@ -963,7 +963,7 @@ function insertEmoteFromAutocomplete(emoteCode) {
         alt=":${emoteCode}:" 
         title=":${emoteCode}:" 
         class="emote" 
-        style="display:inline-block;vertical-align:middle;width:20px;height:20px;margin:0 2px;" 
+        style="display:inline-block;vertical-align:middle;width:auto;height:20px;margin:0 2px;" 
         data-emote-code="${emoteCode}">`;
 
   // Use the current emote info to replace the typed prefix
@@ -1020,7 +1020,7 @@ function insertEmoteAtCursor(emoteCode) {
         alt=":${emoteCode}:" 
         title=":${emoteCode}:" 
         class="emote" 
-        style="display:inline-block;vertical-align:middle;width:20px;height:20px;margin:0 2px;" 
+        style="display:inline-block;vertical-align:middle;width:auto;height:20px;margin:0 2px;" 
         data-emote-code="${emoteCode}">`;
 
   // Insert at the current cursor position
@@ -1104,7 +1104,7 @@ function createEmotesDropdown() {
     img.src = url;
     img.alt = `:${code}:`;
     img.style.width = "30px";
-    img.style.height = "30px";
+    img.style.height = "auto";
 
     const name = document.createElement("span");
     name.textContent = code;
@@ -2166,7 +2166,7 @@ function adjustLayout() {
     .emote {
       display: inline-block;
       vertical-align: middle;
-      width: 20px;
+      width: auto;
       height: 20px;
       margin: 0 2px;
     }
@@ -2218,7 +2218,7 @@ function adjustLayout() {
     }
     
     .emote-autocomplete-item img {
-      width: 20px;
+      width: auto;
       height: 20px;
       margin-right: 10px;
       vertical-align: middle;
@@ -2265,6 +2265,7 @@ function adjustLayout() {
       display: flex;
       flex-direction: column;
       align-items: center;
+      justify-content: center;
       padding: 5px;
       cursor: pointer;
       border-radius: 4px;
@@ -2280,7 +2281,7 @@ function adjustLayout() {
     
     .emote-item img {
       width: 30px;
-      height: 30px;
+      height: auto;
     }
     
     .emote-item span {
