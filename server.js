@@ -984,7 +984,6 @@ async function processPendingChatUpdates(userId, socket) {
     let rtlOverrideFix = "";
     for (let i = 0; i < consolidatedMessage.length; i++) {
       if (consolidatedMessage.codePointAt(i) !== 8238) {
-        console.log(consolidatedMessage[i], " ", consolidatedMessage.codePointAt(i))
         rtlOverrideFix += consolidatedMessage[i]
       }
     }
