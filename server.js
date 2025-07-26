@@ -980,6 +980,14 @@ async function processPendingChatUpdates(userId, socket) {
       }
     }
 
+    // carriage return and rtl override filter bypass fix
+    let rtlOverrideFix = "";
+    for (let i = 0; i < consolidatedMessage.length; i++) {
+      if (consolidatedMessage.codePointAt(i) !== 8238) {
+        rtlOverrideFix += consolidatedMessage[i]
+      }
+    }
+    consolidatedMessage = rtlOverrideFix;
     consolidatedMessage = consolidatedMessage.replace(/\r/g, "");
     consolidatedMessage = enforceCharacterLimit(consolidatedMessage);
     userMessageBuffers.set(userId, consolidatedMessage);
