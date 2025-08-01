@@ -984,7 +984,7 @@ async function processPendingChatUpdates(userId, socket) {
     let rtlOverrideFix = "";
     for (let i = 0; i < consolidatedMessage.length; i++) {
       if (consolidatedMessage.codePointAt(i) !== 8238) {
-        rtlOverrideFix += consolidatedMessage[i]
+        rtlOverrideFix += consolidatedMessage[i];
       }
     }
     consolidatedMessage = rtlOverrideFix;
@@ -1132,11 +1132,15 @@ async function loadRooms() {
       "utf8"
     );
     const loadedRoomsArray = JSON.parse(roomsData);
-
     if (Array.isArray(loadedRoomsArray)) {
       rooms = new Map(
         loadedRoomsArray.map((item) => {
           if (item[1]) {
+            // Initialize spectators array if it doesn't exist
+            if (!item[1].spectators) {
+              item[1].spectators = [];
+            }
+
             if (item[1].bannedUserIds) {
               if (item[1].bannedUserIds instanceof Set) {
                 // Already a Set
@@ -1214,6 +1218,7 @@ function updateLobby() {
         type: room.type,
         isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
         userCount: room.users.length,
+        spectatorCount: room.spectators ? room.spectators.length : 0,
         users: Array.isArray(room.users)
           ? room.users.map((u) => ({
               id: u.id,
@@ -1222,7 +1227,6 @@ function updateLobby() {
             }))
           : [],
       }));
-
     io.to("lobby").emit("lobby update", publicRooms);
   } catch (err) {
     console.error("Error in updateLobby:", err);
@@ -1239,11 +1243,145 @@ function updateRoom(roomId) {
         type: room.type,
         layout: room.layout,
         users: Array.isArray(room.users) ? room.users : [],
+        spectators: Array.isArray(room.spectators) ? room.spectators : [],
         votes: room.votes || {},
       });
     }
   } catch (err) {
     console.error(`Error in updateRoom for ${roomId}:`, err);
+  }
+}
+
+function joinRoomAsSpectator(socket, roomId, userId) {
+  try {
+    if (!roomId || typeof roomId !== "string" || roomId.length !== 6) {
+      socket.emit(
+        "error",
+        createErrorResponse(
+          ERROR_CODES.NOT_FOUND,
+          "Room not found (invalid ID format)."
+        )
+      );
+      return;
+    }
+
+    const room = rooms.get(roomId);
+    if (!room) {
+      socket.emit(
+        "error",
+        createErrorResponse(ERROR_CODES.NOT_FOUND, "Room not found.")
+      );
+      return;
+    }
+
+    if (room.bannedUserIds && room.bannedUserIds.has(userId)) {
+      socket.emit(
+        "error",
+        createErrorResponse(
+          ERROR_CODES.FORBIDDEN,
+          "You have been banned from this room."
+        )
+      );
+      return;
+    }
+
+    let { username, location } = socket.handshake.session || {};
+    if (!username || !location) {
+      username = "Anonymous";
+      location = "On The Web";
+      if (socket.handshake.session) {
+        socket.handshake.session.username = username;
+        socket.handshake.session.location = location;
+        socket.handshake.session.userId = userId;
+      }
+    }
+
+    // Initialize spectators array if it doesn't exist
+    if (!room.spectators) room.spectators = [];
+
+    // Remove user from spectators if already there
+    room.spectators = room.spectators.filter((spec) => spec.id !== userId);
+
+    // Add user as spectator
+    socket.join(roomId);
+    room.spectators.push({ id: userId, username, location });
+    room.lastActiveTime = Date.now();
+
+    socket.roomId = roomId;
+    socket.isSpectator = true; // ADD THIS FLAG
+
+    // Update session
+    if (socket.handshake.session) {
+      socket.handshake.session.currentRoom = roomId;
+      socket.handshake.session.isSpectator = true; // ADD THIS FLAG
+      socket.handshake.session.save((err) => {
+        if (err) {
+          console.error("Session save error in joinRoomAsSpectator:", err);
+          socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.SERVER_ERROR,
+              "Failed to save session."
+            )
+          );
+          return;
+        }
+        emitSpectatorJoinSuccess(socket, room, userId, username, location);
+      });
+    } else {
+      console.warn(`No session found for spectator ${socket.id}`);
+      emitSpectatorJoinSuccess(socket, room, userId, username, location);
+    }
+
+    debouncedSaveRooms().catch((err) =>
+      console.error("Failed to save rooms after spectator join:", err)
+    );
+  } catch (err) {
+    console.error("Critical error in joinRoomAsSpectator:", err);
+    socket.emit(
+      "error",
+      createErrorResponse(
+        ERROR_CODES.SERVER_ERROR,
+        "An unexpected error occurred while joining as spectator."
+      )
+    );
+  }
+}
+
+// 5. ADD NEW FUNCTION: emitSpectatorJoinSuccess
+function emitSpectatorJoinSuccess(socket, room, userId, username, location) {
+  // Notify room about new spectator
+  io.to(room.id).emit("spectator joined", {
+    id: userId,
+    username,
+    location,
+    spectatorCount: room.spectators.length,
+  });
+
+  updateRoom(room.id);
+  updateLobby();
+
+  const currentMessages = getCurrentMessages(room.users);
+  socket.emit("room joined as spectator", {
+    roomId: room.id,
+    userId,
+    username,
+    location,
+    roomName: room.name,
+    roomType: room.type,
+    users: room.users,
+    spectators: room.spectators,
+    layout: room.layout,
+    votes: room.votes,
+    currentMessages,
+    isSpectator: true,
+  });
+
+  socket.leave("lobby");
+
+  if (roomDeletionTimers.has(room.id)) {
+    clearTimeout(roomDeletionTimers.get(room.id));
+    roomDeletionTimers.delete(room.id);
   }
 }
 
@@ -1273,27 +1411,44 @@ async function leaveRoom(socket, userId) {
     if (!currentRoomId) return;
 
     clearAFKTimers(userId);
-
     const room = rooms.get(currentRoomId);
     if (room) {
-      // Remove user from room
-      room.users = room.users.filter((user) => user.id !== userId);
-      room.lastActiveTime = Date.now();
-
-      // Clean up votes
-      if (room.votes) {
-        delete room.votes[userId];
-        for (let voterId in room.votes) {
-          if (room.votes[voterId] === userId) delete room.votes[voterId];
+      if (socket.isSpectator) {
+        // Remove from spectators
+        if (room.spectators) {
+          room.spectators = room.spectators.filter(
+            (spec) => spec.id !== userId
+          );
+          io.to(currentRoomId).emit("spectator left", {
+            userId,
+            spectatorCount: room.spectators.length,
+          });
         }
-        io.to(currentRoomId).emit("update votes", room.votes);
+      } else {
+        // Remove user from room (existing logic)
+        room.users = room.users.filter((user) => user.id !== userId);
+
+        // Clean up votes
+        if (room.votes) {
+          delete room.votes[userId];
+          for (let voterId in room.votes) {
+            if (room.votes[voterId] === userId) delete room.votes[voterId];
+          }
+          io.to(currentRoomId).emit("update votes", room.votes);
+        }
+
+        io.to(currentRoomId).emit("user left", userId);
       }
 
+      room.lastActiveTime = Date.now();
       socket.leave(currentRoomId);
-      io.to(currentRoomId).emit("user left", userId);
-
       updateRoom(currentRoomId);
-      if (room.users.length === 0) {
+
+      // Delete room if completely empty (no users AND no spectators)
+      if (
+        room.users.length === 0 &&
+        (!room.spectators || room.spectators.length === 0)
+      ) {
         await startRoomDeletionTimer(currentRoomId);
       }
     }
@@ -1307,6 +1462,7 @@ async function leaveRoom(socket, userId) {
         delete socket.handshake.session.validatedRooms[currentRoomId];
       }
       socket.handshake.session.currentRoom = null;
+      socket.handshake.session.isSpectator = false;
       await promisifySessionSave(socket.handshake.session).catch((err) =>
         console.error("Session save failed in leaveRoom:", err)
       );
@@ -1314,8 +1470,8 @@ async function leaveRoom(socket, userId) {
 
     userMessageBuffers.delete(userId);
     socket.roomId = null;
+    socket.isSpectator = false;
     socket.join("lobby");
-
     updateLobby();
     await debouncedSaveRooms();
   } catch (err) {
@@ -1579,24 +1735,46 @@ loadRooms().catch((err) => {
   console.error("Failed to load rooms on startup:", err);
 });
 
-app.get(`/api/${CONFIG.VERSIONS.API}/config`, (req, res) => {
-  const cacheKey = "config";
-  if (apiCache.has(cacheKey)) {
-    const cached = apiCache.get(cacheKey);
-    if (Date.now() - cached.timestamp < API_CACHE_TTL) {
-      return res.json(cached.data);
+app.get(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, (req, res) => {
+  try {
+    const cacheKey = "public_rooms";
+    if (apiCache.has(cacheKey)) {
+      const cached = apiCache.get(cacheKey);
+      if (Date.now() - cached.timestamp < API_CACHE_TTL) {
+        return res.json(cached.data);
+      }
     }
+
+    const publicRooms = Array.from(rooms.values())
+      .filter((room) => room.type !== "private")
+      .map((room) => ({
+        id: room.id,
+        name: room.name,
+        type: room.type,
+        users: Array.isArray(room.users)
+          ? room.users.map((u) => ({
+              id: u.id,
+              username: u.username,
+              location: u.location,
+            }))
+          : [],
+        spectators: Array.isArray(room.spectators) ? room.spectators.length : 0, // ADD THIS LINE
+        isFull:
+          (Array.isArray(room.users) ? room.users.length : 0) >=
+          CONFIG.LIMITS.MAX_ROOM_CAPACITY,
+      }));
+
+    apiCache.set(cacheKey, { timestamp: Date.now(), data: publicRooms });
+    return res.json(publicRooms);
+  } catch (err) {
+    console.error("Error in GET /api/v1/rooms:", err);
+    return sendErrorResponse(
+      res,
+      ERROR_CODES.SERVER_ERROR,
+      "Internal server error",
+      500
+    );
   }
-
-  const configData = {
-    limits: CONFIG.LIMITS,
-    features: CONFIG.FEATURES,
-    versions: CONFIG.VERSIONS,
-    roomStatistics: getRoomStatistics(),
-  };
-
-  apiCache.set(cacheKey, { timestamp: Date.now(), data: configData });
-  res.json(configData);
 });
 
 app.get(`/api/${CONFIG.VERSIONS.API}/health`, (req, res) => {
@@ -1857,10 +2035,11 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
       type: data.type,
       layout: data.layout,
       users: [],
+      spectators: [],
       accessCode: data.type === "semi-private" ? data.accessCode : null,
       votes: {},
       bannedUserIds: new Set(),
-      lastActiveTime: Date.now(),
+      lastActiveTime: now,
     };
 
     rooms.set(roomId, newRoom);
@@ -2042,6 +2221,105 @@ io.on("connection", (socket) => {
       console.error("Error in socket.onAny AFK reset:", err);
     }
   });
+
+  socket.on(
+    "join room as spectator",
+    safe(async (data) => {
+      if (!data || typeof data !== "object" || !data.roomId) {
+        socket.emit(
+          "error",
+          createErrorResponse(
+            ERROR_CODES.BAD_REQUEST,
+            "Invalid data for joining room as spectator."
+          )
+        );
+        return;
+      }
+
+      const room = rooms.get(data.roomId);
+      if (!room) {
+        socket.emit(
+          "room not found",
+          createErrorResponse(ERROR_CODES.NOT_FOUND, "Room not found.")
+        );
+        return;
+      }
+
+      // Get user info from session
+      let { username, location, userId } = socket.handshake.session || {};
+      if (!userId) {
+        userId = socket.handshake.sessionID;
+        if (socket.handshake.session) {
+          socket.handshake.session.userId = userId;
+          if (!username) socket.handshake.session.username = "Anonymous";
+          if (!location) socket.handshake.session.location = "On The Web";
+        } else {
+          socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.SERVER_ERROR,
+              "Session error, cannot join room as spectator."
+            )
+          );
+          return;
+        }
+      }
+
+      username = username || "Anonymous";
+      location = location || "On The Web";
+
+      // Check access code for semi-private rooms (same as regular join)
+      if (room.type === "semi-private") {
+        const validatedAccessCode =
+          socket.handshake.session.validatedRooms &&
+          socket.handshake.session.validatedRooms[data.roomId];
+        let codeToUse = data.accessCode;
+        if (validatedAccessCode) {
+          codeToUse = validatedAccessCode;
+        } else if (!codeToUse) {
+          socket.emit("access code required");
+          return;
+        }
+
+        if (
+          typeof codeToUse !== "string" ||
+          codeToUse.length !== 6 ||
+          !/^\d+$/.test(codeToUse)
+        ) {
+          socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.VALIDATION_ERROR,
+              "Invalid access code format."
+            )
+          );
+          return;
+        }
+
+        if (room.accessCode !== codeToUse) {
+          socket.emit(
+            "error",
+            createErrorResponse(ERROR_CODES.FORBIDDEN, "Incorrect access code.")
+          );
+          return;
+        }
+
+        if (!validatedAccessCode && socket.handshake.session) {
+          if (!socket.handshake.session.validatedRooms)
+            socket.handshake.session.validatedRooms = {};
+          socket.handshake.session.validatedRooms[data.roomId] = codeToUse;
+          await promisifySessionSave(socket.handshake.session).catch((err) =>
+            console.error(
+              "Session save error (spectator join access code):",
+              err
+            )
+          );
+        }
+      }
+
+      joinRoomAsSpectator(socket, data.roomId, userId);
+    })
+  );
 
   socket.on(
     "check signin status",
@@ -2322,10 +2600,11 @@ io.on("connection", (socket) => {
         type: data.type,
         layout: data.layout,
         users: [],
+        spectators: [],
         accessCode: data.type === "semi-private" ? data.accessCode : null,
         votes: {},
         bannedUserIds: new Set(),
-        lastActiveTime: now,
+        lastActiveTime: Date.now(),
       };
 
       rooms.set(roomId, newRoom);
@@ -2477,16 +2756,14 @@ io.on("connection", (socket) => {
     })
   );
 
-  // Rest of socket handlers (vote, leave room, chat update, typing, etc.)
-  // ... [Continue with remaining socket handlers]
-
   socket.on(
     "vote",
     safe(async (data) => {
-      if (!data || typeof data !== "object" || !data.targetUserId) {
+      // Block spectators from voting
+      if (socket.isSpectator) {
         socket.emit(
           "error",
-          createErrorResponse(ERROR_CODES.BAD_REQUEST, "Invalid vote data.")
+          createErrorResponse(ERROR_CODES.FORBIDDEN, "Spectators cannot vote.")
         );
         return;
       }
@@ -2550,12 +2827,13 @@ io.on("connection", (socket) => {
   socket.on(
     "chat update",
     safe(async (data) => {
-      if (!checkChatCircuit()) {
+      // Block spectators from sending chat updates
+      if (socket.isSpectator) {
         socket.emit(
           "error",
           createErrorResponse(
-            ERROR_CODES.CIRCUIT_OPEN,
-            "System is temporarily unavailable. Please try again later."
+            ERROR_CODES.FORBIDDEN,
+            "Spectators cannot send messages."
           )
         );
         return;
@@ -2672,6 +2950,10 @@ io.on("connection", (socket) => {
         !socket.handshake.session.userId
       )
         return;
+
+      if (socket.isSpectator) {
+        return; // Silently ignore typing from spectators
+      }
 
       const userId = socket.handshake.session.userId;
       const username = socket.handshake.session.username || "Anonymous";

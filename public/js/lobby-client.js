@@ -636,13 +636,116 @@ dynamicRoomList.addEventListener("click", (e) => {
     const roomElement = e.target.closest(".room");
     const roomId = roomElement.dataset.roomId;
     const roomType = roomElement.dataset.roomType;
+    const isSpectateButton = e.target.classList.contains("spectate-button");
 
     if (roomType === "semi-private") {
-      promptAccessCode(roomId);
+      if (isSpectateButton) {
+        promptAccessCodeForSpectate(roomId);
+      } else {
+        promptAccessCode(roomId);
+      }
     } else {
-      joinRoom(roomId);
+      if (isSpectateButton) {
+        joinRoomAsSpectator(roomId);
+      } else {
+        joinRoom(roomId);
+      }
     }
   }
+});
+
+function promptAccessCodeForSpectate(roomId) {
+  window.showInputModal(
+    "Access Code Required",
+    "Please enter the 6-digit access code to spectate this room:",
+    {
+      placeholder: "6-digit code",
+      maxLength: "6",
+      validate: (value) => {
+        if (!value) return "Access code is required";
+        if (value.length !== 6 || !/^\d+$/.test(value)) {
+          return "Invalid access code. Please enter a 6-digit number.";
+        }
+        return true;
+      },
+    },
+    (confirmed, accessCode) => {
+      if (confirmed && accessCode) {
+        // Store the access code for the redirect
+        lastUsedAccessCode = accessCode;
+        joinRoomAsSpectator(roomId, accessCode);
+      }
+    }
+  );
+}
+
+function joinRoomAsSpectator(roomId, accessCode = null) {
+  if (!socket.connected) {
+    window.showErrorModal(
+      "Not connected to server. Please wait for connection or refresh the page.",
+      "SERVER_ERROR"
+    );
+    return;
+  }
+
+  const data = { roomId, accessCode };
+  socket.emit("join room as spectator", data);
+}
+
+// ADD NEW SOCKET EVENT HANDLER: "room joined as spectator"
+socket.on("room joined as spectator", (data) => {
+  // Include spectator flag in the URL so the room page knows we're spectating
+  if (lastUsedAccessCode) {
+    window.location.href = `/room.html?roomId=${data.roomId}&accessCode=${lastUsedAccessCode}&spectator=true`;
+    lastUsedAccessCode = null;
+  } else {
+    window.location.href = `/room.html?roomId=${data.roomId}&spectator=true`;
+  }
+});
+
+// ADD NEW SOCKET EVENT HANDLERS for spectator events
+socket.on("spectator joined", (data) => {
+  // Update the lobby to show new spectator count
+  socket.emit("get rooms");
+});
+
+socket.on("spectator left", (data) => {
+  // Update the lobby to show updated spectator count
+  socket.emit("get rooms");
+});
+function joinRoomAsSpectator(roomId, accessCode = null) {
+  if (!socket.connected) {
+    window.showErrorModal(
+      "Not connected to server. Please wait for connection or refresh the page.",
+      "SERVER_ERROR"
+    );
+    return;
+  }
+
+  const data = { roomId, accessCode };
+  socket.emit("join room as spectator", data);
+}
+
+// ADD NEW SOCKET EVENT HANDLER: "room joined as spectator"
+socket.on("room joined as spectator", (data) => {
+  // Include spectator flag in the URL so the room page knows we're spectating
+  if (lastUsedAccessCode) {
+    window.location.href = `/room.html?roomId=${data.roomId}&accessCode=${lastUsedAccessCode}&spectator=true`;
+    lastUsedAccessCode = null;
+  } else {
+    window.location.href = `/room.html?roomId=${data.roomId}&spectator=true`;
+  }
+});
+
+// ADD NEW SOCKET EVENT HANDLERS for spectator events
+socket.on("spectator joined", (data) => {
+  // Update the lobby to show new spectator count
+  socket.emit("get rooms");
+});
+
+socket.on("spectator left", (data) => {
+  // Update the lobby to show updated spectator count
+  socket.emit("get rooms");
 });
 
 function promptAccessCode(roomId) {
@@ -793,12 +896,15 @@ function createRoomElement(room) {
 
   const enterButton = document.createElement("button");
   enterButton.classList.add("enter-button");
+
+  // NEW LOGIC: Show "Spectate" if room is full, otherwise "Enter"
   if (room.users.length >= 5) {
-    enterButton.textContent = "Full";
-    enterButton.disabled = true;
+    enterButton.textContent = "Spectate";
+    enterButton.classList.add("spectate-button");
     roomElement.classList.add("full");
   } else {
     enterButton.textContent = "Enter";
+    enterButton.classList.remove("spectate-button");
   }
 
   const roomTop = document.createElement("div");
@@ -809,7 +915,11 @@ function createRoomElement(room) {
 
   const roomNameDiv = document.createElement("div");
   roomNameDiv.classList.add("room-name");
-  roomNameDiv.textContent = `${room.name} (${room.users.length}/5 People)`;
+
+  // NEW: Include spectator count in room display
+  const spectatorText =
+    room.spectatorCount > 0 ? ` • ${room.spectatorCount} watching` : "";
+  roomNameDiv.textContent = `${room.name} (${room.users.length}/5 People${spectatorText})`;
 
   const roomDetailsDiv = document.createElement("div");
   roomDetailsDiv.classList.add("room-details");
@@ -820,7 +930,6 @@ function createRoomElement(room) {
 
   room.users.forEach((user, index) => {
     const userDiv = document.createElement("div");
-
     const userNumberSpan = document.createElement("span");
     userNumberSpan.classList.add("user-number");
     userNumberSpan.textContent = `${index + 1}.`;
@@ -832,7 +941,6 @@ function createRoomElement(room) {
     userDiv.appendChild(userNumberSpan);
     userDiv.appendChild(userNameSpan);
     userDiv.append(` / ${user.location}`);
-
     usersDetailDiv.appendChild(userDiv);
   });
 

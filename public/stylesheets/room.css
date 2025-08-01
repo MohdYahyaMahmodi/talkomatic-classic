@@ -683,3 +683,202 @@ html {
     font-size: 24px;
   }
 }
+
+/* Spectate button styling */
+.spectate-button {
+  background-color: #555 !important;
+  color: #ffeb3b !important;
+  border: 1px solid #ffeb3b !important;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.spectate-button:hover {
+  background-color: #ffeb3b !important;
+  color: #333 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(255, 235, 59, 0.3);
+}
+
+.room.full .spectate-button {
+  opacity: 1;
+  cursor: pointer;
+}
+
+/* Room element styling for full rooms with spectators */
+.room.full {
+  border-left: 3px solid #ffeb3b;
+}
+
+.room.full .room-name {
+  color: #ffeb3b;
+}
+
+/* Spectator count styling in room list */
+.room-name {
+  font-weight: bold;
+}
+
+/* Spectator indicator in room page */
+.spectator-indicator {
+  padding: 5px 10px;
+  background-color: #ffeb3b;
+  color: #333;
+  border-radius: 4px;
+  font-weight: bold;
+  font-size: 12px;
+  display: inline-block;
+  margin-right: 10px;
+}
+
+/* Spectator count in room navbar */
+.spectator-count {
+  font-size: 12px;
+  color: #ffeb3b;
+  font-weight: bold;
+  padding: 2px 8px;
+  background-color: rgba(255, 235, 59, 0.1);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 235, 59, 0.3);
+}
+
+/* Spectator notice styling */
+.spectator-notice {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(255, 235, 59, 0.95);
+  color: #333;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-weight: bold;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  font-size: 14px;
+  animation: slideInFromRight 0.5s ease-out;
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Disabled input styling for spectators */
+.chat-input:not([contenteditable="true"]) {
+  background-color: #000000 !important;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Disabled button styling for spectators */
+button:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+/* Spectator mode room type styling */
+.room-type.spectator {
+  background-color: #ffeb3b;
+  color: #333;
+  font-weight: bold;
+}
+
+/* Enhanced enter button styling */
+.enter-button {
+  transition: all 0.3s ease;
+  font-weight: bold;
+}
+
+.enter-button:not(.spectate-button):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Room list enhancements for spectator info */
+.users-detail {
+  margin-top: 5px;
+}
+
+.room-info {
+  flex: 1;
+}
+
+/* Spectator notification animations */
+@keyframes fadeInOut {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  10%,
+  90% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Mobile responsive adjustments for spectator features */
+@media (max-width: 768px) {
+  .spectator-notice {
+    bottom: 10px;
+    right: 10px;
+    left: 10px;
+    font-size: 12px;
+    padding: 10px 12px;
+  }
+
+  .spectator-indicator {
+    font-size: 10px;
+    padding: 3px 6px;
+    margin-right: 5px;
+  }
+
+  .spectator-count {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+}
+
+/* Spectator mode emotes button disabled styling */
+#emotesButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: #333 !important;
+}
+
+/* Room navbar enhancements for spectator count */
+.second-navbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.second-navbar .spectator-count {
+  margin-left: auto;
+}
+
+.spectate-button:hover::after {
+  opacity: 1;
+}
+
+/* Enhanced room styling for full rooms */
+.room.full {
+  position: relative;
+  overflow: visible;
+}
+
+.room.full::before {
+  content: "👁️";
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  font-size: 16px;
+  opacity: 0.7;
+}
