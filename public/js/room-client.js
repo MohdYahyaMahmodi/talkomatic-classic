@@ -77,7 +77,7 @@ let currentModalCallback = null;
 
 const APPS_DATA = {
   tictactoe: {
-    name: "Tic Tac Toe",
+    name: "Tic Tac Toe (Beta)",
     description: "Classic 3x3 grid game for two players",
     icon: "❌",
     iconClass: "placeholder",
