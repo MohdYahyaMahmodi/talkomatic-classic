@@ -16,6 +16,9 @@ const crypto = require("crypto");
 const WordFilter = require("./public/js/word-filter.js");
 const util = require("util");
 const { RateLimiterMemory } = require("rate-limiter-flexible");
+const { GameManager } = require("./games.js");
+
+const gameManager = new GameManager();
 
 // Track active connections more reliably
 const activeConnections = new Map(); // userId -> { socket, lastActivity, roomId }
@@ -713,12 +716,27 @@ function getUsernameLocationRoomsCount(username, location) {
   const userLower = normalize(username);
   const locLower = normalize(location);
   let count = 0;
+
   for (const [, room] of rooms) {
+    // Check regular users
     if (room.users && Array.isArray(room.users)) {
       for (const u of room.users) {
         if (
           normalize(u.username) === userLower &&
           normalize(u.location) === locLower
+        ) {
+          count++;
+          if (count >= 1) return count; // Early exit
+        }
+      }
+    }
+
+    // FIXED: Also check spectators
+    if (room.spectators && Array.isArray(room.spectators)) {
+      for (const spec of room.spectators) {
+        if (
+          normalize(spec.username) === userLower &&
+          normalize(spec.location) === locLower
         ) {
           count++;
           if (count >= 1) return count; // Early exit
@@ -731,7 +749,12 @@ function getUsernameLocationRoomsCount(username, location) {
 
 function getUserCurrentRoom(userId) {
   for (const [roomId, room] of rooms) {
+    // Check regular users
     if (room.users && room.users.some((u) => u.id === userId)) {
+      return roomId;
+    }
+    // FIXED: Also check spectators
+    if (room.spectators && room.spectators.some((spec) => spec.id === userId)) {
       return roomId;
     }
   }
@@ -1587,69 +1610,103 @@ async function cleanupGhostUsers() {
 // ENHANCED ROOM OPERATIONS
 // ============================================================================
 
-async function leaveRoom(socket, userId) {
+async function cleanupSocketFromRoom(socket, userId) {
   try {
-    // Get room ID from socket first, but also search comprehensively
-    const currentRoomId = socket ? socket.roomId : null;
+    if (!socket.roomId) {
+      // If no specific room, do comprehensive cleanup
+      findAndRemoveUserFromAllRooms(userId);
+      return;
+    }
 
-    clearAFKTimers(userId);
+    const room = rooms.get(socket.roomId);
+    if (!room) return;
 
-    // If we have a specific room ID, clean up that room first
-    if (currentRoomId) {
-      const room = rooms.get(currentRoomId);
-      if (room) {
-        if (socket && socket.isSpectator) {
-          // Remove from spectators
-          if (room.spectators) {
-            const initialSpectatorCount = room.spectators.length;
-            room.spectators = room.spectators.filter(
-              (spec) => spec.id !== userId
-            );
-            if (room.spectators.length !== initialSpectatorCount) {
-              io.to(currentRoomId).emit("spectator left", {
-                userId,
-                spectatorCount: room.spectators.length,
-              });
-            }
-          }
-        } else {
-          // Remove user from room (existing logic)
-          const initialUserCount = room.users.length;
-          room.users = room.users.filter((user) => user.id !== userId);
+    let roomModified = false;
 
-          if (room.users.length !== initialUserCount) {
-            // Clean up votes
-            if (room.votes) {
-              delete room.votes[userId];
-              for (let voterId in room.votes) {
-                if (room.votes[voterId] === userId) delete room.votes[voterId];
-              }
-              io.to(currentRoomId).emit("update votes", room.votes);
-            }
+    // Remove from spectators if this socket was spectating
+    if (socket.isSpectator && room.spectators) {
+      const initialSpectatorCount = room.spectators.length;
+      room.spectators = room.spectators.filter((spec) => spec.id !== userId);
 
-            io.to(currentRoomId).emit("user left", userId);
-          }
-        }
-
-        room.lastActiveTime = Date.now();
-        if (socket) {
-          socket.leave(currentRoomId);
-        }
-        updateRoom(currentRoomId);
-
-        // Delete room if completely empty (no users AND no spectators)
-        if (
-          room.users.length === 0 &&
-          (!room.spectators || room.spectators.length === 0)
-        ) {
-          await startRoomDeletionTimer(currentRoomId);
-        }
+      if (room.spectators.length !== initialSpectatorCount) {
+        io.to(socket.roomId).emit("spectator left", {
+          userId,
+          spectatorCount: room.spectators.length,
+        });
+        roomModified = true;
+        console.log(`Removed spectator ${userId} from room ${socket.roomId}`);
       }
     }
 
-    // IMPORTANT: Also do comprehensive cleanup in case the user is in other rooms
-    // This catches cases where socket.roomId is incorrect or null
+    // Remove from regular users if this socket was a regular user
+    if (!socket.isSpectator && room.users) {
+      const initialUserCount = room.users.length;
+      room.users = room.users.filter((user) => user.id !== userId);
+
+      if (room.users.length !== initialUserCount) {
+        // Clean up votes involving this user
+        if (room.votes) {
+          delete room.votes[userId];
+          for (let voterId in room.votes) {
+            if (room.votes[voterId] === userId) {
+              delete room.votes[voterId];
+            }
+          }
+          if (Object.keys(room.votes).length > 0) {
+            io.to(socket.roomId).emit("update votes", room.votes);
+          }
+        }
+
+        io.to(socket.roomId).emit("user left", userId);
+        roomModified = true;
+        console.log(`Removed user ${userId} from room ${socket.roomId}`);
+      }
+    }
+
+    if (roomModified) {
+      room.lastActiveTime = Date.now();
+      updateRoom(socket.roomId);
+      updateLobby();
+
+      // Schedule room deletion if completely empty
+      if (
+        room.users.length === 0 &&
+        (!room.spectators || room.spectators.length === 0)
+      ) {
+        await startRoomDeletionTimer(socket.roomId);
+      }
+    }
+
+    // Remove socket from Socket.IO room
+    socket.leave(socket.roomId);
+  } catch (error) {
+    console.error(`Error cleaning up socket ${socket.id} from room:`, error);
+    // Fallback to comprehensive cleanup
+    findAndRemoveUserFromAllRooms(userId);
+  }
+}
+
+async function leaveRoom(socket, userId) {
+  try {
+    const currentRoomId = socket ? socket.roomId : null;
+    clearAFKTimers(userId);
+
+    // Clean up the specific room if we know which one
+    if (currentRoomId && socket) {
+      await cleanupSocketFromRoom(socket, userId);
+    }
+
+    // IMPORTANT: Also do comprehensive cleanup to catch any edge cases
+    // This ensures the user is removed from ALL rooms, not just the one we think they're in
     const additionalRoomsModified = findAndRemoveUserFromAllRooms(userId);
+
+    if (additionalRoomsModified.length > 0) {
+      console.log(
+        `Comprehensive cleanup removed user ${userId} from additional rooms: ${additionalRoomsModified.join(
+          ", "
+        )}`
+      );
+    }
 
     // Clean up session
     if (socket && socket.handshake.session) {
@@ -1676,16 +1733,12 @@ async function leaveRoom(socket, userId) {
 
     // Clean up user data
     userMessageBuffers.delete(userId);
-
     updateLobby();
     await debouncedSaveRooms();
 
-    console.log(
-      `User ${userId} left room cleanup completed. Current room: ${currentRoomId}, Additional rooms: ${additionalRoomsModified.length}`
-    );
+    console.log(`User ${userId} leave room cleanup completed`);
   } catch (err) {
     console.error(`Error in leaveRoom for user ${userId}:`, err);
-
     // Emergency fallback - try to remove user from all rooms
     try {
       findAndRemoveUserFromAllRooms(userId);
@@ -1697,7 +1750,6 @@ async function leaveRoom(socket, userId) {
         fallbackErr
       );
     }
-
     if (socket && typeof socket.emit === "function") {
       socket.emit(
         "error",
@@ -2405,6 +2457,343 @@ io.on("connection", (socket) => {
   socket.on("pong", () => {
     socket.isAlive = true;
   });
+
+  // Game event handlers
+  socket.on(
+    "create game",
+    safe(async (data) => {
+      const userId = socket.handshake.session?.userId;
+      const username = socket.handshake.session?.username;
+      const roomId = socket.roomId;
+
+      if (!userId || !username || !roomId) {
+        socket.emit("game error", {
+          message: "You must be in a room to create a game.",
+        });
+        return;
+      }
+
+      if (!data || !data.gameType) {
+        socket.emit("game error", { message: "Invalid game creation data." });
+        return;
+      }
+
+      // Check if user is already in a game
+      const existingGame = gameManager.getPlayerGame(userId);
+      if (existingGame) {
+        socket.emit("game error", {
+          message: "You are already in a game. Leave your current game first.",
+        });
+        return;
+      }
+
+      try {
+        const game = gameManager.createGame(
+          roomId,
+          data.gameType,
+          userId,
+          username
+        );
+
+        // Join the game room for socket communication
+        socket.join(`game_${game.id}`);
+
+        // Notify the creator
+        socket.emit("game created", {
+          game: game.getGameState(),
+          playerSymbol: game.players[0].symbol,
+        });
+
+        // Notify room about new game
+        socket.to(roomId).emit("room games updated", {
+          games: gameManager.getRoomGames(roomId).map((g) => g.getGameState()),
+        });
+
+        console.log(
+          `Game created: ${game.id} by ${username} in room ${roomId}`
+        );
+      } catch (error) {
+        console.error("Error creating game:", error);
+        socket.emit("game error", { message: error.message });
+      }
+    })
+  );
+
+  socket.on(
+    "join game",
+    safe(async (data) => {
+      const userId = socket.handshake.session?.userId;
+      const username = socket.handshake.session?.username;
+      const roomId = socket.roomId;
+
+      if (!userId || !username || !roomId) {
+        socket.emit("game error", {
+          message: "You must be in a room to join a game.",
+        });
+        return;
+      }
+
+      if (!data || !data.gameId) {
+        socket.emit("game error", { message: "Invalid game join data." });
+        return;
+      }
+
+      // Check if user is already in a game
+      const existingGame = gameManager.getPlayerGame(userId);
+      if (existingGame) {
+        socket.emit("game error", {
+          message: "You are already in a game. Leave your current game first.",
+        });
+        return;
+      }
+
+      try {
+        const game = gameManager.joinGame(data.gameId, userId, username);
+
+        // Join the game room for socket communication
+        socket.join(`game_${game.id}`);
+
+        // Notify the joiner
+        socket.emit("game joined", {
+          game: game.getGameState(),
+          playerSymbol: game.players.find((p) => p.id === userId).symbol,
+        });
+
+        // Notify all players and spectators in the game
+        io.to(`game_${game.id}`).emit("game updated", {
+          game: game.getGameState(),
+        });
+
+        // Notify room about game update
+        socket.to(roomId).emit("room games updated", {
+          games: gameManager.getRoomGames(roomId).map((g) => g.getGameState()),
+        });
+
+        console.log(`${username} joined game: ${game.id}`);
+      } catch (error) {
+        console.error("Error joining game:", error);
+        socket.emit("game error", { message: error.message });
+      }
+    })
+  );
+
+  socket.on(
+    "spectate game",
+    safe(async (data) => {
+      const userId = socket.handshake.session?.userId;
+      const username = socket.handshake.session?.username;
+
+      if (!userId || !username) {
+        socket.emit("game error", {
+          message: "You must be signed in to spectate a game.",
+        });
+        return;
+      }
+
+      if (!data || !data.gameId) {
+        socket.emit("game error", { message: "Invalid spectate data." });
+        return;
+      }
+
+      try {
+        const game = gameManager.getGame(data.gameId);
+        if (!game) {
+          socket.emit("game error", { message: "Game not found." });
+          return;
+        }
+
+        // Add as spectator
+        game.addSpectator(userId);
+
+        // Join the game room for socket communication
+        socket.join(`game_${game.id}`);
+
+        // Notify the spectator
+        socket.emit("game spectate", {
+          game: game.getGameState(),
+        });
+
+        // Notify all players and spectators about updated spectator count
+        io.to(`game_${game.id}`).emit("game updated", {
+          game: game.getGameState(),
+        });
+
+        console.log(`${username} is now spectating game: ${game.id}`);
+      } catch (error) {
+        console.error("Error spectating game:", error);
+        socket.emit("game error", { message: error.message });
+      }
+    })
+  );
+
+  socket.on(
+    "game move",
+    safe(async (data) => {
+      const userId = socket.handshake.session?.userId;
+
+      if (!userId) {
+        socket.emit("game error", {
+          message: "You must be signed in to make moves.",
+        });
+        return;
+      }
+
+      if (!data || !data.gameId || !data.move) {
+        socket.emit("game error", { message: "Invalid move data." });
+        return;
+      }
+
+      try {
+        const result = gameManager.makeMove(
+          data.gameId,
+          userId,
+          data.move.position
+        );
+
+        if (result.valid) {
+          // Notify all players and spectators
+          io.to(`game_${data.gameId}`).emit("game updated", {
+            game: result.gameState,
+          });
+
+          // If game ended, clean up after a delay
+          if (result.gameState.state === "finished") {
+            setTimeout(() => {
+              // Don't auto-remove games, let players start new games
+            }, 1000);
+          }
+        }
+      } catch (error) {
+        console.error("Error making move:", error);
+        socket.emit("game error", { message: error.message });
+      }
+    })
+  );
+
+  socket.on(
+    "new game",
+    safe(async (data) => {
+      const userId = socket.handshake.session?.userId;
+
+      if (!userId) {
+        socket.emit("game error", {
+          message: "You must be signed in to start a new game.",
+        });
+        return;
+      }
+
+      if (!data || !data.gameId) {
+        socket.emit("game error", { message: "Invalid new game data." });
+        return;
+      }
+
+      try {
+        const game = gameManager.getGame(data.gameId);
+        if (!game) {
+          socket.emit("game error", { message: "Game not found." });
+          return;
+        }
+
+        // Check if user is a player in this game
+        if (!game.canPlayerPlay(userId)) {
+          socket.emit("game error", {
+            message: "You are not a player in this game.",
+          });
+          return;
+        }
+
+        // Reset the game
+        game.resetGame();
+
+        // Notify all players and spectators
+        io.to(`game_${game.id}`).emit("game updated", {
+          game: game.getGameState(),
+        });
+
+        console.log(`New game started: ${game.id}`);
+      } catch (error) {
+        console.error("Error starting new game:", error);
+        socket.emit("game error", { message: error.message });
+      }
+    })
+  );
+
+  socket.on(
+    "leave game",
+    safe(async (data) => {
+      const userId = socket.handshake.session?.userId;
+
+      if (!userId) return;
+
+      if (!data || !data.gameId) {
+        socket.emit("game error", { message: "Invalid leave game data." });
+        return;
+      }
+
+      try {
+        const game = gameManager.getGame(data.gameId);
+        if (!game) return;
+
+        // Remove from spectators
+        game.removeSpectator(userId);
+
+        // Leave the game socket room
+        socket.leave(`game_${game.id}`);
+
+        // If user is a player, end the game
+        if (game.canPlayerPlay(userId)) {
+          // Notify other players that someone left
+          socket.to(`game_${game.id}`).emit("game ended", {
+            gameId: game.id,
+            reason: "A player left the game",
+          });
+
+          // Remove the game
+          gameManager.removeGame(game.id);
+
+          // Update room games list
+          if (game.roomId) {
+            io.to(game.roomId).emit("room games updated", {
+              games: gameManager
+                .getRoomGames(game.roomId)
+                .map((g) => g.getGameState()),
+            });
+          }
+        } else {
+          // Just update spectator count
+          io.to(`game_${game.id}`).emit("game updated", {
+            game: game.getGameState(),
+          });
+        }
+
+        console.log(`User ${userId} left game: ${game.id}`);
+      } catch (error) {
+        console.error("Error leaving game:", error);
+      }
+    })
+  );
+
+  socket.on(
+    "get room games",
+    safe(async (data) => {
+      const roomId = socket.roomId || data?.roomId;
+
+      if (!roomId) {
+        socket.emit("game error", { message: "No room specified." });
+        return;
+      }
+
+      try {
+        const games = gameManager.getRoomGames(roomId);
+        socket.emit("room games updated", {
+          games: games.map((g) => g.getGameState()),
+        });
+      } catch (error) {
+        console.error("Error getting room games:", error);
+        socket.emit("game error", { message: "Failed to get room games." });
+      }
+    })
+  );
 
   // Safe wrapper for socket handlers
   function safe(fn) {
@@ -3297,6 +3686,12 @@ io.on("connection", (socket) => {
           // Clear timers first
           clearAFKTimers(userId);
 
+          // IMPROVED: Always clean up this specific socket's room presence
+          // regardless of whether the user has other connections
+          if (socket.roomId) {
+            await cleanupSocketFromRoom(socket, userId);
+          }
+
           // Check if user has other active connections
           const userSockets = findSocketsForUser(userId);
           const otherActiveSockets = userSockets.filter(
@@ -3306,39 +3701,34 @@ io.on("connection", (socket) => {
           if (otherActiveSockets.length === 0) {
             // This is the user's last connection, do full cleanup
             console.log(
-              `Last connection for user ${userId}, doing full cleanup`
+              `Last connection for user ${userId}, doing additional cleanup`
             );
-            await leaveRoom(socket, userId);
 
-            // Clean up additional data
+            // Additional cleanup for data that's user-wide, not socket-specific
             if (typingTimeouts.has(userId)) {
               clearTimeout(typingTimeouts.get(userId));
               typingTimeouts.delete(userId);
             }
-
             if (batchProcessingTimers.has(userId)) {
               clearTimeout(batchProcessingTimers.get(userId));
               batchProcessingTimers.delete(userId);
               pendingChatUpdates.delete(userId);
             }
-
             users.delete(userId);
             userMessageBuffers.delete(userId);
+
+            // Final comprehensive cleanup to catch any edge cases
+            findAndRemoveUserFromAllRooms(userId);
           } else {
             console.log(
-              `User ${userId} has ${otherActiveSockets.length} other active connections, skipping full cleanup`
+              `User ${userId} has ${otherActiveSockets.length} other active connections, keeping user data`
             );
-            // Just remove this socket from the room, but don't remove user entirely
-            if (socket.roomId) {
-              socket.leave(socket.roomId);
-            }
           }
         } catch (error) {
           console.error(
             `Error during disconnect cleanup for user ${userId}:`,
             error
           );
-
           // Emergency cleanup - try to remove user anyway
           try {
             findAndRemoveUserFromAllRooms(userId);
@@ -3373,6 +3763,27 @@ io.on("connection", (socket) => {
         if (currentCount > 1)
           ipConnections.set(socket.clientIp, currentCount - 1);
         else ipConnections.delete(socket.clientIp);
+      }
+
+      // Game cleanup (existing code)
+      try {
+        const userGame = gameManager.getPlayerGame(userId);
+        if (userGame) {
+          if (userGame.canPlayerPlay(userId)) {
+            socket.to(`game_${userGame.id}`).emit("game ended", {
+              gameId: userGame.id,
+              reason: "A player disconnected",
+            });
+            gameManager.removeGame(userGame.id);
+          } else {
+            userGame.removeSpectator(userId);
+            socket.to(`game_${userGame.id}`).emit("game updated", {
+              game: userGame.getGameState(),
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error cleaning up games on disconnect:", error);
       }
 
       console.log(`Socket ${socket.id} disconnect cleanup completed`);
@@ -3429,6 +3840,14 @@ setInterval(() => {
     }
   }
 }, 120000); // Every 2 minutes
+
+setInterval(() => {
+  try {
+    gameManager.cleanupGames();
+  } catch (error) {
+    console.error("Error during game cleanup:", error);
+  }
+}, 300000); // Every 5 minutes
 
 // Resource cleanup
 setInterval(() => {
@@ -3648,12 +4067,18 @@ setInterval(() => {
       if (socket.isAlive === false) {
         console.log(`Terminating dead socket: ${socket.id}`);
         deadConnections++;
-        socket.terminate();
+        socket.disconnect(true); // Use Socket.IO's disconnect method
         return;
       }
 
       socket.isAlive = false;
-      socket.ping();
+      // Use Socket.IO's ping method if available, otherwise emit a ping event
+      if (typeof socket.ping === "function") {
+        socket.ping();
+      } else {
+        // Fallback: emit a ping event that client can respond to
+        socket.emit("ping");
+      }
     });
 
     if (deadConnections > 0) {

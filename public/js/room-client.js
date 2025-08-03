@@ -4,6 +4,17 @@
 
 const socket = io(); // Initialize Socket.IO connection
 
+socket.on("ping", () => {
+  socket.emit("pong");
+});
+
+// Also handle the built-in pong event
+socket.on("pong", () => {
+  if (socket.isAlive !== undefined) {
+    socket.isAlive = true;
+  }
+});
+
 let currentUsername = "";
 let currentLocation = "";
 let currentRoomId = "";
@@ -65,6 +76,15 @@ const closeModalBtn = document.querySelector(".close-modal-btn");
 let currentModalCallback = null;
 
 const APPS_DATA = {
+  tictactoe: {
+    name: "Tic Tac Toe",
+    description: "Classic 3x3 grid game for two players",
+    icon: "❌",
+    iconClass: "placeholder",
+    status: "available",
+    url: null,
+    openInNewTab: false,
+  },
   watchparty: {
     name: "WatchParty",
     description: "Watch YouTube videos together",
@@ -270,6 +290,25 @@ function handleAppClick(appId, app) {
 
   // Handle different app types
   switch (appId) {
+    case "tictactoe":
+      // Check if user is signed in and in a room
+      if (!currentUserId || !currentRoomId) {
+        showErrorModal("You must be signed in and in a room to play games.");
+        return;
+      }
+
+      // Check if spectator
+      if (isSpectator) {
+        showErrorModal(
+          "Spectators cannot start games. You can only watch existing games."
+        );
+        return;
+      }
+
+      // Create or show games for tic-tac-toe
+      showTicTacToeOptions();
+      break;
+
     case "watchparty":
       if (app.openInNewTab) {
         // Open WatchParty in new tab
@@ -294,6 +333,304 @@ function handleAppClick(appId, app) {
       break;
   }
 }
+
+// Add this new function after handleAppClick:
+
+function showTicTacToeOptions() {
+  // First, get available games in the room
+  socket.emit("get room games", { roomId: currentRoomId });
+
+  // Wait a moment for the response, then show options
+  setTimeout(() => {
+    showTicTacToeModal();
+  }, 100);
+}
+
+function showTicTacToeModal() {
+  const modalContent = `
+    <div style="text-align: center; padding: 20px;">
+      <h3 style="color: #ff9800; margin-bottom: 20px;">🎮 Tic Tac Toe</h3>
+      <p style="margin-bottom: 30px; color: #ccc;">Choose an option to get started:</p>
+      
+      <div style="display: flex; flex-direction: column; gap: 15px; max-width: 300px; margin: 0 auto;">
+        <button id="createTicTacToeBtn" style="
+          padding: 15px 20px;
+          background: #4caf50;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 16px;
+          font-weight: bold;
+          transition: all 0.2s ease;
+        ">
+          🆕 Create New Game
+        </button>
+        
+        <button id="findTicTacToeBtn" style="
+          padding: 15px 20px;
+          background: #2196f3;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 16px;
+          font-weight: bold;
+          transition: all 0.2s ease;
+        ">
+          🔍 Find Game to Join
+        </button>
+        
+        <p style="font-size: 12px; color: #666; margin-top: 10px;">
+          Other users in this room can join your game or you can join theirs!
+        </p>
+      </div>
+    </div>
+  `;
+
+  showModal("Tic Tac Toe", "", {
+    showCancel: true,
+    cancelText: "Close",
+    confirmText: "", // Hide confirm button
+    callback: (confirmed) => {
+      // Modal closed
+    },
+  });
+
+  // Replace modal content
+  const modalMessage = document.getElementById("modalMessage");
+  if (modalMessage) {
+    modalMessage.innerHTML = modalContent;
+
+    // Hide the default confirm button since we have custom buttons
+    const modalConfirmBtn = document.getElementById("modalConfirmBtn");
+    if (modalConfirmBtn) {
+      modalConfirmBtn.style.display = "none";
+    }
+  }
+
+  // Add event listeners for the custom buttons
+  setTimeout(() => {
+    const createBtn = document.getElementById("createTicTacToeBtn");
+    const findBtn = document.getElementById("findTicTacToeBtn");
+
+    if (createBtn) {
+      createBtn.addEventListener("mouseenter", () => {
+        createBtn.style.background = "#45a049";
+        createBtn.style.transform = "translateY(-2px)";
+      });
+      createBtn.addEventListener("mouseleave", () => {
+        createBtn.style.background = "#4caf50";
+        createBtn.style.transform = "translateY(0)";
+      });
+      createBtn.addEventListener("click", () => {
+        closeModal();
+        createTicTacToeGame();
+      });
+    }
+
+    if (findBtn) {
+      findBtn.addEventListener("mouseenter", () => {
+        findBtn.style.background = "#1976d2";
+        findBtn.style.transform = "translateY(-2px)";
+      });
+      findBtn.addEventListener("mouseleave", () => {
+        findBtn.style.background = "#2196f3";
+        findBtn.style.transform = "translateY(0)";
+      });
+      findBtn.addEventListener("click", () => {
+        closeModal();
+        findTicTacToeGames();
+      });
+    }
+  }, 50);
+}
+
+function createTicTacToeGame() {
+  if (window.gameClient) {
+    window.gameClient.createGame("tictactoe");
+  } else {
+    showErrorModal("Game system not loaded. Please refresh the page.");
+  }
+}
+
+function findTicTacToeGames() {
+  // Request available games
+  socket.emit("get room games", { roomId: currentRoomId });
+
+  // Listen for the response
+  const handleRoomGames = (data) => {
+    socket.off("room games updated", handleRoomGames); // Remove listener after use
+
+    const availableGames = data.games.filter(
+      (game) =>
+        game.type === "tictactoe" &&
+        game.state === "waiting" &&
+        game.players.length < 2 &&
+        !game.players.some((p) => p.id === currentUserId)
+    );
+
+    if (availableGames.length === 0) {
+      showInfoModal(
+        "No available games to join right now. Would you like to create a new game?",
+        (confirmed) => {
+          if (confirmed) {
+            createTicTacToeGame();
+          }
+        }
+      );
+      return;
+    }
+
+    showAvailableGamesModal(availableGames);
+  };
+
+  socket.on("room games updated", handleRoomGames);
+
+  // Timeout fallback
+  setTimeout(() => {
+    socket.off("room games updated", handleRoomGames);
+  }, 5000);
+}
+
+function showAvailableGamesModal(games) {
+  let gamesList = games
+    .map((game, index) => {
+      const creator = game.players[0];
+      return `
+      <div class="available-game-item" data-game-id="${game.id}" data-index="${index}" style="
+        padding: 15px;
+        margin: 10px 0;
+        background: #333;
+        border-radius: 8px;
+        border: 1px solid #555;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      ">
+        <div style="font-weight: bold; color: #ff9800;">Game by ${creator.username}</div>
+        <div style="font-size: 12px; color: #ccc;">Waiting for second player...</div>
+        <div style="font-size: 10px; color: #666; margin-top: 5px;">Click to join</div>
+      </div>
+    `;
+    })
+    .join("");
+
+  const modalContent = `
+    <div style="text-align: left; padding: 20px;">
+      <h3 style="color: #ff9800; margin-bottom: 20px; text-align: center;">🎮 Available Games</h3>
+      <div id="gamesList" style="max-height: 300px; overflow-y: auto;">
+        ${gamesList}
+      </div>
+      <div style="text-align: center; margin-top: 20px;">
+        <button id="createNewGameBtn" style="
+          padding: 10px 20px;
+          background: #4caf50;
+          color: white;
+          border: none;
+          border-radius: 5px;
+          cursor: pointer;
+          font-weight: bold;
+        ">Create New Game Instead</button>
+      </div>
+    </div>
+  `;
+
+  showModal("Available Games", "", {
+    showCancel: true,
+    cancelText: "Close",
+    confirmText: "",
+    callback: (confirmed) => {
+      // Modal closed
+    },
+  });
+
+  const modalMessage = document.getElementById("modalMessage");
+  if (modalMessage) {
+    modalMessage.innerHTML = modalContent;
+
+    const modalConfirmBtn = document.getElementById("modalConfirmBtn");
+    if (modalConfirmBtn) {
+      modalConfirmBtn.style.display = "none";
+    }
+
+    // Add proper event listeners after DOM is updated
+    setTimeout(() => {
+      // Add click handlers for game items
+      const gameItems = document.querySelectorAll(".available-game-item");
+      console.log(`Found ${gameItems.length} game items`);
+
+      gameItems.forEach((item, index) => {
+        const gameId = item.dataset.gameId;
+        console.log(`Setting up click handler for game ${gameId}`);
+
+        // Add hover effects
+        item.addEventListener("mouseenter", () => {
+          item.style.background = "#444";
+          item.style.borderColor = "#ff9800";
+        });
+
+        item.addEventListener("mouseleave", () => {
+          item.style.background = "#333";
+          item.style.borderColor = "#555";
+        });
+
+        // Add click handler
+        item.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log(`Clicked on game ${gameId}`);
+          joinTicTacToeGame(gameId);
+        });
+      });
+
+      // Add click handler for create new game button
+      const createBtn = document.getElementById("createNewGameBtn");
+      if (createBtn) {
+        createBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          closeModal();
+          createTicTacToeGame();
+        });
+      }
+    }, 100);
+  }
+}
+
+function joinTicTacToeGame(gameId) {
+  console.log(`Attempting to join game: ${gameId}`);
+
+  closeModal();
+
+  const client = window.gameClient;
+  if (!client) {
+    console.error("Game client not available");
+    showErrorModal("Game system not loaded. Please refresh the page.");
+    return;
+  }
+
+  console.log("Game client found, calling joinGame...");
+
+  try {
+    client.joinGame(gameId);
+    console.log("Join game request sent");
+  } catch (error) {
+    console.error("Error joining game:", error);
+    showErrorModal("Failed to join game: " + error.message);
+  }
+}
+
+// Make sure this function is globally accessible
+window.joinTicTacToeGame = joinTicTacToeGame;
+
+// Add this global function for joining games
+window.joinTicTacToeGame = function (gameId) {
+  closeModal();
+  if (window.gameClient) {
+    window.gameClient.joinGame(gameId);
+  } else {
+    showErrorModal("Game system not loaded. Please refresh the page.");
+  }
+};
 
 function initializeAppDirectory() {
   const appDirectoryButton = document.getElementById("appDirectoryToggle");
