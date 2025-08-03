@@ -17,6 +17,10 @@ const WordFilter = require("./public/js/word-filter.js");
 const util = require("util");
 const { RateLimiterMemory } = require("rate-limiter-flexible");
 
+// Track active connections more reliably
+const activeConnections = new Map(); // userId -> { socket, lastActivity, roomId }
+const userSocketMapping = new Map(); // userId -> Set of socketIds
+
 // ============================================================================
 // GLOBAL ERROR HANDLERS
 // ============================================================================
@@ -1403,60 +1407,255 @@ const promisifySessionSave = (sessionInstance) => {
 };
 
 // ============================================================================
-// ENHANCED ROOM OPERATIONS
+// ENHANCED USER CLEANUP FUNCTIONS
 // ============================================================================
-async function leaveRoom(socket, userId) {
-  try {
-    const currentRoomId = socket.roomId;
-    if (!currentRoomId) return;
 
-    clearAFKTimers(userId);
-    const room = rooms.get(currentRoomId);
-    if (room) {
-      if (socket.isSpectator) {
-        // Remove from spectators
-        if (room.spectators) {
-          room.spectators = room.spectators.filter(
-            (spec) => spec.id !== userId
-          );
-          io.to(currentRoomId).emit("spectator left", {
+/**
+ * Find and remove a user from all rooms - comprehensive cleanup
+ */
+function findAndRemoveUserFromAllRooms(userId, socketId = null) {
+  const roomsModified = [];
+
+  try {
+    for (const [roomId, room] of rooms) {
+      if (!room.users || !Array.isArray(room.users)) continue;
+
+      const initialUserCount = room.users.length;
+
+      // Remove user from regular users
+      room.users = room.users.filter((user) => user.id !== userId);
+
+      // Remove user from spectators if they exist
+      if (room.spectators && Array.isArray(room.spectators)) {
+        const initialSpectatorCount = room.spectators.length;
+        room.spectators = room.spectators.filter((spec) => spec.id !== userId);
+
+        if (room.spectators.length !== initialSpectatorCount) {
+          io.to(roomId).emit("spectator left", {
             userId,
             spectatorCount: room.spectators.length,
           });
         }
-      } else {
-        // Remove user from room (existing logic)
-        room.users = room.users.filter((user) => user.id !== userId);
-
-        // Clean up votes
-        if (room.votes) {
-          delete room.votes[userId];
-          for (let voterId in room.votes) {
-            if (room.votes[voterId] === userId) delete room.votes[voterId];
-          }
-          io.to(currentRoomId).emit("update votes", room.votes);
-        }
-
-        io.to(currentRoomId).emit("user left", userId);
       }
 
-      room.lastActiveTime = Date.now();
-      socket.leave(currentRoomId);
-      updateRoom(currentRoomId);
+      // Clean up votes involving this user
+      if (room.votes) {
+        delete room.votes[userId];
+        for (let voterId in room.votes) {
+          if (room.votes[voterId] === userId) {
+            delete room.votes[voterId];
+          }
+        }
+        if (Object.keys(room.votes).length > 0) {
+          io.to(roomId).emit("update votes", room.votes);
+        }
+      }
 
-      // Delete room if completely empty (no users AND no spectators)
-      if (
-        room.users.length === 0 &&
-        (!room.spectators || room.spectators.length === 0)
-      ) {
-        await startRoomDeletionTimer(currentRoomId);
+      if (room.users.length !== initialUserCount) {
+        roomsModified.push(roomId);
+        room.lastActiveTime = Date.now();
+
+        // Emit user left event
+        io.to(roomId).emit("user left", userId);
+
+        // Update room state
+        updateRoom(roomId);
+
+        // Schedule room deletion if empty
+        if (
+          room.users.length === 0 &&
+          (!room.spectators || room.spectators.length === 0)
+        ) {
+          startRoomDeletionTimer(roomId);
+        }
+
+        console.log(
+          `Removed user ${userId} from room ${roomId} (comprehensive cleanup)`
+        );
       }
     }
 
+    if (roomsModified.length > 0) {
+      updateLobby();
+      debouncedSaveRooms().catch((err) =>
+        console.error("Failed to save rooms after comprehensive cleanup:", err)
+      );
+    }
+
+    return roomsModified;
+  } catch (error) {
+    console.error(
+      `Error in findAndRemoveUserFromAllRooms for user ${userId}:`,
+      error
+    );
+    return [];
+  }
+}
+
+/**
+ * Check if a user is actually connected via any active socket
+ */
+function isUserActuallyConnected(userId) {
+  try {
+    const connectedSockets = Array.from(io.sockets.sockets.values());
+    return connectedSockets.some((socket) => {
+      const sessionUserId = socket.handshake.session?.userId;
+      return sessionUserId === userId && socket.connected;
+    });
+  } catch (error) {
+    console.error(`Error checking if user ${userId} is connected:`, error);
+    return false;
+  }
+}
+
+/**
+ * Find all sockets for a given user ID
+ */
+function findSocketsForUser(userId) {
+  try {
+    const connectedSockets = Array.from(io.sockets.sockets.values());
+    return connectedSockets.filter((socket) => {
+      const sessionUserId = socket.handshake.session?.userId;
+      return sessionUserId === userId && socket.connected;
+    });
+  } catch (error) {
+    console.error(`Error finding sockets for user ${userId}:`, error);
+    return [];
+  }
+}
+
+/**
+ * Comprehensive ghost user cleanup - finds users in rooms who aren't actually connected
+ */
+async function cleanupGhostUsers() {
+  let ghostUsersRemoved = 0;
+
+  try {
+    const allUserIds = new Set();
+
+    // Collect all user IDs from all rooms
+    for (const [roomId, room] of rooms) {
+      if (room.users && Array.isArray(room.users)) {
+        room.users.forEach((user) => allUserIds.add(user.id));
+      }
+      if (room.spectators && Array.isArray(room.spectators)) {
+        room.spectators.forEach((spec) => allUserIds.add(spec.id));
+      }
+    }
+
+    // Check each user to see if they're actually connected
+    for (const userId of allUserIds) {
+      if (!isUserActuallyConnected(userId)) {
+        console.log(`Detected ghost user: ${userId}, removing from all rooms`);
+        const modifiedRooms = findAndRemoveUserFromAllRooms(userId);
+        if (modifiedRooms.length > 0) {
+          ghostUsersRemoved++;
+        }
+
+        // Clean up associated data
+        clearAFKTimers(userId);
+        userMessageBuffers.delete(userId);
+        users.delete(userId);
+
+        if (typingTimeouts.has(userId)) {
+          clearTimeout(typingTimeouts.get(userId));
+          typingTimeouts.delete(userId);
+        }
+
+        if (batchProcessingTimers.has(userId)) {
+          clearTimeout(batchProcessingTimers.get(userId));
+          batchProcessingTimers.delete(userId);
+          pendingChatUpdates.delete(userId);
+        }
+      }
+    }
+
+    if (ghostUsersRemoved > 0) {
+      console.log(
+        `Ghost user cleanup completed: removed ${ghostUsersRemoved} ghost users`
+      );
+    }
+
+    return ghostUsersRemoved;
+  } catch (error) {
+    console.error("Error during ghost user cleanup:", error);
+    return 0;
+  }
+}
+
+// ============================================================================
+// ENHANCED ROOM OPERATIONS
+// ============================================================================
+
+async function leaveRoom(socket, userId) {
+  try {
+    // Get room ID from socket first, but also search comprehensively
+    const currentRoomId = socket ? socket.roomId : null;
+
+    clearAFKTimers(userId);
+
+    // If we have a specific room ID, clean up that room first
+    if (currentRoomId) {
+      const room = rooms.get(currentRoomId);
+      if (room) {
+        if (socket && socket.isSpectator) {
+          // Remove from spectators
+          if (room.spectators) {
+            const initialSpectatorCount = room.spectators.length;
+            room.spectators = room.spectators.filter(
+              (spec) => spec.id !== userId
+            );
+            if (room.spectators.length !== initialSpectatorCount) {
+              io.to(currentRoomId).emit("spectator left", {
+                userId,
+                spectatorCount: room.spectators.length,
+              });
+            }
+          }
+        } else {
+          // Remove user from room (existing logic)
+          const initialUserCount = room.users.length;
+          room.users = room.users.filter((user) => user.id !== userId);
+
+          if (room.users.length !== initialUserCount) {
+            // Clean up votes
+            if (room.votes) {
+              delete room.votes[userId];
+              for (let voterId in room.votes) {
+                if (room.votes[voterId] === userId) delete room.votes[voterId];
+              }
+              io.to(currentRoomId).emit("update votes", room.votes);
+            }
+
+            io.to(currentRoomId).emit("user left", userId);
+          }
+        }
+
+        room.lastActiveTime = Date.now();
+        if (socket) {
+          socket.leave(currentRoomId);
+        }
+        updateRoom(currentRoomId);
+
+        // Delete room if completely empty (no users AND no spectators)
+        if (
+          room.users.length === 0 &&
+          (!room.spectators || room.spectators.length === 0)
+        ) {
+          await startRoomDeletionTimer(currentRoomId);
+        }
+      }
+    }
+
+    // IMPORTANT: Also do comprehensive cleanup in case the user is in other rooms
+    // This catches cases where socket.roomId is incorrect or null
+    const additionalRoomsModified = findAndRemoveUserFromAllRooms(userId);
+
     // Clean up session
-    if (socket.handshake.session) {
+    if (socket && socket.handshake.session) {
       if (
         socket.handshake.session.validatedRooms &&
+        currentRoomId &&
         socket.handshake.session.validatedRooms[currentRoomId]
       ) {
         delete socket.handshake.session.validatedRooms[currentRoomId];
@@ -1468,14 +1667,37 @@ async function leaveRoom(socket, userId) {
       );
     }
 
+    // Clean up socket state
+    if (socket) {
+      socket.roomId = null;
+      socket.isSpectator = false;
+      socket.join("lobby");
+    }
+
+    // Clean up user data
     userMessageBuffers.delete(userId);
-    socket.roomId = null;
-    socket.isSpectator = false;
-    socket.join("lobby");
+
     updateLobby();
     await debouncedSaveRooms();
+
+    console.log(
+      `User ${userId} left room cleanup completed. Current room: ${currentRoomId}, Additional rooms: ${additionalRoomsModified.length}`
+    );
   } catch (err) {
-    console.error("Error in leaveRoom:", err);
+    console.error(`Error in leaveRoom for user ${userId}:`, err);
+
+    // Emergency fallback - try to remove user from all rooms
+    try {
+      findAndRemoveUserFromAllRooms(userId);
+      userMessageBuffers.delete(userId);
+      clearAFKTimers(userId);
+    } catch (fallbackErr) {
+      console.error(
+        `Emergency cleanup also failed for user ${userId}:`,
+        fallbackErr
+      );
+    }
+
     if (socket && typeof socket.emit === "function") {
       socket.emit(
         "error",
@@ -2172,6 +2394,17 @@ app.post(
 // ============================================================================
 io.on("connection", (socket) => {
   const clientIp = socket.clientIp || socket.handshake.address;
+
+  // NEW: Connection validation to prevent ghost states
+  socket.on("connect", () => {
+    console.log(`Socket ${socket.id} connected from ${clientIp}`);
+  });
+
+  // NEW: Add heartbeat mechanism
+  socket.isAlive = true;
+  socket.on("pong", () => {
+    socket.isAlive = true;
+  });
 
   // Safe wrapper for socket handlers
   function safe(fn) {
@@ -3051,27 +3284,87 @@ io.on("connection", (socket) => {
   socket.on(
     "disconnect",
     safe(async (reason) => {
+      console.log(
+        `Socket ${socket.id} disconnecting. Reason: ${reason}. IP: ${socket.clientIp}`
+      );
+
       const userId = socket.handshake.session
         ? socket.handshake.session.userId
         : null;
 
       if (userId) {
-        clearAFKTimers(userId);
-        await leaveRoom(socket, userId);
-        userMessageBuffers.delete(userId);
+        try {
+          // Clear timers first
+          clearAFKTimers(userId);
 
-        if (typingTimeouts.has(userId)) {
-          clearTimeout(typingTimeouts.get(userId));
-          typingTimeouts.delete(userId);
+          // Check if user has other active connections
+          const userSockets = findSocketsForUser(userId);
+          const otherActiveSockets = userSockets.filter(
+            (s) => s.id !== socket.id && s.connected
+          );
+
+          if (otherActiveSockets.length === 0) {
+            // This is the user's last connection, do full cleanup
+            console.log(
+              `Last connection for user ${userId}, doing full cleanup`
+            );
+            await leaveRoom(socket, userId);
+
+            // Clean up additional data
+            if (typingTimeouts.has(userId)) {
+              clearTimeout(typingTimeouts.get(userId));
+              typingTimeouts.delete(userId);
+            }
+
+            if (batchProcessingTimers.has(userId)) {
+              clearTimeout(batchProcessingTimers.get(userId));
+              batchProcessingTimers.delete(userId);
+              pendingChatUpdates.delete(userId);
+            }
+
+            users.delete(userId);
+            userMessageBuffers.delete(userId);
+          } else {
+            console.log(
+              `User ${userId} has ${otherActiveSockets.length} other active connections, skipping full cleanup`
+            );
+            // Just remove this socket from the room, but don't remove user entirely
+            if (socket.roomId) {
+              socket.leave(socket.roomId);
+            }
+          }
+        } catch (error) {
+          console.error(
+            `Error during disconnect cleanup for user ${userId}:`,
+            error
+          );
+
+          // Emergency cleanup - try to remove user anyway
+          try {
+            findAndRemoveUserFromAllRooms(userId);
+            clearAFKTimers(userId);
+            userMessageBuffers.delete(userId);
+            users.delete(userId);
+          } catch (emergencyError) {
+            console.error(
+              `Emergency disconnect cleanup failed for user ${userId}:`,
+              emergencyError
+            );
+          }
         }
-
-        if (batchProcessingTimers.has(userId)) {
-          clearTimeout(batchProcessingTimers.get(userId));
-          batchProcessingTimers.delete(userId);
-          pendingChatUpdates.delete(userId);
+      } else {
+        console.warn(`Socket ${socket.id} disconnected without valid userId`);
+        // Try to clean up any rooms this socket might have been in
+        if (socket.roomId) {
+          try {
+            socket.leave(socket.roomId);
+          } catch (error) {
+            console.error(
+              `Error leaving room during disconnect without userId:`,
+              error
+            );
+          }
         }
-
-        users.delete(userId);
       }
 
       // Update IP connection tracking
@@ -3082,9 +3375,7 @@ io.on("connection", (socket) => {
         else ipConnections.delete(socket.clientIp);
       }
 
-      console.log(
-        `Socket ${socket.id} disconnected. Reason: ${reason}. IP: ${socket.clientIp}`
-      );
+      console.log(`Socket ${socket.id} disconnect cleanup completed`);
     })
   );
 
@@ -3213,15 +3504,70 @@ setInterval(() => {
 // Enhanced room cleanup with statistics
 setInterval(async () => {
   try {
-    const deletedCount = await cleanupEmptyRooms();
-    if (deletedCount > 0) {
-      const stats = getRoomStatistics();
+    const activeUserIds = new Set();
+    for (const [, room] of rooms.entries()) {
+      if (Array.isArray(room.users)) {
+        for (const user of room.users) {
+          activeUserIds.add(user.id);
+        }
+      }
+      if (Array.isArray(room.spectators)) {
+        for (const spec of room.spectators) {
+          activeUserIds.add(spec.id);
+        }
+      }
+    }
+
+    // Clean up message buffers for inactive users
+    for (const bufferId of userMessageBuffers.keys()) {
+      if (!activeUserIds.has(bufferId)) {
+        userMessageBuffers.delete(bufferId);
+      }
+    }
+
+    // Clean up typing timeouts
+    for (const timeoutId of typingTimeouts.keys()) {
+      if (!activeUserIds.has(timeoutId)) {
+        clearTimeout(typingTimeouts.get(timeoutId));
+        typingTimeouts.delete(timeoutId);
+      }
+    }
+
+    // Clean up AFK timers
+    for (const userId of afkTimers.keys()) {
+      if (!activeUserIds.has(userId)) {
+        clearAFKTimers(userId);
+      }
+    }
+
+    // Clean up batch processing timers
+    for (const userId of batchProcessingTimers.keys()) {
+      if (!activeUserIds.has(userId)) {
+        clearTimeout(batchProcessingTimers.get(userId));
+        batchProcessingTimers.delete(userId);
+        pendingChatUpdates.delete(userId);
+      }
+    }
+
+    console.log(
+      `Resource cleanup completed. Active users: ${activeUserIds.size}`
+    );
+  } catch (error) {
+    console.error("Error during resource cleanup:", error);
+  }
+}, 300000); // Every 5 minutes
+
+// NEW: Ghost user cleanup interval
+setInterval(async () => {
+  try {
+    const ghostUsersRemoved = await cleanupGhostUsers();
+    if (ghostUsersRemoved > 0) {
       console.log(
-        `Cleaned up ${deletedCount} empty rooms. Current: ${stats.totalRooms}/${stats.currentLimit} rooms, ${stats.totalUsers} users`
+        `Periodic ghost user cleanup: removed ${ghostUsersRemoved} ghost users`
       );
     }
-  } catch (err) {
-    console.error("Error during room cleanup:", err);
+  } catch (error) {
+    console.error("Error during periodic ghost user cleanup:", error);
   }
 }, 600000); // Every 10 minutes
 
@@ -3292,6 +3638,31 @@ setInterval(() => {
     console.error("Error in server monitor:", err);
   }
 }, 120000); // Every 2 minutes
+
+setInterval(() => {
+  try {
+    const connectedSockets = Array.from(io.sockets.sockets.values());
+    let deadConnections = 0;
+
+    connectedSockets.forEach((socket) => {
+      if (socket.isAlive === false) {
+        console.log(`Terminating dead socket: ${socket.id}`);
+        deadConnections++;
+        socket.terminate();
+        return;
+      }
+
+      socket.isAlive = false;
+      socket.ping();
+    });
+
+    if (deadConnections > 0) {
+      console.log(`Heartbeat: terminated ${deadConnections} dead connections`);
+    }
+  } catch (error) {
+    console.error("Error during heartbeat check:", error);
+  }
+}, 30000); // Every 30 seconds
 
 // ============================================================================
 // SERVER STARTUP
