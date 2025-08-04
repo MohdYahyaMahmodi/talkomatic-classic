@@ -1,0 +1,205 @@
+* {
+    font-family: monospace;
+}
+
+body {
+    background-color: #202020;
+}
+
+#back {
+    font-weight: bolder;
+    color: #ff9800;
+    font-size: 2vw;
+    text-decoration: none;
+}
+
+#buttonMenu {
+    display: flex;
+    flex-direction: row;
+    width: calc(100% - 2 * 20px);
+    padding: 20px;
+    gap: 10px;
+    height: 50px;
+}
+
+#buttonMenu button {
+    flex: 1;
+    background: transparent;
+    border: 2px solid white;
+    border-radius: 20px;
+    color: white;
+    font-size: 2vw;
+    box-shadow: none;
+    text-shadow: none;
+}
+
+@keyframes curatedThemesHover {
+    from {
+        box-shadow: none;
+        text-shadow: none;
+        background: transparent;
+    }
+
+    to {
+        box-shadow: 0 0 10px #ff9800aa, 0 0 20px #ff980066;
+        text-shadow: 0 0 10px #ff9800aa, 0 0 20px #ff980066;
+        background: #ff980088;
+    }
+}
+
+#curatedThemesButton:hover {
+    animation: curatedThemesHover 1s ease-in-out;
+    box-shadow: 0 0 10px #ff9800aa, 0 0 20px #ff980066;
+    text-shadow: 0 0 10px #ff9800aa, 0 0 20px #ff980066;
+    background: #ff980088;
+}
+
+#curatedThemes {
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 1vw;
+    margin: 1vw;
+    padding: 1vw;
+}
+
+#searchTheme {
+    background: transparent;
+    font-family: monospace;
+    border-radius: 1vw;
+    font-size: 2.5vw;
+    border: 2px solid #444444;
+    color: #444444;
+    width: 94vw;
+    height: 2.5vw;
+    padding: 5px;
+    overflow: hidden;
+}
+
+#themeGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+
+@keyframes themeWidgetHover {
+    from {
+        background-position: 200% 0%;
+    }
+
+    50% {
+        background-position: 125% 100%;
+    }
+
+    to {
+        background-position: 50% 200%;
+    }
+}
+.themeWidget {
+    margin: 0.5vw;
+    padding: 20px 0.5vw;
+    border: 1px solid white;
+    border-radius: 0.5vw;
+    background: linear-gradient(45deg, #ff980033, #ff980007, transparent);
+    background-size: 400% 400%;
+    background-position: 200% 0%;
+}
+.themeWidget:hover {
+    animation: themeWidgetHover 1.5s ease-out;
+    background-position: 50% 200%;
+}
+
+.officialTheme {
+    color: #ff9800;
+    padding: 5px;
+    font-weight: bolder;
+    margin-right: 0.5vw;
+    border: 2px solid #ff9800;
+    border-radius: 5px;
+    font-size: 1.3vw;
+    background: transparent;
+}
+@keyframes officialThemeHover {
+    from {
+        background: transparent;
+    }
+
+    to {
+        background: #ff980033;
+    }
+}
+.officialTheme:hover {
+    animation: officialThemeHover 1s ease-in-out;
+    background: #ff980033;
+}
+
+.userTheme {
+    color: #7289da;
+    padding: 5px;
+    font-weight: bolder;
+    margin-right: 0.5vw;
+    border: 2px solid #7289da;
+    border-radius: 5px;
+    font-size: 1.3vw;
+    background: transparent;
+}
+@keyframes userThemeHover {
+    from {
+        background: transparent;
+    }
+
+    to {
+        background: #7289da33;
+    }
+}
+.userTheme:hover {
+    animation: userThemeHover 1s ease-in-out;
+    background: #7289da33;
+}
+
+.themeName {
+    color: white;
+    font-size: 1.3vw;
+    font-style: italic;
+}
+
+.themeAuthor::before {
+    content: "by ";
+}
+.themeAuthor {
+    font-size: 1.5vw;
+    color: #444444;
+}
+
+.themeThumbnail {
+    margin-top: 1vw;
+    width: 28vw;
+}
+
+#importTheme {
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 1vw;
+    margin: 1vw;
+    padding: 1vw;
+    text-align: center;
+}
+
+#disclaimer {
+    color: red;
+    font-weight: bolder;
+    font-size: 2.5vw;
+}
+
+#openTheme {
+    background-color: #222222;
+    padding: 1.5vw;
+    border-radius: 1.5vw;
+}
+
+#openTheme * {
+    font-size: 3vw;
+    border: none;
+    color: white;
+}
+
+#openThemeButton {
+    background-color: #333333;
+}

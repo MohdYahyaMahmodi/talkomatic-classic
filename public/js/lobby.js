@@ -252,6 +252,24 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => {
         showDiscordInviteNotification();
     }, 2000);
+
+    // Create a style element to change the css corresponding to our selected theme
+    // in local storage if there is one
+    const theme = localStorage.getItem("theme");
+    if (theme === null || theme === "") {
+        // Theme is not set, return
+        return;
+    }
+    const themeOverrideStyleElement = document.createElement("style");
+    // Append style element to head
+    (document.head || document.getElementsByTagName('head')[0])
+    .appendChild(themeOverrideStyleElement);
+    themeOverrideStyleElement.type = "text/css";
+    if (themeOverrideStyleElement.styleSheet) {
+        themeOverrideStyleElement.styleSheet.cssText = theme;
+    } else {
+        themeOverrideStyleElement.appendChild(document.createTextNode(theme));
+    }
 });
 
 // Run initial setup
