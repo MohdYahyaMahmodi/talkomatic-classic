@@ -4,6 +4,7 @@
 
 body {
     background-color: #202020;
+    background: linear-gradient(135deg, #42280055 25%, transparent 25%) -13px 0/ 26px 26px, linear-gradient(225deg, #422800 25%, transparent 25%) -13px 0/ 26px 26px, linear-gradient(315deg, #42280055 25%, transparent 25%) 0px 0/ 26px 26px, linear-gradient(45deg, #422800 25%, #202020 25%) 0px 0/ 26px 26px;
 }
 
 #back {
@@ -24,7 +25,7 @@ body {
 
 #buttonMenu button {
     flex: 1;
-    background: transparent;
+    background: #20202060;
     border: 2px solid white;
     border-radius: 20px;
     color: white;
@@ -80,31 +81,19 @@ body {
 }
 
 
-@keyframes themeWidgetHover {
-    from {
-        background-position: 200% 0%;
-    }
-
-    50% {
-        background-position: 125% 100%;
-    }
-
-    to {
-        background-position: 50% 200%;
-    }
-}
 .themeWidget {
     margin: 0.5vw;
     padding: 20px 0.5vw;
     border: 1px solid white;
     border-radius: 0.5vw;
-    background: linear-gradient(45deg, #ff980033, #ff980007, transparent);
-    background-size: 400% 400%;
-    background-position: 200% 0%;
 }
-.themeWidget:hover {
-    animation: themeWidgetHover 1.5s ease-out;
-    background-position: 50% 200%;
+.themeWidget:hover:has(.officialTheme) {
+    transition: background-color 2s ease-in-out;
+    background-color: #ff980033;
+}
+.themeWidget:hover:has(.userTheme) {
+    transition: background-color 2s ease-in-out;
+    background-color: #7289da33;
 }
 
 .officialTheme {
@@ -180,6 +169,7 @@ body {
     margin: 1vw;
     padding: 1vw;
     text-align: center;
+    color: white;
 }
 
 #disclaimer {
