@@ -11,9 +11,7 @@ let currentUserId = "";
 let currentRoomLayout = "horizontal";
 let lastSentMessage = "";
 let currentRoomName = "";
-let chatInput = null;
-let isSpectator = false;
-let spectatorCount = 0;
+let chatInput = null; // Will hold reference to current user's input div
 const mutedUsers = new Set();
 const storedMessagesForMutedUsers = new Map();
 
@@ -1337,18 +1335,15 @@ async function initRoom() {
 
   const urlParams = new URLSearchParams(window.location.search);
   const roomIdFromUrl = urlParams.get("roomId");
+
+  // Check if there's an access code in the URL (from the lobby redirect)
   const accessCodeFromUrl = urlParams.get("accessCode");
-  const spectatorMode = urlParams.get("spectator") === "true"; // NEW: Check for spectator flag
 
   if (roomIdFromUrl) {
     currentRoomId = roomIdFromUrl;
-    isSpectator = spectatorMode; // NEW: Set spectator mode
 
-    if (spectatorMode) {
-      joinRoomAsSpectator(roomIdFromUrl, accessCodeFromUrl);
-    } else {
-      joinRoom(roomIdFromUrl, accessCodeFromUrl);
-    }
+    // If we have an access code from the URL, use it
+    joinRoom(roomIdFromUrl, accessCodeFromUrl);
   } else {
     console.error("No room ID provided in URL");
     showInfoModal("No room ID provided. Redirecting to lobby.", () => {
@@ -1356,119 +1351,6 @@ async function initRoom() {
     });
     return;
   }
-}
-
-// ADD NEW FUNCTION: joinRoomAsSpectator
-function joinRoomAsSpectator(roomId, accessCode = null) {
-  const data = { roomId, accessCode };
-  socket.emit("join room as spectator", data);
-}
-
-// ADD NEW SOCKET EVENT HANDLER: "room joined as spectator"
-socket.on("room joined as spectator", (data) => {
-  currentUserId = data.userId;
-  currentRoomId = data.roomId;
-  currentUsername = data.username;
-  currentLocation = data.location;
-  currentRoomLayout = data.layout || currentRoomLayout;
-  currentRoomName = data.roomName;
-  isSpectator = true; // NEW: Set spectator flag
-  spectatorCount = data.spectators ? data.spectators.length : 0;
-
-  updateRoomInfo(data);
-  updateRoomUI(data);
-  updateSpectatorUI(); // NEW: Setup spectator-specific UI
-
-  if (data.votes) {
-    updateVotesUI(data.votes);
-  }
-  if (data.currentMessages) {
-    updateCurrentMessages(data.currentMessages);
-  }
-  updateInviteLink();
-
-  // Create emotes dropdown (but disable it for spectators)
-  createEmotesDropdown();
-  if (isSpectator) {
-    const emotesButton = document.getElementById("emotesButton");
-    if (emotesButton) {
-      emotesButton.disabled = true;
-      emotesButton.style.opacity = "0.5";
-      emotesButton.style.cursor = "not-allowed";
-    }
-  }
-});
-
-// ADD NEW FUNCTION: updateSpectatorUI
-function updateSpectatorUI() {
-  if (!isSpectator) return;
-
-  // Update navbar to show spectator status
-  const roomTypeEl =
-    document.querySelector(".room-type") ||
-    document.getElementById("emotesButton");
-  if (roomTypeEl.tagName === "BUTTON") {
-    // If emotes button exists, add spectator indicator next to it
-    const spectatorIndicator = document.createElement("div");
-    spectatorIndicator.className = "spectator-indicator";
-    spectatorIndicator.textContent = "👁️ Spectating";
-    spectatorIndicator.style.padding = "5px 10px";
-    spectatorIndicator.style.backgroundColor = "#000"; // black background
-    spectatorIndicator.style.color = "#fff"; // white text
-    spectatorIndicator.style.borderRadius = "5px"; //  rounded
-    spectatorIndicator.style.border = "1px solid #ff9800"; // orange border
-    spectatorIndicator.style.fontWeight = "bold";
-    spectatorIndicator.style.fontSize = "12px";
-    roomTypeEl.parentNode.insertBefore(spectatorIndicator, roomTypeEl);
-  } else {
-    roomTypeEl.textContent = "👁️ Spectating";
-    roomTypeEl.style.backgroundColor = "#000"; // black background
-    roomTypeEl.style.color = "#fff"; // white text
-    roomTypeEl.style.borderRadius = "8px"; // more rounded
-    roomTypeEl.style.border = "2px solid orange"; // orange border
-  }
-
-  // Add spectator count display
-  const secondNavbar = document.querySelector(".second-navbar");
-  if (secondNavbar && spectatorCount > 0) {
-    const spectatorCountEl = document.createElement("div");
-    spectatorCountEl.className = "spectator-count";
-    spectatorCountEl.textContent = `${spectatorCount} watching`;
-    spectatorCountEl.style.fontSize = "12px";
-    spectatorCountEl.style.color = "#ffeb3b";
-    spectatorCountEl.style.fontWeight = "bold";
-    secondNavbar.appendChild(spectatorCountEl);
-  }
-
-  // Disable all interactive elements
-  disableInteractiveElements();
-}
-
-// ADD NEW FUNCTION: disableInteractiveElements
-function disableInteractiveElements() {
-  // Disable any input fields that might exist
-  document.querySelectorAll(".chat-input").forEach((input) => {
-    if (input.contentEditable) {
-      input.contentEditable = false;
-      input.style.opacity = "0.6";
-      input.style.cursor = "not-allowed";
-      input.style.backgroundColor = "#000000";
-    }
-  });
-
-  // Disable vote buttons
-  document.querySelectorAll(".vote-button").forEach((button) => {
-    button.disabled = true;
-    button.style.opacity = "0.5";
-    button.style.cursor = "not-allowed";
-  });
-
-  // Disable mute buttons (spectators shouldn't be able to mute)
-  document.querySelectorAll(".mute-button").forEach((button) => {
-    button.disabled = true;
-    button.style.opacity = "0.5";
-    button.style.cursor = "not-allowed";
-  });
 }
 
 function joinRoom(roomId, accessCode = null) {
@@ -1505,28 +1387,6 @@ socket.on("access code required", () => {
 
 socket.on("update votes", (votes) => {
   updateVotesUI(votes);
-});
-
-socket.on("spectator joined", (data) => {
-  spectatorCount = data.spectatorCount;
-  // Update spectator count display
-  const spectatorCountEl = document.querySelector(".spectator-count");
-  if (spectatorCountEl) {
-    spectatorCountEl.textContent = `${spectatorCount} watching`;
-  }
-});
-
-socket.on("spectator left", (data) => {
-  spectatorCount = data.spectatorCount;
-  // Update spectator count display
-  const spectatorCountEl = document.querySelector(".spectator-count");
-  if (spectatorCountEl) {
-    if (spectatorCount > 0) {
-      spectatorCountEl.textContent = `${spectatorCount} watching`;
-    } else {
-      spectatorCountEl.remove();
-    }
-  }
 });
 
 socket.on("kicked", () => {
@@ -1633,23 +1493,8 @@ socket.on("user left", (userId) => {
 // Modified room update to preserve focus and input
 socket.on("room update", (roomData) => {
   currentRoomLayout = roomData.layout || currentRoomLayout;
-
-  // Update spectator count
-  if (roomData.spectators) {
-    spectatorCount = roomData.spectators.length;
-    const spectatorCountEl = document.querySelector(".spectator-count");
-    if (spectatorCountEl) {
-      if (spectatorCount > 0) {
-        spectatorCountEl.textContent = `${spectatorCount} watching`;
-      } else {
-        spectatorCountEl.remove();
-      }
-    }
-  }
-
   updateRoomInfo(roomData);
 
-  // [Keep all existing room update logic...]
   // Track current focus and input values
   const activeElement = document.activeElement;
   const inputValues = new Map();
@@ -1661,6 +1506,7 @@ socket.on("room update", (roomData) => {
     const input = row.querySelector(".chat-input");
     if (input) {
       inputValues.set(userId, getPlainText(input));
+
       if (activeElement === input) {
         const selection = window.getSelection();
         if (selection.rangeCount > 0) {
@@ -1701,10 +1547,13 @@ socket.on("room update", (roomData) => {
       `.chat-row[data-user-id="${userId}"] .chat-input`
     );
     if (chatDiv) {
-      if (userId === currentUserId && !isSpectator) {
+      if (userId === currentUserId) {
+        // Restore content
         chatDiv.innerHTML = "";
         chatDiv.textContent = value;
         replaceEmotes(chatDiv);
+
+        // Restore focus if needed
         if (
           activeElement &&
           activeElement.classList.contains("chat-input") &&
@@ -1766,47 +1615,36 @@ function createUserRow(user, container) {
   muteButton.classList.add("mute-button");
   muteButton.innerHTML = "🔊";
   muteButton.style.display = "none";
-
-  // Disable mute button for spectators
-  if (isSpectator) {
-    muteButton.disabled = true;
-    muteButton.style.opacity = "0.5";
-  } else {
-    muteButton.addEventListener("click", () => {
-      if (mutedUsers.has(user.id)) {
-        // Unmute
-        mutedUsers.delete(user.id);
-        muteButton.innerHTML = "🔊";
-        muteButton.classList.remove("muted");
-        const chatInput = chatRow.querySelector(".chat-input");
-        if (chatInput) chatInput.style.opacity = "1";
-        const queued = storedMessagesForMutedUsers.get(user.id);
-        if (queued && queued.length) {
-          queued.forEach((data) => displayChatMessage(data));
-          storedMessagesForMutedUsers.delete(user.id);
-        }
-      } else {
-        // Mute
-        mutedUsers.add(user.id);
-        muteButton.innerHTML = "🔇";
-        muteButton.classList.add("muted");
-        const chatInput = chatRow.querySelector(".chat-input");
-        if (chatInput) chatInput.style.opacity = "0.3";
+  muteButton.addEventListener("click", () => {
+    if (mutedUsers.has(user.id)) {
+      // Unmute
+      mutedUsers.delete(user.id);
+      muteButton.innerHTML = "🔊";
+      muteButton.classList.remove("muted");
+      const chatInput = chatRow.querySelector(".chat-input");
+      if (chatInput) chatInput.style.opacity = "1";
+      const queued = storedMessagesForMutedUsers.get(user.id);
+      if (queued && queued.length) {
+        queued.forEach((data) => displayChatMessage(data));
+        storedMessagesForMutedUsers.delete(user.id);
       }
-    });
-  }
+    } else {
+      // Mute
+      mutedUsers.add(user.id);
+      muteButton.innerHTML = "🔇";
+      muteButton.classList.add("muted");
+      const chatInput = chatRow.querySelector(".chat-input");
+      if (chatInput) chatInput.style.opacity = "0.3";
+    }
+  });
 
   // Vote button - now has a consistent style for all users
   const voteButton = document.createElement("button");
   voteButton.classList.add("vote-button");
   voteButton.innerHTML = "👎 0";
   voteButton.style.display = "none";
-
-  // Disable vote button for spectators and add click handler for non-spectators
-  if (isSpectator) {
-    voteButton.disabled = true;
-    voteButton.style.opacity = "0.5";
-  } else if (user.id !== currentUserId) {
+  // Only add click handler if not self
+  if (user.id !== currentUserId) {
     voteButton.addEventListener("click", () => {
       socket.emit("vote", { targetUserId: user.id });
     });
@@ -1825,11 +1663,7 @@ function createUserRow(user, container) {
   // Create contenteditable div for input
   const contentEditableDiv = document.createElement("div");
   contentEditableDiv.classList.add("chat-input");
-
-  // NEW: Disable input for spectators and non-current users
-  const canEdit = !isSpectator && user.id === currentUserId;
-  contentEditableDiv.contentEditable = canEdit;
-
+  contentEditableDiv.contentEditable = user.id === currentUserId;
   contentEditableDiv.style.width = "100%";
   contentEditableDiv.style.height = "100%";
   contentEditableDiv.style.backgroundColor = "black";
@@ -1847,27 +1681,21 @@ function createUserRow(user, container) {
   contentEditableDiv.style.zIndex = "2";
   contentEditableDiv.spellcheck = false;
 
-  // NEW: Style differently for spectators
-  if (isSpectator || user.id !== currentUserId) {
-    contentEditableDiv.style.opacity = isSpectator ? "0.8" : "1";
-    contentEditableDiv.style.cursor = isSpectator ? "not-allowed" : "default";
-    if (isSpectator && user.id === currentUserId) {
-      contentEditableDiv.style.backgroundColor = "#000000";
-    }
-  }
-
-  // Set up for current user (only if not spectator)
-  if (user.id === currentUserId && !isSpectator) {
+  // Set up for current user
+  if (user.id === currentUserId) {
     chatInput = contentEditableDiv;
 
-    // [Keep all existing event listeners for input, keydown, etc.]
     // Prevent paste with formatting
     contentEditableDiv.addEventListener("paste", (e) => {
       e.preventDefault();
+
+      // Get plain text from clipboard
       let text = "";
       if (e.clipboardData && e.clipboardData.getData) {
         text = e.clipboardData.getData("text/plain");
       }
+
+      // Insert text at cursor position
       document.execCommand("insertText", false, text);
     });
 
@@ -1875,27 +1703,39 @@ function createUserRow(user, container) {
     contentEditableDiv.addEventListener("input", (e) => {
       const emotePrefixInfo = findEmoteAtCursor();
       if (emotePrefixInfo) {
-        currentEmoteInfo = emotePrefixInfo;
+        currentEmoteInfo = emotePrefixInfo; // Save this for later use
         showAutocomplete(emotePrefixInfo.prefix);
       } else {
         hideAutocomplete();
       }
 
+      // Only check for complete emote patterns to improve performance
       const text = getPlainText(contentEditableDiv);
+
+      // Only check for emotes if there's a colon and it contains pattern ":word:"
       if (text.includes(":") && /:([\w]+):/.test(text)) {
+        // Detect and replace any emote codes
         replaceEmotes(contentEditableDiv);
       }
+
+      // Update the sent message
       updateSentMessage();
     });
 
     // Handle keydown for special keys
     contentEditableDiv.addEventListener("keydown", (e) => {
+      // Handle emote navigation if autocomplete is active
       if (handleEmoteNavigation(e)) {
         return;
       }
+
+      // Do not interfere with keyboard shortcuts
       if (e.ctrlKey || e.metaKey) {
+        // Let normal keyboard shortcuts work (like Ctrl+A)
         return;
       }
+
+      // Limit content length (but allow selection/navigation keys)
       if (
         getPlainText(contentEditableDiv).length >= MAX_MESSAGE_LENGTH &&
         ![
@@ -1912,15 +1752,18 @@ function createUserRow(user, container) {
       }
     });
 
+    // Make sure chat input keeps focus when clicking on it
     contentEditableDiv.addEventListener("mousedown", (e) => {
       e.stopPropagation();
     });
 
+    // Make sure we can type immediately
     setTimeout(() => {
       contentEditableDiv.focus();
     }, 0);
   }
 
+  // Add to DOM
   chatInputWrapper.appendChild(contentEditableDiv);
   chatRow.appendChild(userInfoSpan);
   chatRow.appendChild(chatInputWrapper);
@@ -2152,11 +1995,11 @@ function adjustVoteButtonVisibility() {
     const userId = row.dataset.userId;
     const voteButton = row.querySelector(".vote-button");
     if (voteButton) {
-      // Hide vote buttons for spectators or show them based on user count
-      if (isSpectator || userCount < 3 || userId === currentUserId) {
-        voteButton.style.display = "none";
-      } else {
+      // Only show vote buttons on other users (not yourself) when there are 3+ users
+      if (userCount >= 3 && userId !== currentUserId) {
         voteButton.style.display = "inline-block";
+      } else {
+        voteButton.style.display = "none";
       }
     }
   });
@@ -2167,7 +2010,6 @@ function adjustMuteButtonVisibility() {
     const userId = row.dataset.userId;
     const muteButton = row.querySelector(".mute-button");
     if (muteButton && userId !== currentUserId) {
-      // Show mute buttons even for spectators (they can still mute to hide distracting content)
       muteButton.style.display = "inline-block";
       if (mutedUsers.has(userId)) {
         muteButton.innerHTML = "🔇";
