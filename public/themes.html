@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- Head Section: Metadata and External Resources -->
+<head>
+    <!-- Specifies the document's character encoding as UTF-8 -->
+    <meta charset="UTF-8" />
+    
+    <!-- Ensures proper scaling on mobile devices by setting the viewport properties -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Title of the webpage that appears in the browser tab -->
+    <title>Themes - Talkomatic</title>
+    
+    <!-- Link to external stylesheet for contributors-specific styles -->
+    <link rel="stylesheet" href="stylesheets/themes.css?v=1.0.0" />
+    
+    <!-- FontAwesome CDN for social media icons -->
+    <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    />
+    
+    <!-- Favicon icon for the website, displayed in the browser tab -->
+    <link rel="icon" type="image/png" href="images/icons/favicon.png" />
+</head>
+
+<body>
+    <a href="/" id="back"><i class="fa-solid fa-arrow-left"></i> Back to Talkomatic</a>
+    <br> <br>
+
+    <div id="buttonMenu">
+        <button id="curatedThemesButton"><i class="fa-solid fa-star"></i> Curated Themes</button>
+        <button id="importThemeButton"><i class="fa-solid fa-folder-open"></i> Import Theme</button>
+    </div>
+    
+    <div id="curatedThemes">
+        <input type="text" id="searchTheme" placeholder="Search for a theme...">
+        <br> <br>
+        <div id="themeGrid">
+            <div class="themeWidget" data-file=""> <!-- Leave data-file empty for no theme --> 
+                <span class="officialTheme"><i class="fa-solid fa-star"></i> Official</span>
+                <span class="themeName">Default/Vanilla Talkomatic</span> <br> <br>
+                <span class="themeAuthor">sjzoppi, talkomatic.co</span> <br>
+                <img src="themes/vanilla.png" class="themeThumbnail">
+            </div>
+            <div class="themeWidget" data-file="mocha.css">
+                <span class="userTheme"><i class="fa-solid fa-users"></i> User-made</span>
+                <span class="themeName">Catppuccin Mocha</span> <br> <br>
+                <span class="themeAuthor">BatteBaguette58</span> <br>
+                <img src="themes/mocha.png" class="themeThumbnail">
+            </div>
+        </div>
+    </div>
+
+    <div id="importTheme" style="display: none;">
+        <strong id="disclaimer">
+            This section is to import your own theme for people looking to create their own themes. <br>
+            DO NOT IMPORT ANY THEME SOMEONE TELLS YOU TO IMPORT, IT COULD BE POTENTIALLY MALICIOUS. <br>
+        </strong>
+        <p>
+            All of the theme's colours are listed in the :root section for convenience, <br>
+            but the rest of the .css file can also be modified. <br> <br>
+            Missing sections in the theme will fall back to the vanilla theme. <br> <br>
+            <a href="stylesheets/lobby.css" download>Download .css lobby theme file</a>
+        </p>
+        <div id="openTheme">
+            <input type="file" id="openThemeInput"> <br> <br>
+            <button id="openThemeButton"><i class="fa-solid fa-folder-open"></i> Open Theme</button>
+        </div>
+    </div>
+
+    <script src="js/themes.js?v=1.0.0"></script>
+</body>
+</html>

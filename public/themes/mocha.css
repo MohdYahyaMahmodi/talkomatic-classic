@@ -12,107 +12,107 @@
 
 /* Talkomatic Colours */
 :root {
-  --primary: #ff9800;
+  --primary: #f2cdcd;
 
-  --background-color: #202020;
-  --left-panel-background-color: #616161;
-  --external-links-background-color: #444444;
-  --hover-external-links-background-color: #1b1b1b;
-  --visited-external-links-background-color: white;
-  --known-as-section-background-color: #fdf5e6;
-  --logform-background-color: white;
-  --logform-button-background-color: black;
+  --background-color: #313244;
+  --left-panel-background-color: #45475a;
+  --external-links-background-color: #585b70;
+  --hover-external-links-background-color: #94e2d5;
+  --visited-external-links-background-color: #f5e0dc;
+  --known-as-section-background-color: #eba0ac;
+  --logform-background-color: #f5e0dc;
+  --logform-button-background-color: #1e1e2e;
   --hover-logform-button-background-color: #cccccc;
-  --create-room-section-background-color: #fdf5e6;
-  --learn-more-section-background-color: #616161;
-  --room-name-input-background-color: white;
-  --go-chat-button-background-color: black;
-  --hover-go-chat-button-background-color: #f57c00;
-  --right-panel-background-color: #202020;
-  --room-background-color: black;
-  --room-enter-button-background-color: black;
+  --create-room-section-background-color: #eba0ac;
+  --learn-more-section-background-color: #45475a;
+  --room-name-input-background-color: #f5e0dc;
+  --go-chat-button-background-color: #1e1e2e;
+  --hover-go-chat-button-background-color: #cba6f7;
+  --right-panel-background-color: #313244;
+  --room-background-color: #1e1e2e;
+  --room-enter-button-background-color: #1e1e2e;
   --toggle-menu-button-background-color: #9e9e9e;
-  --hide-menu-button-background-color: #616161;
+  --hide-menu-button-background-color: #45475a;
   --hover-hide-menu-button-background-color: #cccccc;
   --modal-background-color: rgba(0, 0, 0, 0.8);
-  --modal-content-info-background-color: #202020;
-  --close-modal-background-color: black;
-  --layout-item-background-color: black;
-  --modal-scroll-bar-track-background-color: #202020;
-  --modal-scroll-bar-thumb-background-color: #616161;
+  --modal-content-info-background-color: #313244;
+  --close-modal-background-color: #1e1e2e;
+  --layout-item-background-color: #1e1e2e;
+  --modal-scroll-bar-track-background-color: #313244;
+  --modal-scroll-bar-thumb-background-color: #45475a;
   --custom-modal-background-color: rgba(0, 0, 0, 0.85);
-  --modal-content-background-color: #202020;
+  --modal-content-background-color: #313244;
   --close-modal-button-background-color: rgba(0, 0, 0, 0.3);
   --hover-close-modal-button-background-color: rgba(0, 0, 0, 0.6);
-  --modal-title-background-gradient-top-color: #616161;
+  --modal-title-background-gradient-top-color: #45475a;
   --modal-title-background-gradient-bottom-color: #303030;
-  --modal-input-background-color: black;
-  --modal-button-background-color: black;
+  --modal-input-background-color: #1e1e2e;
+  --modal-button-background-color: #1e1e2e;
   --hover-modal-button-background-color: #2a2a2a;
-  --modal-confirm-button-background-color: black;
-  --hover-modal-confirm-button-background-color: black;
-  --spectate-button-background-color: black;
-  --spectator-indicator-background-color: #ffeb3b;
+  --modal-confirm-button-background-color: #1e1e2e;
+  --hover-modal-confirm-button-background-color: #1e1e2e;
+  --spectate-button-background-color: #1e1e2e;
+  --spectator-indicator-background-color: #fab387;
   --spectator-count-background-color: rgba(255, 235, 59, 0.1);
   --spectator-notice-background-color: rgba(255, 235, 59, 0.95);
   --spectator-disabled-chat-input-background-color: #222222;
-  --spectator-room-type-background-color: #ffeb3b;
+  --spectator-room-type-background-color: #fab387;
   --disabled-emotes-button-background-color: #333333;
 
-  --left-panel-color: white;
-  --lobby-label-color: white;
-  --external-links-color: white;
-  --known-as-section-color: black;
-  --logform-button-color: white;
-  --create-room-section-color: black;
-  --learn-more-section-color: white;
-  --hover-learn-more-section-color: #f57c00;
-  --lobby-form-color: white;
-  --lobby-form-radio-label-color: white;
-  --go-chat-button-color: white;
-  --right-panel-color: #202020;
-  --room-name-color: white;
+  --left-panel-color: #f5e0dc;
+  --lobby-label-color: #f5e0dc;
+  --external-links-color: #f5e0dc;
+  --known-as-section-color: #1e1e2e;
+  --logform-button-color: #f5e0dc;
+  --create-room-section-color: #1e1e2e;
+  --learn-more-section-color: #f5e0dc;
+  --hover-learn-more-section-color: #cba6f7;
+  --lobby-form-color: #f5e0dc;
+  --lobby-form-radio-label-color: #f5e0dc;
+  --go-chat-button-color: #f5e0dc;
+  --right-panel-color: #313244;
+  --room-name-color: #f5e0dc;
   --room-details-color: #01ffff;
-  --user-detail-color: white;
-  --user-detail-number-color: white;
-  --room-enter-button-color: white;
-  --hover-room-enter-button-color: black;
+  --user-detail-color: #f5e0dc;
+  --user-detail-number-color: #f5e0dc;
+  --room-enter-button-color: #f5e0dc;
+  --hover-room-enter-button-color: #1e1e2e;
   --room-bottom-section-color: #cccccc;
-  --copyright-info-color: white;
-  --toggle-menu-button-color: white;
-  --hide-menu-button-color: white;
-  --hover-hide-menu-button-color: black;
-  --modal-content-info-color: white;
-  --hover-close-modal-color: black;
-  --layout-item-color: white;
-  --creator-color: white;
-  --creator-link-color: white;
-  --visited-creator-link-color: white;
+  --copyright-info-color: #f5e0dc;
+  --toggle-menu-button-color: #f5e0dc;
+  --hide-menu-button-color: #f5e0dc;
+  --hover-hide-menu-button-color: #1e1e2e;
+  --modal-content-info-color: #f5e0dc;
+  --hover-close-modal-color: #1e1e2e;
+  --layout-item-color: #f5e0dc;
+  --creator-color: #f5e0dc;
+  --creator-link-color: #f5e0dc;
+  --visited-creator-link-color: #f5e0dc;
   --hover-creator-link-color: #c7c7c7;
-  --modal-content-color: white;
-  --hover-close-modal-button-color: #ffff00;
+  --modal-content-color: #f5e0dc;
+  --hover-close-modal-button-color: #b4befe;
   --modal-message-color: #f0f0f0;
   --input-error-color: #ff5252;
-  --modal-button-color: white;
-  --modal-confirm-button-color: white;
-  --spectate-button-color: white;
-  --hover-spectate-button-color: black;
+  --modal-button-color: #f5e0dc;
+  --modal-confirm-button-color: #f5e0dc;
+  --spectate-button-color: #f5e0dc;
+  --hover-spectate-button-color: #1e1e2e;
   --full-room-name-color: #949494;
   --spectator-indicator-color: #333333;
-  --spectator-count-color: #ffeb3b;
+  --spectator-count-color: #fab387;
   --spectator-notice-color: #333333;
   --spectator-room-type-color: #333333;
 
-  --logform-border-color: white;
-  --room-name-input-border-color: white;
-  --room-top-border-color: white;
-  --modal-content-info-border-color: #616161;
-  --close-modal-border-color: #616161;
-  --layout-item-border-color: #616161;
-  --close-modal-button-border-color: #444444;
-  --modal-input-border-color: #444444;
+  --logform-border-color: #f5e0dc;
+  --room-name-input-border-color: #f5e0dc;
+  --room-top-border-color: #f5e0dc;
+  --modal-content-info-border-color: #45475a;
+  --close-modal-border-color: #45475a;
+  --layout-item-border-color: #45475a;
+  --close-modal-button-border-color: #585b70;
+  --modal-input-border-color: #585b70;
   --focus-modal-input-border-color: cyan;
-  --modal-button-border-color: #444444;
+  --modal-button-border-color: #585b70;
   --hover-modal-button-border-color: #666666;
   --spectator-count-border-color: rgba(255, 235, 59, 0.3);
 
@@ -124,34 +124,38 @@
   --enter-button-shadow-color: rgba(0, 0, 0, 0.2);
 
   --focus-creator-link-outline-color: #c7c7c7;
-  
+
   --discord-icon-color: #7289da;
-  --community-icon-color: #ff6b35;
+  --community-icon-color: #cdd6f4;
   --info-circle-icon-color: #17a2b8;
-  --youtube-play-circle-icon-color: red;
-  --app-directory-icon-color: #6f42c1;
-  --documentation-icon-color: #28a745;
-  --donate-icon-color: #ee3fcb;
-  --themes-icon-gradient-left-color: red;
-  --themes-icon-gradient-middle-color: green;
-  --themes-icon-gradient-right-color: blue;
+  --youtube-play-circle-icon-color: #f38ba8;
+  --app-directory-icon-color: #b4befe;
+  --documentation-icon-color: #a6e3a1;
+  --donate-icon-color: #74c7ec;
+  --themes-icon-gradient-left-color: #f38ba8;
+  --themes-icon-gradient-middle-color: #a6e3a1;
+  --themes-icon-gradient-right-color: #89b4fa;
 }
 
 /* Font Declarations */
 /* Define custom fonts used throughout the lobby */
 @font-face {
-  font-family: "talkoSS"; /* Main font family for general text */
-  src: url("../fonts/Sansation_Light.ttf"); /* Light version of the font */
+  font-family: "talkoSS";
+  /* Main font family for general text */
+  src: url("../fonts/Sansation_Light.ttf");
+  /* Light version of the font */
 }
 
 @font-face {
   font-family: "talkoSS";
-  src: url("../fonts/Sansation_Bold.ttf"); /* Bold version for emphasis */
+  src: url("../fonts/Sansation_Bold.ttf");
+  /* Bold version for emphasis */
   font-weight: bold;
 }
 
 @font-face {
-  font-family: "talkoText"; /* Special font for specific text elements */
+  font-family: "talkoText";
+  /* Special font for specific text elements */
   src: url("../fonts/dited.otf");
 }
 
@@ -159,45 +163,67 @@
 /* Set default styles for the HTML and body elements */
 body,
 html {
-  margin: 0; /* Remove default margins */
-  padding: 0; /* Remove default padding */
-  height: 100%; /* Ensure body takes up full viewport height */
-  overflow: hidden; /* Hide overflow to prevent unwanted scroll bars */
-  font-family: talkoSS, Arial, sans-serif; /* Use custom font, fallback to Arial */
-  background-color: var(--background-color); /* Dark background color */
+  margin: 0;
+  /* Remove default margins */
+  padding: 0;
+  /* Remove default padding */
+  height: 100%;
+  /* Ensure body takes up full viewport height */
+  overflow: hidden;
+  /* Hide overflow to prevent unwanted scroll bars */
+  font-family: talkoSS, Arial, sans-serif;
+  /* Use custom font, fallback to Arial */
+  background-color: var(--background-color);
+  /* Dark background color */
 }
 
 /* Layout Containers */
 /* Flexbox container that holds the left and right panels */
 .container {
-  display: flex; /* Flex layout to align panels horizontally */
-  height: 100vh; /* Full viewport height */
-  overflow: hidden; /* Prevent overflow */
+  display: flex;
+  /* Flex layout to align panels horizontally */
+  height: 100vh;
+  /* Full viewport height */
+  overflow: hidden;
+  /* Prevent overflow */
 }
 
 /* Ensure both panels fill the height of the container and allow scrolling */
 .left-panel,
 .right-panel {
   height: 100%;
-  overflow-y: auto; /* Enable vertical scrolling */
-  box-sizing: border-box; /* Include padding/border in the element's width/height */
+  overflow-y: auto;
+  /* Enable vertical scrolling */
+  box-sizing: border-box;
+  /* Include padding/border in the element's width/height */
 }
 
 /* Left Panel Styles */
 /* Styles for the left panel that contains menu and form elements */
 .left-panel {
-  width: 320px; /* Fixed width for left panel */
-  background-color: var(--left-panel-background-color); /* Dark gray background */
-  color: var(--left-panel-color); /* White text color */
-  transition: transform 0.3s ease-in-out; /* Smooth transition for showing/hiding */
+  width: 320px;
+  /* Fixed width for left panel */
+  background-color: var(--left-panel-background-color);
+  /* Dark gray background */
+  color: var(--left-panel-color);
+  /* #f5e0dc text color */
+  transition: transform 0.3s ease-in-out;
+  /* Smooth transition for showing/hiding */
   display: flex;
-  flex-direction: column; /* Stack child elements vertically */
-  margin-top: 23px; /* Space from the top */
-  height: calc(100vh - 23px); /* Adjust height considering the top margin */
-  overflow-y: auto; /* Enable vertical scrolling */
-  overflow-x: hidden; /* Disable horizontal scrolling */
-  scrollbar-width: none; /* Hide scrollbar in Firefox */
-  -ms-overflow-style: none; /* Hide scrollbar in Internet Explorer */
+  flex-direction: column;
+  /* Stack child elements vertically */
+  margin-top: 23px;
+  /* Space from the top */
+  height: calc(100vh - 23px);
+  /* Adjust height considering the top margin */
+  overflow-y: auto;
+  /* Enable vertical scrolling */
+  overflow-x: hidden;
+  /* Disable horizontal scrolling */
+  scrollbar-width: none;
+  /* Hide scrollbar in Firefox */
+  -ms-overflow-style: none;
+  /* Hide scrollbar in Internet Explorer */
 }
 
 /* Hide scrollbar in WebKit browsers (Chrome, Safari) */
@@ -208,7 +234,7 @@ html {
 }
 
 /* Ensure all children of the left panel fit within the padding */
-.left-panel > * {
+.left-panel>* {
   width: 100%;
   box-sizing: border-box;
   padding-left: 18px;
@@ -227,12 +253,14 @@ html {
 #logform input,
 #lobbyForm input[type="text"] {
   width: 100%;
-  box-sizing: border-box; /* Include padding in width */
+  box-sizing: border-box;
+  /* Include padding in width */
 }
 
 /* Header section with Talkomatic branding */
 .panel-header {
-  text-align: center; /* Center the text */
+  text-align: center;
+  /* Center the text */
   padding-top: 20px;
   padding-bottom: 8px;
 }
@@ -242,11 +270,12 @@ html {
   font-family: talkoSS, Arial, sans-serif;
   font-weight: bold;
   font-size: 24px;
-  color: var(--primary); /* Bright orange for emphasis */
+  color: var(--primary);
+  /* Bright orange for emphasis */
   margin-right: 5px;
 }
 
-/* Lobby label in white next to the Talkomatic logo */
+/* Lobby label in #f5e0dc next to the Talkomatic logo */
 .panel-header .lobby {
   font-family: talkoSS, Arial, sans-serif;
   font-weight: normal;
@@ -288,19 +317,21 @@ html {
 }
 
 /* if there’s an odd number of links, the last one spans both columns */
-.external-links > a:nth-last-child(1):nth-child(odd) {
+.external-links>a:nth-last-child(1):nth-child(odd) {
   grid-column: 1 / -1;
 }
 
 /* Known-as section with a light background */
 .known-as-section {
-  background-color: var(--known-as-section-background-color); /* Light beige background for contrast */
+  background-color: var(--known-as-section-background-color);
+  /* Light beige background for contrast */
   padding: 18px;
 }
 
 /* Style for the paragraph in the known-as section */
 .known-as-section p {
-  color: var(--known-as-section-color); /* Black text */
+  color: var(--known-as-section-color);
+  /* #1e1e2e text */
   margin: 0;
   font-weight: bold;
 }
@@ -311,7 +342,8 @@ html {
   margin-top: 20px;
   padding: 0 18px;
   position: relative;
-  padding-bottom: 55px; /* Extra padding to account for the button */
+  padding-bottom: 55px;
+  /* Extra padding to account for the button */
 }
 
 /* Form layout: vertical stack of inputs */
@@ -324,26 +356,34 @@ html {
 #logform input {
   margin-bottom: 15px;
   padding: 12px;
-  border: 1px solid var(--logform-border-color); /* White border */
-  background-color: var(--logform-background-color); /* White background */
+  border: 1px solid var(--logform-border-color);
+  /* #f5e0dc border */
+  background-color: var(--logform-background-color);
+  /* #f5e0dc background */
   font-size: 16px;
   font-family: talkoSS, Arial, sans-serif;
 }
 
 /* Submit button at the bottom of the form */
 #logform button {
-  position: absolute; /* Positioned at the bottom of the form */
+  position: absolute;
+  /* Positioned at the bottom of the form */
   bottom: 0;
   right: 18px;
   width: 100px;
   padding: 12px 16px;
-  background-color: var(--logform-button-background-color); /* Black background */
-  color: var(--logform-button-color); /* White text */
-  border: 1px solid var(--primary); /* Orange border */
-  cursor: pointer; /* Pointer cursor on hover */
+  background-color: var(--logform-button-background-color);
+  /* #1e1e2e background */
+  color: var(--logform-button-color);
+  /* #f5e0dc text */
+  border: 1px solid var(--primary);
+  /* Orange border */
+  cursor: pointer;
+  /* Pointer cursor on hover */
   font-family: talkoSS, Arial, sans-serif;
   font-weight: light;
-  transition: background-color 0.3s ease, border-color 0.3s ease; /* Smooth hover transition */
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+  /* Smooth hover transition */
   font-size: 12px;
   border-radius: 4px;
   display: flex;
@@ -361,14 +401,17 @@ html {
 
 /* Hover effect for the button */
 #logform button:hover {
-  background-color: var(--hover-logform-button-background-color); /* Light gray background on hover */
-  border-color: var(--primary); /* Keep orange border */
+  background-color: var(--hover-logform-button-background-color);
+  /* Light gray background on hover */
+  border-color: var(--primary);
+  /* Keep orange border */
 }
 
 /* Create Room Section */
 /* Section where users can create new rooms */
 .createRoom {
-  background-color: var(--create-room-section-background-color); /* Light background */
+  background-color: var(--create-room-section-background-color);
+  /* Light background */
   padding: 18px;
   margin-top: 20px;
   display: flex;
@@ -386,18 +429,24 @@ html {
 
 /* Button to learn more about creating rooms */
 .createRoom .learn-more {
-  color: var(--learn-more-section-color); /* White text */
-  background-color: var(--learn-more-section-background-color); /* Dark gray background */
+  color: var(--learn-more-section-color);
+  /* #f5e0dc text */
+  background-color: var(--learn-more-section-background-color);
+  /* Dark gray background */
   padding: 12px 16px;
-  text-decoration: none; /* No underline */
+  text-decoration: none;
+  /* No underline */
   font-size: 16px;
-  transition: color 0.3s ease; /* Smooth transition on hover */
+  transition: color 0.3s ease;
+  /* Smooth transition on hover */
 }
 
 /* Hover effect for learn more button */
 .createRoom .learn-more:hover {
-  color: var(--hover-learn-more-section-color); /* Orange text on hover */
-  text-decoration: underline; /* Add underline on hover */
+  color: var(--hover-learn-more-section-color);
+  /* Orange text on hover */
+  text-decoration: underline;
+  /* Add underline on hover */
 }
 
 /* Lobby Form Styles */
@@ -406,16 +455,20 @@ html {
   margin-top: 20px;
   padding: 0 18px;
   position: relative;
-  padding-bottom: 50px; /* Extra padding to accommodate the button */
+  padding-bottom: 50px;
+  /* Extra padding to accommodate the button */
 }
 
 /* Text input for room name */
 #lobbyForm input[type="text"] {
-  width: 90%; /* Adjust input width */
+  width: 90%;
+  /* Adjust input width */
   padding: 12px;
   margin-bottom: 15px;
-  border: 1px solid var(--room-name-input-border-color); /* White border */
-  background-color: var(--room-name-input-background-color); /* White background */
+  border: 1px solid var(--room-name-input-border-color);
+  /* #f5e0dc border */
+  background-color: var(--room-name-input-background-color);
+  /* #f5e0dc background */
   font-size: 16px;
   font-family: talkoSS, Arial, sans-serif;
 }
@@ -423,17 +476,20 @@ html {
 /* Layout for radio button groups */
 #lobbyForm .radio-group {
   display: flex;
-  flex-direction: column; /* Stack radio buttons vertically */
+  flex-direction: column;
+  /* Stack radio buttons vertically */
   margin-bottom: 15px;
 }
 
 /* Individual radio button labels */
 #lobbyForm .radio-group label {
   margin-bottom: 10px;
-  color: var(--lobby-form-radio-label-color); /* White text */
+  color: var(--lobby-form-radio-label-color);
+  /* #f5e0dc text */
   font-size: 14px;
   display: flex;
-  align-items: center; /* Align text and radio button vertically */
+  align-items: center;
+  /* Align text and radio button vertically */
   width: 100%;
   box-sizing: border-box;
 }
@@ -468,27 +524,36 @@ html {
 /* Button to join a chat */
 .go-chat-button {
   padding: 12px 16px;
-  background-color: var(--go-chat-button-background-color); /* Black background */
-  color: var(--go-chat-button-color); /* White text */
-  border: 1px solid var(--primary); /* Orange border */
-  border-radius: 4px; /* Rounded corners */
+  background-color: var(--go-chat-button-background-color);
+  /* #1e1e2e background */
+  color: var(--go-chat-button-color);
+  /* #f5e0dc text */
+  border: 1px solid var(--primary);
+  /* Orange border */
+  border-radius: 4px;
+  /* Rounded corners */
   cursor: pointer;
   font-family: talkoSS, Arial, sans-serif;
   font-size: 14px;
-  transition: background-color 0.3s ease; /* Smooth hover transition */
+  transition: background-color 0.3s ease;
+  /* Smooth hover transition */
 }
 
 /* Hover effect for the chat button */
 .go-chat-button:hover {
-  background-color: var(--hover-go-chat-button-background-color); /* Orange background on hover */
+  background-color: var(--hover-go-chat-button-background-color);
+  /* Orange background on hover */
 }
 
 /* Right Panel Styles */
 /* Main content area on the right side */
 .right-panel {
-  flex-grow: 1; /* Take up remaining space */
-  background-color: var(--right-panel-background-color); /* Match the body background color */
-  color: var(--right-panel-color); /* White text */
+  flex-grow: 1;
+  /* Take up remaining space */
+  background-color: var(--right-panel-background-color);
+  /* Match the body background color */
+  color: var(--right-panel-color);
+  /* #f5e0dc text */
   padding-top: 30px;
   display: flex;
   flex-direction: column;
@@ -499,7 +564,8 @@ html {
   font-family: talkoSS, Arial, sans-serif;
   font-weight: normal;
   font-size: 25px;
-  color: var(--primary); /* Orange text for emphasis */
+  color: var(--primary);
+  /* Orange text for emphasis */
   margin-bottom: 40px;
   padding-left: 8px;
 }
@@ -517,9 +583,11 @@ html {
 /* Room List Styles */
 /* Container for the list of available rooms */
 .roomList {
-  overflow-y: auto; /* Enable vertical scrolling */
+  overflow-y: auto;
+  /* Enable vertical scrolling */
   display: flex;
-  flex-direction: column; /* Stack rooms vertically */
+  flex-direction: column;
+  /* Stack rooms vertically */
 }
 
 /* Container for each room */
@@ -529,16 +597,19 @@ html {
 
 /* Individual room in the room list */
 .room {
-  background-color: var(--room-background-color); /* Black background */
+  background-color: var(--room-background-color);
+  /* #1e1e2e background */
   padding: 8px 8px 0 8px;
   position: relative;
-  border-top: 1px solid var(--room-top-border-color); /* White border at the top */
+  border-top: 1px solid var(--room-top-border-color);
+  /* #f5e0dc border at the top */
 }
 
 /* Top section of a room */
 .room-top {
   display: flex;
-  flex-direction: column; /* Stack elements vertically */
+  flex-direction: column;
+  /* Stack elements vertically */
 }
 
 /* Information about the room */
@@ -549,28 +620,32 @@ html {
 /* Room name */
 .room-name {
   font-size: 16px;
-  color: var(--room-name-color); /* White text */
+  color: var(--room-name-color);
+  /* #f5e0dc text */
   margin-bottom: 5px;
 }
 
 /* Room details (e.g., number of users) */
 .room-details {
   font-size: 14px;
-  color: var(--room-details-color); /* Cyan text */
+  color: var(--room-details-color);
+  /* Cyan text */
   margin-bottom: 5px;
 }
 
 /* User details section */
 .users-detail {
   display: flex;
-  flex-direction: column; /* Stack user details vertically */
+  flex-direction: column;
+  /* Stack user details vertically */
   margin-bottom: 8px;
 }
 
 /* Styling for individual user details */
 .users-detail div {
   font-size: 15px;
-  color: var(--user-detail-color); /* White text */
+  color: var(--user-detail-color);
+  /* #f5e0dc text */
   margin-bottom: 4px;
 }
 
@@ -582,7 +657,8 @@ html {
 
 /* Highlight user names in orange */
 .users-detail .user-name {
-  color: var(--primary); /* Orange color */
+  color: var(--primary);
+  /* Orange color */
 }
 
 /* Enter room button */
@@ -590,33 +666,42 @@ html {
   position: absolute;
   top: 20px;
   right: 20px;
-  background-color: var(--room-enter-button-background-color); /* Black background */
-  color: var(--room-enter-button-color); /* White text */
-  border: 1px solid var(--primary); /* Orange border */
+  background-color: var(--room-enter-button-background-color);
+  /* #1e1e2e background */
+  color: var(--room-enter-button-color);
+  /* #f5e0dc text */
+  border: 1px solid var(--primary);
+  /* Orange border */
   padding: 8px 16px;
   border-radius: 5px;
   cursor: pointer;
   font-family: talkoSS, Arial, sans-serif;
   font-size: 14px;
-  transition: background-color 0.3s ease, color 0.3s ease; /* Smooth transition */
+  transition: background-color 0.3s ease, color 0.3s ease;
+  /* Smooth transition */
 }
 
 /* Hover effect for enter button */
 .enter-button:hover {
-  background-color: var(--primary); /* Orange background */
-  color: var(--hover-room-enter-button-color); /* Black text */
+  background-color: var(--primary);
+  /* Orange background */
+  color: var(--hover-room-enter-button-color);
+  /* #1e1e2e text */
 }
 
 /* Disabled state for the enter button */
 .enter-button:disabled {
-  cursor: not-allowed; /* Show not-allowed cursor */
+  cursor: not-allowed;
+  /* Show not-allowed cursor */
 }
 
 /* Bottom section of the room */
 .room-bottom {
   font-size: 14px;
-  color: var(--room-bottom-section-color); /* Light gray text */
-  font-style: italic; /* Italicized text */
+  color: var(--room-bottom-section-color);
+  /* Light gray text */
+  font-style: italic;
+  /* Italicized text */
   margin-top: 10px;
 }
 
@@ -636,7 +721,8 @@ html {
 
 /* Styling for the version text */
 .copyright-info .version {
-  color: var(--primary); /* Orange text */
+  color: var(--primary);
+  /* Orange text */
   margin-right: 5px;
 }
 
@@ -649,13 +735,16 @@ html {
 /* Buttons to toggle and hide the left menu */
 .toggle-button,
 .hide-menu-button {
-  display: none; /* Initially hidden */
-  color: var(--toggle-menu-button-color); /* White text */
+  display: none;
+  /* Initially hidden */
+  color: var(--toggle-menu-button-color);
+  /* #f5e0dc text */
   border: none;
   padding: 10px;
   cursor: pointer;
   font-family: talkoSS, Arial, sans-serif;
-  transition: opacity 0.3s ease-in-out; /* Smooth transition */
+  transition: opacity 0.3s ease-in-out;
+  /* Smooth transition */
 }
 
 /* Toggle button styles */
@@ -663,10 +752,12 @@ html {
   position: fixed;
   top: 23.5px;
   left: 0;
-  z-index: 1001; /* Above other elements */
+  z-index: 1001;
+  /* Above other elements */
   border-top-right-radius: 5px;
   border-bottom-right-radius: 5px;
-  background-color: var(--toggle-menu-button-background-color); /* Gray background */
+  background-color: var(--toggle-menu-button-background-color);
+  /* Gray background */
   font-size: 18px;
   padding: 10px 15px 10px 10px;
   opacity: 1;
@@ -694,8 +785,10 @@ html {
 
 /* Hover effect for hide menu button */
 .hide-menu-button:hover {
-  background-color: var(--hover-hide-menu-button-background-color); /* Light gray background */
-  color: var(--hover-hide-menu-button-color); /* Black text */
+  background-color: var(--hover-hide-menu-button-background-color);
+  /* Light gray background */
+  color: var(--hover-hide-menu-button-color);
+  /* #1e1e2e text */
 }
 
 /* Modal base styles */
@@ -823,23 +916,30 @@ html {
 }
 
 .creator {
-  color: var(--creator-color); /* Dark gray text */
+  color: var(--creator-color);
+  /* Dark gray text */
   font-size: 14px;
 }
 
 .creator-link {
-  color: var(--creator-link-color); /* Match the text color */
-  text-decoration: none; /* Remove default underline */
-  transition: all 0.2s ease; /* Smooth transition for hover effect */
+  color: var(--creator-link-color);
+  /* Match the text color */
+  text-decoration: none;
+  /* Remove default underline */
+  transition: all 0.2s ease;
+  /* Smooth transition for hover effect */
 }
 
 .creator-link:visited {
-  color: var(--visited-creator-link-color); /* Ensure visited links stay the same color */
+  color: var(--visited-creator-link-color);
+  /* Ensure visited links stay the same color */
 }
 
 .creator-link:hover {
-  text-decoration: underline; /* Add underline on hover */
-  color: var(--hover-creator-link-color); /* Slightly lighter on hover */
+  text-decoration: underline;
+  /* Add underline on hover */
+  color: var(--hover-creator-link-color);
+  /* Slightly lighter on hover */
 }
 
 /* Optional: Add focus state for accessibility */
@@ -931,7 +1031,8 @@ html {
   }
 
   .copyright-info .dot {
-    display: none; /* Hide dot separator */
+    display: none;
+    /* Hide dot separator */
   }
 
   .copyright-info .copyright {
@@ -939,83 +1040,115 @@ html {
   }
 
   .left-panel {
-    width: 100%; /* Take full width on small screens */
+    width: 100%;
+    /* Take full width on small screens */
   }
+
   .hide-menu-button {
-    width: 100%; /* Ensure the button spans the full width */
+    width: 100%;
+    /* Ensure the button spans the full width */
   }
 }
 
 /* Media query for shorter screens (max height: 600px) */
 @media (max-height: 600px) {
   .left-panel {
-    overflow-y: auto; /* Ensure scrolling if the panel overflows */
+    overflow-y: auto;
+    /* Ensure scrolling if the panel overflows */
   }
+
   #lobbyForm {
-    padding-bottom: 100px; /* Extra padding for small screens */
+    padding-bottom: 100px;
+    /* Extra padding for small screens */
   }
+
   .button-container {
-    bottom: 40px; /* Adjust button placement */
+    bottom: 40px;
+    /* Adjust button placement */
   }
 }
 
 /* Media query for medium-sized screens (max width: 992px) */
 @media (max-width: 992px) {
   .container {
-    flex-direction: column; /* Stack panels vertically on smaller screens */
+    flex-direction: column;
+    /* Stack panels vertically on smaller screens */
   }
+
   .left-panel {
     position: fixed;
     top: 0;
     left: 0;
-    height: 100%; /* Full height on mobile */
+    height: 100%;
+    /* Full height on mobile */
     width: 320px;
-    max-width: 100%; /* Ensure the panel fits the screen */
-    z-index: 1000; /* Above other elements */
-    transform: translateX(-100%); /* Initially hidden off-screen */
-    padding-top: 60px; /* Space for the hide menu button */
-    margin-top: 0; /* Remove top margin */
-    overflow-y: auto; /* Enable scrolling */
+    max-width: 100%;
+    /* Ensure the panel fits the screen */
+    z-index: 1000;
+    /* Above other elements */
+    transform: translateX(-100%);
+    /* Initially hidden off-screen */
+    padding-top: 60px;
+    /* Space for the hide menu button */
+    margin-top: 0;
+    /* Remove top margin */
+    overflow-y: auto;
+    /* Enable scrolling */
   }
 
   /* Left panel when open */
   .left-panel.open {
-    transform: translateX(0); /* Slide into view */
+    transform: translateX(0);
+    /* Slide into view */
   }
+
   .right-panel {
-    width: 100%; /* Full width on mobile */
-    height: 100vh; /* Full height */
+    width: 100%;
+    /* Full width on mobile */
+    height: 100vh;
+    /* Full height */
     padding-top: 80px;
   }
+
   .toggle-button,
   .hide-menu-button {
-    display: block; /* Show the buttons */
+    display: block;
+    /* Show the buttons */
   }
+
   .toggle-button {
     opacity: 1;
     position: fixed;
     top: 23.5px;
     left: 0;
-    z-index: 1002; /* Ensure it's above the left panel */
+    z-index: 1002;
+    /* Ensure it's above the left panel */
   }
-  .left-panel.open + .toggle-button {
+
+  .left-panel.open+.toggle-button {
     opacity: 0;
-    left: -100px; /* Hide toggle button when the panel is open */
+    left: -100px;
+    /* Hide toggle button when the panel is open */
   }
+
   .right-panel h2 {
-    padding-left: 12px; /* Adjust heading padding */
+    padding-left: 12px;
+    /* Adjust heading padding */
   }
+
   .hide-menu-button {
     position: fixed;
     top: 0;
     left: 0;
-    width: 320px; /* Full width on mobile */
+    width: 320px;
+    /* Full width on mobile */
     z-index: 1001;
     margin-bottom: 0;
     padding-top: 15px;
     padding-bottom: 15px;
   }
 }
+
 /* Custom Modal Styles */
 .custom-modal {
   display: none;
@@ -1042,6 +1175,7 @@ html {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -1089,7 +1223,8 @@ html {
 
 #modalTitle {
   margin-top: 0;
-  margin-right: 30px; /* Space for the X button */
+  margin-right: 30px;
+  /* Space for the X button */
   background: linear-gradient(to bottom, var(--modal-title-background-gradient-top-color), var(--modal-title-background-gradient-bottom-color));
   color: var(--primary);
   padding: 10px 15px;
@@ -1241,27 +1376,32 @@ html {
 
 .fa-users {
   margin-right: 10px;
-  color: var(--community-icon-color); /* Warm orange for community/people */
+  color: var(--community-icon-color);
+  /* Warm orange for community/people */
 }
 
 .fa-info-circle {
   margin-right: 10px;
-  color: var(--info-circle-icon-color); /* Info blue */
+  color: var(--info-circle-icon-color);
+  /* Info blue */
 }
 
 .fa-play-circle {
   margin-right: 10px;
-  color: var(--youtube-play-circle-icon-color); /* YouTube red for video/streaming */
+  color: var(--youtube-play-circle-icon-color);
+  /* YouTube red for video/streaming */
 }
 
 .fa-th-large {
   margin-right: 10px;
-  color: var(--app-directory-icon-color); /* Purple for apps/directory */
+  color: var(--app-directory-icon-color);
+  /* Purple for apps/directory */
 }
 
 .fa-book {
   margin-right: 10px;
-  color: var(--documentation-icon-color); /* Green for documentation/knowledge */
+  color: var(--documentation-icon-color);
+  /* Green for documentation/knowledge */
 }
 
 .fa-gift {
@@ -1272,9 +1412,9 @@ html {
 .fa-paintbrush {
   margin-right: 10px;
   background-image: linear-gradient(82deg,
-  var(--themes-icon-gradient-left-color) 0%,
-  var(--themes-icon-gradient-middle-color) 50%,
-  var(--themes-icon-gradient-right-color) 100%);
+      var(--themes-icon-gradient-left-color) 0%,
+      var(--themes-icon-gradient-middle-color) 50%,
+      var(--themes-icon-gradient-right-color) 100%);
   color: transparent;
   background-clip: text;
 }
@@ -1283,12 +1423,15 @@ html {
 .spectate-button {
   background-color: var(--spectate-button-background-color) !important;
   color: var(--spectate-button-color) !important;
-  border: 1px solid var(--primary) /* Orange border */ !important;
+  border: 1px solid var(--primary)
+    /* Orange border */
+    !important;
   font-weight: bold;
   border-radius: 5px;
   transition: all 0.3s ease;
   font-size: 14px;
-  transition: background-color 0.3s ease, color 0.3s ease; /* Smooth transition */
+  transition: background-color 0.3s ease, color 0.3s ease;
+  /* Smooth transition */
 }
 
 .spectate-button:hover {
@@ -1361,6 +1504,7 @@ html {
     transform: translateX(100%);
     opacity: 0;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -1409,11 +1553,13 @@ button:disabled {
 
 /* Spectator notification animations */
 @keyframes fadeInOut {
+
   0%,
   100% {
     opacity: 0;
     transform: translateX(100%);
   }
+
   10%,
   90% {
     opacity: 1;
