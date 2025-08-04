@@ -16,13 +16,6 @@ const crypto = require("crypto");
 const WordFilter = require("./public/js/word-filter.js");
 const util = require("util");
 const { RateLimiterMemory } = require("rate-limiter-flexible");
-const { GameManager } = require("./games.js");
-
-const gameManager = new GameManager();
-
-// Track active connections more reliably
-const activeConnections = new Map(); // userId -> { socket, lastActivity, roomId }
-const userSocketMapping = new Map(); // userId -> Set of socketIds
 
 // ============================================================================
 // GLOBAL ERROR HANDLERS
@@ -716,27 +709,12 @@ function getUsernameLocationRoomsCount(username, location) {
   const userLower = normalize(username);
   const locLower = normalize(location);
   let count = 0;
-
   for (const [, room] of rooms) {
-    // Check regular users
     if (room.users && Array.isArray(room.users)) {
       for (const u of room.users) {
         if (
           normalize(u.username) === userLower &&
           normalize(u.location) === locLower
-        ) {
-          count++;
-          if (count >= 1) return count; // Early exit
-        }
-      }
-    }
-
-    // FIXED: Also check spectators
-    if (room.spectators && Array.isArray(room.spectators)) {
-      for (const spec of room.spectators) {
-        if (
-          normalize(spec.username) === userLower &&
-          normalize(spec.location) === locLower
         ) {
           count++;
           if (count >= 1) return count; // Early exit
@@ -749,12 +727,7 @@ function getUsernameLocationRoomsCount(username, location) {
 
 function getUserCurrentRoom(userId) {
   for (const [roomId, room] of rooms) {
-    // Check regular users
     if (room.users && room.users.some((u) => u.id === userId)) {
-      return roomId;
-    }
-    // FIXED: Also check spectators
-    if (room.spectators && room.spectators.some((spec) => spec.id === userId)) {
       return roomId;
     }
   }
@@ -1159,15 +1132,11 @@ async function loadRooms() {
       "utf8"
     );
     const loadedRoomsArray = JSON.parse(roomsData);
+
     if (Array.isArray(loadedRoomsArray)) {
       rooms = new Map(
         loadedRoomsArray.map((item) => {
           if (item[1]) {
-            // Initialize spectators array if it doesn't exist
-            if (!item[1].spectators) {
-              item[1].spectators = [];
-            }
-
             if (item[1].bannedUserIds) {
               if (item[1].bannedUserIds instanceof Set) {
                 // Already a Set
@@ -1245,7 +1214,6 @@ function updateLobby() {
         type: room.type,
         isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
         userCount: room.users.length,
-        spectatorCount: room.spectators ? room.spectators.length : 0,
         users: Array.isArray(room.users)
           ? room.users.map((u) => ({
               id: u.id,
@@ -1254,6 +1222,7 @@ function updateLobby() {
             }))
           : [],
       }));
+
     io.to("lobby").emit("lobby update", publicRooms);
   } catch (err) {
     console.error("Error in updateLobby:", err);
@@ -1270,145 +1239,11 @@ function updateRoom(roomId) {
         type: room.type,
         layout: room.layout,
         users: Array.isArray(room.users) ? room.users : [],
-        spectators: Array.isArray(room.spectators) ? room.spectators : [],
         votes: room.votes || {},
       });
     }
   } catch (err) {
     console.error(`Error in updateRoom for ${roomId}:`, err);
-  }
-}
-
-function joinRoomAsSpectator(socket, roomId, userId) {
-  try {
-    if (!roomId || typeof roomId !== "string" || roomId.length !== 6) {
-      socket.emit(
-        "error",
-        createErrorResponse(
-          ERROR_CODES.NOT_FOUND,
-          "Room not found (invalid ID format)."
-        )
-      );
-      return;
-    }
-
-    const room = rooms.get(roomId);
-    if (!room) {
-      socket.emit(
-        "error",
-        createErrorResponse(ERROR_CODES.NOT_FOUND, "Room not found.")
-      );
-      return;
-    }
-
-    if (room.bannedUserIds && room.bannedUserIds.has(userId)) {
-      socket.emit(
-        "error",
-        createErrorResponse(
-          ERROR_CODES.FORBIDDEN,
-          "You have been banned from this room."
-        )
-      );
-      return;
-    }
-
-    let { username, location } = socket.handshake.session || {};
-    if (!username || !location) {
-      username = "Anonymous";
-      location = "On The Web";
-      if (socket.handshake.session) {
-        socket.handshake.session.username = username;
-        socket.handshake.session.location = location;
-        socket.handshake.session.userId = userId;
-      }
-    }
-
-    // Initialize spectators array if it doesn't exist
-    if (!room.spectators) room.spectators = [];
-
-    // Remove user from spectators if already there
-    room.spectators = room.spectators.filter((spec) => spec.id !== userId);
-
-    // Add user as spectator
-    socket.join(roomId);
-    room.spectators.push({ id: userId, username, location });
-    room.lastActiveTime = Date.now();
-
-    socket.roomId = roomId;
-    socket.isSpectator = true; // ADD THIS FLAG
-
-    // Update session
-    if (socket.handshake.session) {
-      socket.handshake.session.currentRoom = roomId;
-      socket.handshake.session.isSpectator = true; // ADD THIS FLAG
-      socket.handshake.session.save((err) => {
-        if (err) {
-          console.error("Session save error in joinRoomAsSpectator:", err);
-          socket.emit(
-            "error",
-            createErrorResponse(
-              ERROR_CODES.SERVER_ERROR,
-              "Failed to save session."
-            )
-          );
-          return;
-        }
-        emitSpectatorJoinSuccess(socket, room, userId, username, location);
-      });
-    } else {
-      console.warn(`No session found for spectator ${socket.id}`);
-      emitSpectatorJoinSuccess(socket, room, userId, username, location);
-    }
-
-    debouncedSaveRooms().catch((err) =>
-      console.error("Failed to save rooms after spectator join:", err)
-    );
-  } catch (err) {
-    console.error("Critical error in joinRoomAsSpectator:", err);
-    socket.emit(
-      "error",
-      createErrorResponse(
-        ERROR_CODES.SERVER_ERROR,
-        "An unexpected error occurred while joining as spectator."
-      )
-    );
-  }
-}
-
-// 5. ADD NEW FUNCTION: emitSpectatorJoinSuccess
-function emitSpectatorJoinSuccess(socket, room, userId, username, location) {
-  // Notify room about new spectator
-  io.to(room.id).emit("spectator joined", {
-    id: userId,
-    username,
-    location,
-    spectatorCount: room.spectators.length,
-  });
-
-  updateRoom(room.id);
-  updateLobby();
-
-  const currentMessages = getCurrentMessages(room.users);
-  socket.emit("room joined as spectator", {
-    roomId: room.id,
-    userId,
-    username,
-    location,
-    roomName: room.name,
-    roomType: room.type,
-    users: room.users,
-    spectators: room.spectators,
-    layout: room.layout,
-    votes: room.votes,
-    currentMessages,
-    isSpectator: true,
-  });
-
-  socket.leave("lobby");
-
-  if (roomDeletionTimers.has(room.id)) {
-    clearTimeout(roomDeletionTimers.get(room.id));
-    roomDeletionTimers.delete(room.id);
   }
 }
 
@@ -1430,326 +1265,61 @@ const promisifySessionSave = (sessionInstance) => {
 };
 
 // ============================================================================
-// ENHANCED USER CLEANUP FUNCTIONS
+// ENHANCED ROOM OPERATIONS
 // ============================================================================
-
-/**
- * Find and remove a user from all rooms - comprehensive cleanup
- */
-function findAndRemoveUserFromAllRooms(userId, socketId = null) {
-  const roomsModified = [];
-
+async function leaveRoom(socket, userId) {
   try {
-    for (const [roomId, room] of rooms) {
-      if (!room.users || !Array.isArray(room.users)) continue;
+    const currentRoomId = socket.roomId;
+    if (!currentRoomId) return;
 
-      const initialUserCount = room.users.length;
+    clearAFKTimers(userId);
 
-      // Remove user from regular users
+    const room = rooms.get(currentRoomId);
+    if (room) {
+      // Remove user from room
       room.users = room.users.filter((user) => user.id !== userId);
+      room.lastActiveTime = Date.now();
 
-      // Remove user from spectators if they exist
-      if (room.spectators && Array.isArray(room.spectators)) {
-        const initialSpectatorCount = room.spectators.length;
-        room.spectators = room.spectators.filter((spec) => spec.id !== userId);
-
-        if (room.spectators.length !== initialSpectatorCount) {
-          io.to(roomId).emit("spectator left", {
-            userId,
-            spectatorCount: room.spectators.length,
-          });
-        }
-      }
-
-      // Clean up votes involving this user
+      // Clean up votes
       if (room.votes) {
         delete room.votes[userId];
         for (let voterId in room.votes) {
-          if (room.votes[voterId] === userId) {
-            delete room.votes[voterId];
-          }
+          if (room.votes[voterId] === userId) delete room.votes[voterId];
         }
-        if (Object.keys(room.votes).length > 0) {
-          io.to(roomId).emit("update votes", room.votes);
-        }
+        io.to(currentRoomId).emit("update votes", room.votes);
       }
 
-      if (room.users.length !== initialUserCount) {
-        roomsModified.push(roomId);
-        room.lastActiveTime = Date.now();
+      socket.leave(currentRoomId);
+      io.to(currentRoomId).emit("user left", userId);
 
-        // Emit user left event
-        io.to(roomId).emit("user left", userId);
-
-        // Update room state
-        updateRoom(roomId);
-
-        // Schedule room deletion if empty
-        if (
-          room.users.length === 0 &&
-          (!room.spectators || room.spectators.length === 0)
-        ) {
-          startRoomDeletionTimer(roomId);
-        }
-
-        console.log(
-          `Removed user ${userId} from room ${roomId} (comprehensive cleanup)`
-        );
+      updateRoom(currentRoomId);
+      if (room.users.length === 0) {
+        await startRoomDeletionTimer(currentRoomId);
       }
-    }
-
-    if (roomsModified.length > 0) {
-      updateLobby();
-      debouncedSaveRooms().catch((err) =>
-        console.error("Failed to save rooms after comprehensive cleanup:", err)
-      );
-    }
-
-    return roomsModified;
-  } catch (error) {
-    console.error(
-      `Error in findAndRemoveUserFromAllRooms for user ${userId}:`,
-      error
-    );
-    return [];
-  }
-}
-
-/**
- * Check if a user is actually connected via any active socket
- */
-function isUserActuallyConnected(userId) {
-  try {
-    const connectedSockets = Array.from(io.sockets.sockets.values());
-    return connectedSockets.some((socket) => {
-      const sessionUserId = socket.handshake.session?.userId;
-      return sessionUserId === userId && socket.connected;
-    });
-  } catch (error) {
-    console.error(`Error checking if user ${userId} is connected:`, error);
-    return false;
-  }
-}
-
-/**
- * Find all sockets for a given user ID
- */
-function findSocketsForUser(userId) {
-  try {
-    const connectedSockets = Array.from(io.sockets.sockets.values());
-    return connectedSockets.filter((socket) => {
-      const sessionUserId = socket.handshake.session?.userId;
-      return sessionUserId === userId && socket.connected;
-    });
-  } catch (error) {
-    console.error(`Error finding sockets for user ${userId}:`, error);
-    return [];
-  }
-}
-
-/**
- * Comprehensive ghost user cleanup - finds users in rooms who aren't actually connected
- */
-async function cleanupGhostUsers() {
-  let ghostUsersRemoved = 0;
-
-  try {
-    const allUserIds = new Set();
-
-    // Collect all user IDs from all rooms
-    for (const [roomId, room] of rooms) {
-      if (room.users && Array.isArray(room.users)) {
-        room.users.forEach((user) => allUserIds.add(user.id));
-      }
-      if (room.spectators && Array.isArray(room.spectators)) {
-        room.spectators.forEach((spec) => allUserIds.add(spec.id));
-      }
-    }
-
-    // Check each user to see if they're actually connected
-    for (const userId of allUserIds) {
-      if (!isUserActuallyConnected(userId)) {
-        console.log(`Detected ghost user: ${userId}, removing from all rooms`);
-        const modifiedRooms = findAndRemoveUserFromAllRooms(userId);
-        if (modifiedRooms.length > 0) {
-          ghostUsersRemoved++;
-        }
-
-        // Clean up associated data
-        clearAFKTimers(userId);
-        userMessageBuffers.delete(userId);
-        users.delete(userId);
-
-        if (typingTimeouts.has(userId)) {
-          clearTimeout(typingTimeouts.get(userId));
-          typingTimeouts.delete(userId);
-        }
-
-        if (batchProcessingTimers.has(userId)) {
-          clearTimeout(batchProcessingTimers.get(userId));
-          batchProcessingTimers.delete(userId);
-          pendingChatUpdates.delete(userId);
-        }
-      }
-    }
-
-    if (ghostUsersRemoved > 0) {
-      console.log(
-        `Ghost user cleanup completed: removed ${ghostUsersRemoved} ghost users`
-      );
-    }
-
-    return ghostUsersRemoved;
-  } catch (error) {
-    console.error("Error during ghost user cleanup:", error);
-    return 0;
-  }
-}
-
-// ============================================================================
-// ENHANCED ROOM OPERATIONS
-// ============================================================================
-
-async function cleanupSocketFromRoom(socket, userId) {
-  try {
-    if (!socket.roomId) {
-      // If no specific room, do comprehensive cleanup
-      findAndRemoveUserFromAllRooms(userId);
-      return;
-    }
-
-    const room = rooms.get(socket.roomId);
-    if (!room) return;
-
-    let roomModified = false;
-
-    // Remove from spectators if this socket was spectating
-    if (socket.isSpectator && room.spectators) {
-      const initialSpectatorCount = room.spectators.length;
-      room.spectators = room.spectators.filter((spec) => spec.id !== userId);
-
-      if (room.spectators.length !== initialSpectatorCount) {
-        io.to(socket.roomId).emit("spectator left", {
-          userId,
-          spectatorCount: room.spectators.length,
-        });
-        roomModified = true;
-        console.log(`Removed spectator ${userId} from room ${socket.roomId}`);
-      }
-    }
-
-    // Remove from regular users if this socket was a regular user
-    if (!socket.isSpectator && room.users) {
-      const initialUserCount = room.users.length;
-      room.users = room.users.filter((user) => user.id !== userId);
-
-      if (room.users.length !== initialUserCount) {
-        // Clean up votes involving this user
-        if (room.votes) {
-          delete room.votes[userId];
-          for (let voterId in room.votes) {
-            if (room.votes[voterId] === userId) {
-              delete room.votes[voterId];
-            }
-          }
-          if (Object.keys(room.votes).length > 0) {
-            io.to(socket.roomId).emit("update votes", room.votes);
-          }
-        }
-
-        io.to(socket.roomId).emit("user left", userId);
-        roomModified = true;
-        console.log(`Removed user ${userId} from room ${socket.roomId}`);
-      }
-    }
-
-    if (roomModified) {
-      room.lastActiveTime = Date.now();
-      updateRoom(socket.roomId);
-      updateLobby();
-
-      // Schedule room deletion if completely empty
-      if (
-        room.users.length === 0 &&
-        (!room.spectators || room.spectators.length === 0)
-      ) {
-        await startRoomDeletionTimer(socket.roomId);
-      }
-    }
-
-    // Remove socket from Socket.IO room
-    socket.leave(socket.roomId);
-  } catch (error) {
-    console.error(`Error cleaning up socket ${socket.id} from room:`, error);
-    // Fallback to comprehensive cleanup
-    findAndRemoveUserFromAllRooms(userId);
-  }
-}
-
-async function leaveRoom(socket, userId) {
-  try {
-    const currentRoomId = socket ? socket.roomId : null;
-    clearAFKTimers(userId);
-
-    // Clean up the specific room if we know which one
-    if (currentRoomId && socket) {
-      await cleanupSocketFromRoom(socket, userId);
-    }
-
-    // IMPORTANT: Also do comprehensive cleanup to catch any edge cases
-    // This ensures the user is removed from ALL rooms, not just the one we think they're in
-    const additionalRoomsModified = findAndRemoveUserFromAllRooms(userId);
-
-    if (additionalRoomsModified.length > 0) {
-      console.log(
-        `Comprehensive cleanup removed user ${userId} from additional rooms: ${additionalRoomsModified.join(
-          ", "
-        )}`
-      );
     }
 
     // Clean up session
-    if (socket && socket.handshake.session) {
+    if (socket.handshake.session) {
       if (
         socket.handshake.session.validatedRooms &&
-        currentRoomId &&
         socket.handshake.session.validatedRooms[currentRoomId]
       ) {
         delete socket.handshake.session.validatedRooms[currentRoomId];
       }
       socket.handshake.session.currentRoom = null;
-      socket.handshake.session.isSpectator = false;
       await promisifySessionSave(socket.handshake.session).catch((err) =>
         console.error("Session save failed in leaveRoom:", err)
       );
     }
 
-    // Clean up socket state
-    if (socket) {
-      socket.roomId = null;
-      socket.isSpectator = false;
-      socket.join("lobby");
-    }
-
-    // Clean up user data
     userMessageBuffers.delete(userId);
+    socket.roomId = null;
+    socket.join("lobby");
+
     updateLobby();
     await debouncedSaveRooms();
-
-    console.log(`User ${userId} leave room cleanup completed`);
   } catch (err) {
-    console.error(`Error in leaveRoom for user ${userId}:`, err);
-    // Emergency fallback - try to remove user from all rooms
-    try {
-      findAndRemoveUserFromAllRooms(userId);
-      userMessageBuffers.delete(userId);
-      clearAFKTimers(userId);
-    } catch (fallbackErr) {
-      console.error(
-        `Emergency cleanup also failed for user ${userId}:`,
-        fallbackErr
-      );
-    }
+    console.error("Error in leaveRoom:", err);
     if (socket && typeof socket.emit === "function") {
       socket.emit(
         "error",
@@ -2009,46 +1579,24 @@ loadRooms().catch((err) => {
   console.error("Failed to load rooms on startup:", err);
 });
 
-app.get(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, (req, res) => {
-  try {
-    const cacheKey = "public_rooms";
-    if (apiCache.has(cacheKey)) {
-      const cached = apiCache.get(cacheKey);
-      if (Date.now() - cached.timestamp < API_CACHE_TTL) {
-        return res.json(cached.data);
-      }
+app.get(`/api/${CONFIG.VERSIONS.API}/config`, (req, res) => {
+  const cacheKey = "config";
+  if (apiCache.has(cacheKey)) {
+    const cached = apiCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < API_CACHE_TTL) {
+      return res.json(cached.data);
     }
-
-    const publicRooms = Array.from(rooms.values())
-      .filter((room) => room.type !== "private")
-      .map((room) => ({
-        id: room.id,
-        name: room.name,
-        type: room.type,
-        users: Array.isArray(room.users)
-          ? room.users.map((u) => ({
-              id: u.id,
-              username: u.username,
-              location: u.location,
-            }))
-          : [],
-        spectators: Array.isArray(room.spectators) ? room.spectators.length : 0, // ADD THIS LINE
-        isFull:
-          (Array.isArray(room.users) ? room.users.length : 0) >=
-          CONFIG.LIMITS.MAX_ROOM_CAPACITY,
-      }));
-
-    apiCache.set(cacheKey, { timestamp: Date.now(), data: publicRooms });
-    return res.json(publicRooms);
-  } catch (err) {
-    console.error("Error in GET /api/v1/rooms:", err);
-    return sendErrorResponse(
-      res,
-      ERROR_CODES.SERVER_ERROR,
-      "Internal server error",
-      500
-    );
   }
+
+  const configData = {
+    limits: CONFIG.LIMITS,
+    features: CONFIG.FEATURES,
+    versions: CONFIG.VERSIONS,
+    roomStatistics: getRoomStatistics(),
+  };
+
+  apiCache.set(cacheKey, { timestamp: Date.now(), data: configData });
+  res.json(configData);
 });
 
 app.get(`/api/${CONFIG.VERSIONS.API}/health`, (req, res) => {
@@ -2309,11 +1857,10 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
       type: data.type,
       layout: data.layout,
       users: [],
-      spectators: [],
       accessCode: data.type === "semi-private" ? data.accessCode : null,
       votes: {},
       bannedUserIds: new Set(),
-      lastActiveTime: now,
+      lastActiveTime: Date.now(),
     };
 
     rooms.set(roomId, newRoom);
@@ -2447,354 +1994,6 @@ app.post(
 io.on("connection", (socket) => {
   const clientIp = socket.clientIp || socket.handshake.address;
 
-  // NEW: Connection validation to prevent ghost states
-  socket.on("connect", () => {
-    console.log(`Socket ${socket.id} connected from ${clientIp}`);
-  });
-
-  // NEW: Add heartbeat mechanism
-  socket.isAlive = true;
-  socket.on("pong", () => {
-    socket.isAlive = true;
-  });
-
-  // Game event handlers
-  socket.on(
-    "create game",
-    safe(async (data) => {
-      const userId = socket.handshake.session?.userId;
-      const username = socket.handshake.session?.username;
-      const roomId = socket.roomId;
-
-      if (!userId || !username || !roomId) {
-        socket.emit("game error", {
-          message: "You must be in a room to create a game.",
-        });
-        return;
-      }
-
-      if (!data || !data.gameType) {
-        socket.emit("game error", { message: "Invalid game creation data." });
-        return;
-      }
-
-      // Check if user is already in a game
-      const existingGame = gameManager.getPlayerGame(userId);
-      if (existingGame) {
-        socket.emit("game error", {
-          message: "You are already in a game. Leave your current game first.",
-        });
-        return;
-      }
-
-      try {
-        const game = gameManager.createGame(
-          roomId,
-          data.gameType,
-          userId,
-          username
-        );
-
-        // Join the game room for socket communication
-        socket.join(`game_${game.id}`);
-
-        // Notify the creator
-        socket.emit("game created", {
-          game: game.getGameState(),
-          playerSymbol: game.players[0].symbol,
-        });
-
-        // Notify room about new game
-        socket.to(roomId).emit("room games updated", {
-          games: gameManager.getRoomGames(roomId).map((g) => g.getGameState()),
-        });
-
-        console.log(
-          `Game created: ${game.id} by ${username} in room ${roomId}`
-        );
-      } catch (error) {
-        console.error("Error creating game:", error);
-        socket.emit("game error", { message: error.message });
-      }
-    })
-  );
-
-  socket.on(
-    "join game",
-    safe(async (data) => {
-      const userId = socket.handshake.session?.userId;
-      const username = socket.handshake.session?.username;
-      const roomId = socket.roomId;
-
-      if (!userId || !username || !roomId) {
-        socket.emit("game error", {
-          message: "You must be in a room to join a game.",
-        });
-        return;
-      }
-
-      if (!data || !data.gameId) {
-        socket.emit("game error", { message: "Invalid game join data." });
-        return;
-      }
-
-      // Check if user is already in a game
-      const existingGame = gameManager.getPlayerGame(userId);
-      if (existingGame) {
-        socket.emit("game error", {
-          message: "You are already in a game. Leave your current game first.",
-        });
-        return;
-      }
-
-      try {
-        const game = gameManager.joinGame(data.gameId, userId, username);
-
-        // Join the game room for socket communication
-        socket.join(`game_${game.id}`);
-
-        // Notify the joiner
-        socket.emit("game joined", {
-          game: game.getGameState(),
-          playerSymbol: game.players.find((p) => p.id === userId).symbol,
-        });
-
-        // Notify all players and spectators in the game
-        io.to(`game_${game.id}`).emit("game updated", {
-          game: game.getGameState(),
-        });
-
-        // Notify room about game update
-        socket.to(roomId).emit("room games updated", {
-          games: gameManager.getRoomGames(roomId).map((g) => g.getGameState()),
-        });
-
-        console.log(`${username} joined game: ${game.id}`);
-      } catch (error) {
-        console.error("Error joining game:", error);
-        socket.emit("game error", { message: error.message });
-      }
-    })
-  );
-
-  socket.on(
-    "spectate game",
-    safe(async (data) => {
-      const userId = socket.handshake.session?.userId;
-      const username = socket.handshake.session?.username;
-
-      if (!userId || !username) {
-        socket.emit("game error", {
-          message: "You must be signed in to spectate a game.",
-        });
-        return;
-      }
-
-      if (!data || !data.gameId) {
-        socket.emit("game error", { message: "Invalid spectate data." });
-        return;
-      }
-
-      try {
-        const game = gameManager.getGame(data.gameId);
-        if (!game) {
-          socket.emit("game error", { message: "Game not found." });
-          return;
-        }
-
-        // Add as spectator
-        game.addSpectator(userId);
-
-        // Join the game room for socket communication
-        socket.join(`game_${game.id}`);
-
-        // Notify the spectator
-        socket.emit("game spectate", {
-          game: game.getGameState(),
-        });
-
-        // Notify all players and spectators about updated spectator count
-        io.to(`game_${game.id}`).emit("game updated", {
-          game: game.getGameState(),
-        });
-
-        console.log(`${username} is now spectating game: ${game.id}`);
-      } catch (error) {
-        console.error("Error spectating game:", error);
-        socket.emit("game error", { message: error.message });
-      }
-    })
-  );
-
-  socket.on(
-    "game move",
-    safe(async (data) => {
-      const userId = socket.handshake.session?.userId;
-
-      if (!userId) {
-        socket.emit("game error", {
-          message: "You must be signed in to make moves.",
-        });
-        return;
-      }
-
-      if (!data || !data.gameId || !data.move) {
-        socket.emit("game error", { message: "Invalid move data." });
-        return;
-      }
-
-      try {
-        const result = gameManager.makeMove(
-          data.gameId,
-          userId,
-          data.move.position
-        );
-
-        if (result.valid) {
-          // Notify all players and spectators
-          io.to(`game_${data.gameId}`).emit("game updated", {
-            game: result.gameState,
-          });
-
-          // If game ended, clean up after a delay
-          if (result.gameState.state === "finished") {
-            setTimeout(() => {
-              // Don't auto-remove games, let players start new games
-            }, 1000);
-          }
-        }
-      } catch (error) {
-        console.error("Error making move:", error);
-        socket.emit("game error", { message: error.message });
-      }
-    })
-  );
-
-  socket.on(
-    "new game",
-    safe(async (data) => {
-      const userId = socket.handshake.session?.userId;
-
-      if (!userId) {
-        socket.emit("game error", {
-          message: "You must be signed in to start a new game.",
-        });
-        return;
-      }
-
-      if (!data || !data.gameId) {
-        socket.emit("game error", { message: "Invalid new game data." });
-        return;
-      }
-
-      try {
-        const game = gameManager.getGame(data.gameId);
-        if (!game) {
-          socket.emit("game error", { message: "Game not found." });
-          return;
-        }
-
-        // Check if user is a player in this game
-        if (!game.canPlayerPlay(userId)) {
-          socket.emit("game error", {
-            message: "You are not a player in this game.",
-          });
-          return;
-        }
-
-        // Reset the game
-        game.resetGame();
-
-        // Notify all players and spectators
-        io.to(`game_${game.id}`).emit("game updated", {
-          game: game.getGameState(),
-        });
-
-        console.log(`New game started: ${game.id}`);
-      } catch (error) {
-        console.error("Error starting new game:", error);
-        socket.emit("game error", { message: error.message });
-      }
-    })
-  );
-
-  socket.on(
-    "leave game",
-    safe(async (data) => {
-      const userId = socket.handshake.session?.userId;
-
-      if (!userId) return;
-
-      if (!data || !data.gameId) {
-        socket.emit("game error", { message: "Invalid leave game data." });
-        return;
-      }
-
-      try {
-        const game = gameManager.getGame(data.gameId);
-        if (!game) return;
-
-        // Remove from spectators
-        game.removeSpectator(userId);
-
-        // Leave the game socket room
-        socket.leave(`game_${game.id}`);
-
-        // If user is a player, end the game
-        if (game.canPlayerPlay(userId)) {
-          // Notify other players that someone left
-          socket.to(`game_${game.id}`).emit("game ended", {
-            gameId: game.id,
-            reason: "A player left the game",
-          });
-
-          // Remove the game
-          gameManager.removeGame(game.id);
-
-          // Update room games list
-          if (game.roomId) {
-            io.to(game.roomId).emit("room games updated", {
-              games: gameManager
-                .getRoomGames(game.roomId)
-                .map((g) => g.getGameState()),
-            });
-          }
-        } else {
-          // Just update spectator count
-          io.to(`game_${game.id}`).emit("game updated", {
-            game: game.getGameState(),
-          });
-        }
-
-        console.log(`User ${userId} left game: ${game.id}`);
-      } catch (error) {
-        console.error("Error leaving game:", error);
-      }
-    })
-  );
-
-  socket.on(
-    "get room games",
-    safe(async (data) => {
-      const roomId = socket.roomId || data?.roomId;
-
-      if (!roomId) {
-        socket.emit("game error", { message: "No room specified." });
-        return;
-      }
-
-      try {
-        const games = gameManager.getRoomGames(roomId);
-        socket.emit("room games updated", {
-          games: games.map((g) => g.getGameState()),
-        });
-      } catch (error) {
-        console.error("Error getting room games:", error);
-        socket.emit("game error", { message: "Failed to get room games." });
-      }
-    })
-  );
-
   // Safe wrapper for socket handlers
   function safe(fn) {
     return async (...args) => {
@@ -2843,105 +2042,6 @@ io.on("connection", (socket) => {
       console.error("Error in socket.onAny AFK reset:", err);
     }
   });
-
-  socket.on(
-    "join room as spectator",
-    safe(async (data) => {
-      if (!data || typeof data !== "object" || !data.roomId) {
-        socket.emit(
-          "error",
-          createErrorResponse(
-            ERROR_CODES.BAD_REQUEST,
-            "Invalid data for joining room as spectator."
-          )
-        );
-        return;
-      }
-
-      const room = rooms.get(data.roomId);
-      if (!room) {
-        socket.emit(
-          "room not found",
-          createErrorResponse(ERROR_CODES.NOT_FOUND, "Room not found.")
-        );
-        return;
-      }
-
-      // Get user info from session
-      let { username, location, userId } = socket.handshake.session || {};
-      if (!userId) {
-        userId = socket.handshake.sessionID;
-        if (socket.handshake.session) {
-          socket.handshake.session.userId = userId;
-          if (!username) socket.handshake.session.username = "Anonymous";
-          if (!location) socket.handshake.session.location = "On The Web";
-        } else {
-          socket.emit(
-            "error",
-            createErrorResponse(
-              ERROR_CODES.SERVER_ERROR,
-              "Session error, cannot join room as spectator."
-            )
-          );
-          return;
-        }
-      }
-
-      username = username || "Anonymous";
-      location = location || "On The Web";
-
-      // Check access code for semi-private rooms (same as regular join)
-      if (room.type === "semi-private") {
-        const validatedAccessCode =
-          socket.handshake.session.validatedRooms &&
-          socket.handshake.session.validatedRooms[data.roomId];
-        let codeToUse = data.accessCode;
-        if (validatedAccessCode) {
-          codeToUse = validatedAccessCode;
-        } else if (!codeToUse) {
-          socket.emit("access code required");
-          return;
-        }
-
-        if (
-          typeof codeToUse !== "string" ||
-          codeToUse.length !== 6 ||
-          !/^\d+$/.test(codeToUse)
-        ) {
-          socket.emit(
-            "error",
-            createErrorResponse(
-              ERROR_CODES.VALIDATION_ERROR,
-              "Invalid access code format."
-            )
-          );
-          return;
-        }
-
-        if (room.accessCode !== codeToUse) {
-          socket.emit(
-            "error",
-            createErrorResponse(ERROR_CODES.FORBIDDEN, "Incorrect access code.")
-          );
-          return;
-        }
-
-        if (!validatedAccessCode && socket.handshake.session) {
-          if (!socket.handshake.session.validatedRooms)
-            socket.handshake.session.validatedRooms = {};
-          socket.handshake.session.validatedRooms[data.roomId] = codeToUse;
-          await promisifySessionSave(socket.handshake.session).catch((err) =>
-            console.error(
-              "Session save error (spectator join access code):",
-              err
-            )
-          );
-        }
-      }
-
-      joinRoomAsSpectator(socket, data.roomId, userId);
-    })
-  );
 
   socket.on(
     "check signin status",
@@ -3222,11 +2322,10 @@ io.on("connection", (socket) => {
         type: data.type,
         layout: data.layout,
         users: [],
-        spectators: [],
         accessCode: data.type === "semi-private" ? data.accessCode : null,
         votes: {},
         bannedUserIds: new Set(),
-        lastActiveTime: Date.now(),
+        lastActiveTime: now,
       };
 
       rooms.set(roomId, newRoom);
@@ -3378,14 +2477,16 @@ io.on("connection", (socket) => {
     })
   );
 
+  // Rest of socket handlers (vote, leave room, chat update, typing, etc.)
+  // ... [Continue with remaining socket handlers]
+
   socket.on(
     "vote",
     safe(async (data) => {
-      // Block spectators from voting
-      if (socket.isSpectator) {
+      if (!data || typeof data !== "object" || !data.targetUserId) {
         socket.emit(
           "error",
-          createErrorResponse(ERROR_CODES.FORBIDDEN, "Spectators cannot vote.")
+          createErrorResponse(ERROR_CODES.BAD_REQUEST, "Invalid vote data.")
         );
         return;
       }
@@ -3449,13 +2550,12 @@ io.on("connection", (socket) => {
   socket.on(
     "chat update",
     safe(async (data) => {
-      // Block spectators from sending chat updates
-      if (socket.isSpectator) {
+      if (!checkChatCircuit()) {
         socket.emit(
           "error",
           createErrorResponse(
-            ERROR_CODES.FORBIDDEN,
-            "Spectators cannot send messages."
+            ERROR_CODES.CIRCUIT_OPEN,
+            "System is temporarily unavailable. Please try again later."
           )
         );
         return;
@@ -3573,10 +2673,6 @@ io.on("connection", (socket) => {
       )
         return;
 
-      if (socket.isSpectator) {
-        return; // Silently ignore typing from spectators
-      }
-
       const userId = socket.handshake.session.userId;
       const username = socket.handshake.session.username || "Anonymous";
 
@@ -3673,88 +2769,27 @@ io.on("connection", (socket) => {
   socket.on(
     "disconnect",
     safe(async (reason) => {
-      console.log(
-        `Socket ${socket.id} disconnecting. Reason: ${reason}. IP: ${socket.clientIp}`
-      );
-
       const userId = socket.handshake.session
         ? socket.handshake.session.userId
         : null;
 
       if (userId) {
-        try {
-          // Clear timers first
-          clearAFKTimers(userId);
+        clearAFKTimers(userId);
+        await leaveRoom(socket, userId);
+        userMessageBuffers.delete(userId);
 
-          // IMPROVED: Always clean up this specific socket's room presence
-          // regardless of whether the user has other connections
-          if (socket.roomId) {
-            await cleanupSocketFromRoom(socket, userId);
-          }
-
-          // Check if user has other active connections
-          const userSockets = findSocketsForUser(userId);
-          const otherActiveSockets = userSockets.filter(
-            (s) => s.id !== socket.id && s.connected
-          );
-
-          if (otherActiveSockets.length === 0) {
-            // This is the user's last connection, do full cleanup
-            console.log(
-              `Last connection for user ${userId}, doing additional cleanup`
-            );
-
-            // Additional cleanup for data that's user-wide, not socket-specific
-            if (typingTimeouts.has(userId)) {
-              clearTimeout(typingTimeouts.get(userId));
-              typingTimeouts.delete(userId);
-            }
-            if (batchProcessingTimers.has(userId)) {
-              clearTimeout(batchProcessingTimers.get(userId));
-              batchProcessingTimers.delete(userId);
-              pendingChatUpdates.delete(userId);
-            }
-            users.delete(userId);
-            userMessageBuffers.delete(userId);
-
-            // Final comprehensive cleanup to catch any edge cases
-            findAndRemoveUserFromAllRooms(userId);
-          } else {
-            console.log(
-              `User ${userId} has ${otherActiveSockets.length} other active connections, keeping user data`
-            );
-          }
-        } catch (error) {
-          console.error(
-            `Error during disconnect cleanup for user ${userId}:`,
-            error
-          );
-          // Emergency cleanup - try to remove user anyway
-          try {
-            findAndRemoveUserFromAllRooms(userId);
-            clearAFKTimers(userId);
-            userMessageBuffers.delete(userId);
-            users.delete(userId);
-          } catch (emergencyError) {
-            console.error(
-              `Emergency disconnect cleanup failed for user ${userId}:`,
-              emergencyError
-            );
-          }
+        if (typingTimeouts.has(userId)) {
+          clearTimeout(typingTimeouts.get(userId));
+          typingTimeouts.delete(userId);
         }
-      } else {
-        console.warn(`Socket ${socket.id} disconnected without valid userId`);
-        // Try to clean up any rooms this socket might have been in
-        if (socket.roomId) {
-          try {
-            socket.leave(socket.roomId);
-          } catch (error) {
-            console.error(
-              `Error leaving room during disconnect without userId:`,
-              error
-            );
-          }
+
+        if (batchProcessingTimers.has(userId)) {
+          clearTimeout(batchProcessingTimers.get(userId));
+          batchProcessingTimers.delete(userId);
+          pendingChatUpdates.delete(userId);
         }
+
+        users.delete(userId);
       }
 
       // Update IP connection tracking
@@ -3765,28 +2800,9 @@ io.on("connection", (socket) => {
         else ipConnections.delete(socket.clientIp);
       }
 
-      // Game cleanup (existing code)
-      try {
-        const userGame = gameManager.getPlayerGame(userId);
-        if (userGame) {
-          if (userGame.canPlayerPlay(userId)) {
-            socket.to(`game_${userGame.id}`).emit("game ended", {
-              gameId: userGame.id,
-              reason: "A player disconnected",
-            });
-            gameManager.removeGame(userGame.id);
-          } else {
-            userGame.removeSpectator(userId);
-            socket.to(`game_${userGame.id}`).emit("game updated", {
-              game: userGame.getGameState(),
-            });
-          }
-        }
-      } catch (error) {
-        console.error("Error cleaning up games on disconnect:", error);
-      }
-
-      console.log(`Socket ${socket.id} disconnect cleanup completed`);
+      console.log(
+        `Socket ${socket.id} disconnected. Reason: ${reason}. IP: ${socket.clientIp}`
+      );
     })
   );
 
@@ -3840,14 +2856,6 @@ setInterval(() => {
     }
   }
 }, 120000); // Every 2 minutes
-
-setInterval(() => {
-  try {
-    gameManager.cleanupGames();
-  } catch (error) {
-    console.error("Error during game cleanup:", error);
-  }
-}, 300000); // Every 5 minutes
 
 // Resource cleanup
 setInterval(() => {
@@ -3923,70 +2931,15 @@ setInterval(() => {
 // Enhanced room cleanup with statistics
 setInterval(async () => {
   try {
-    const activeUserIds = new Set();
-    for (const [, room] of rooms.entries()) {
-      if (Array.isArray(room.users)) {
-        for (const user of room.users) {
-          activeUserIds.add(user.id);
-        }
-      }
-      if (Array.isArray(room.spectators)) {
-        for (const spec of room.spectators) {
-          activeUserIds.add(spec.id);
-        }
-      }
-    }
-
-    // Clean up message buffers for inactive users
-    for (const bufferId of userMessageBuffers.keys()) {
-      if (!activeUserIds.has(bufferId)) {
-        userMessageBuffers.delete(bufferId);
-      }
-    }
-
-    // Clean up typing timeouts
-    for (const timeoutId of typingTimeouts.keys()) {
-      if (!activeUserIds.has(timeoutId)) {
-        clearTimeout(typingTimeouts.get(timeoutId));
-        typingTimeouts.delete(timeoutId);
-      }
-    }
-
-    // Clean up AFK timers
-    for (const userId of afkTimers.keys()) {
-      if (!activeUserIds.has(userId)) {
-        clearAFKTimers(userId);
-      }
-    }
-
-    // Clean up batch processing timers
-    for (const userId of batchProcessingTimers.keys()) {
-      if (!activeUserIds.has(userId)) {
-        clearTimeout(batchProcessingTimers.get(userId));
-        batchProcessingTimers.delete(userId);
-        pendingChatUpdates.delete(userId);
-      }
-    }
-
-    console.log(
-      `Resource cleanup completed. Active users: ${activeUserIds.size}`
-    );
-  } catch (error) {
-    console.error("Error during resource cleanup:", error);
-  }
-}, 300000); // Every 5 minutes
-
-// NEW: Ghost user cleanup interval
-setInterval(async () => {
-  try {
-    const ghostUsersRemoved = await cleanupGhostUsers();
-    if (ghostUsersRemoved > 0) {
+    const deletedCount = await cleanupEmptyRooms();
+    if (deletedCount > 0) {
+      const stats = getRoomStatistics();
       console.log(
-        `Periodic ghost user cleanup: removed ${ghostUsersRemoved} ghost users`
+        `Cleaned up ${deletedCount} empty rooms. Current: ${stats.totalRooms}/${stats.currentLimit} rooms, ${stats.totalUsers} users`
       );
     }
-  } catch (error) {
-    console.error("Error during periodic ghost user cleanup:", error);
+  } catch (err) {
+    console.error("Error during room cleanup:", err);
   }
 }, 600000); // Every 10 minutes
 
@@ -4057,37 +3010,6 @@ setInterval(() => {
     console.error("Error in server monitor:", err);
   }
 }, 120000); // Every 2 minutes
-
-setInterval(() => {
-  try {
-    const connectedSockets = Array.from(io.sockets.sockets.values());
-    let deadConnections = 0;
-
-    connectedSockets.forEach((socket) => {
-      if (socket.isAlive === false) {
-        console.log(`Terminating dead socket: ${socket.id}`);
-        deadConnections++;
-        socket.disconnect(true); // Use Socket.IO's disconnect method
-        return;
-      }
-
-      socket.isAlive = false;
-      // Use Socket.IO's ping method if available, otherwise emit a ping event
-      if (typeof socket.ping === "function") {
-        socket.ping();
-      } else {
-        // Fallback: emit a ping event that client can respond to
-        socket.emit("ping");
-      }
-    });
-
-    if (deadConnections > 0) {
-      console.log(`Heartbeat: terminated ${deadConnections} dead connections`);
-    }
-  } catch (error) {
-    console.error("Error during heartbeat check:", error);
-  }
-}, 30000); // Every 30 seconds
 
 // ============================================================================
 // SERVER STARTUP
