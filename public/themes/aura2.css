@@ -1,0 +1,1410 @@
+/* 
+   Talkomatic Lobby Stylesheet - Glassmorphism Theme
+   ===========================
+   This CSS file is responsible for styling the lobby page of the Talkomatic application. It includes
+   font declarations, global styles, layout containers, form elements, and responsive design rules to
+   ensure the page adapts well to different screen sizes. The focus is on creating a clean and user-friendly 
+   interface with appropriate font usage, color schemes, and interaction feedback.
+   Last updated: 2024
+*/
+/* Talkomatic Glassmorphism Theme - Modern Glass Effect */
+:root {
+  --primary: #ff9800;
+  --background-color: #000;
+  --background-image: url("aura-backgroujnd.png");
+  --left-panel-background-color: rgba(255, 255, 255, 0.15);
+  --external-links-background-color: rgba(255, 255, 255, 0.1);
+  --hover-external-links-background-color: rgba(255, 255, 255, 0.2);
+  --visited-external-links-background-color: rgba(255, 152, 0, 0.8);
+  --known-as-section-background-color: rgba(255, 248, 225, 0.2);
+  --logform-background-color: rgba(255, 255, 255, 0.08);
+  --logform-button-background-color: rgba(255, 152, 0, 0.9);
+  --hover-logform-button-background-color: rgba(245, 124, 0, 0.95);
+  --create-room-section-background-color: rgba(255, 248, 225, 0.2);
+  --learn-more-section-background-color: rgba(95, 99, 104, 0.8);
+  --room-name-input-background-color: rgba(255, 255, 255, 0.1);
+  --go-chat-button-background-color: rgba(255, 152, 0, 0.9);
+  --hover-go-chat-button-background-color: rgba(245, 124, 0, 0.95);
+  --right-panel-background-color: rgba(255, 255, 255, 0.05);
+  --room-background-color: rgba(255, 255, 255, 0.1);
+  --room-enter-button-background-color: rgba(255, 152, 0, 0.9);
+  --toggle-menu-button-background-color: rgba(95, 99, 104, 0.8);
+  --hide-menu-button-background-color: rgba(255, 255, 255, 0.1);
+  --hover-hide-menu-button-background-color: rgba(255, 255, 255, 0.2);
+  --modal-background-color: rgba(0, 0, 0, 0.7);
+  --modal-content-info-background-color: rgba(255, 255, 255, 0.15);
+  --close-modal-background-color: rgba(255, 255, 255, 0.1);
+  --layout-item-background-color: rgba(255, 255, 255, 0.08);
+  --modal-scroll-bar-track-background-color: rgba(255, 255, 255, 0.1);
+  --modal-scroll-bar-thumb-background-color: rgba(255, 255, 255, 0.3);
+  --custom-modal-background-color: rgba(0, 0, 0, 0.6);
+  --modal-content-background-color: rgba(255, 255, 255, 0.15);
+  --close-modal-button-background-color: rgba(255, 255, 255, 0.1);
+  --hover-close-modal-button-background-color: rgba(255, 255, 255, 0.2);
+  --modal-title-background-gradient-top-color: rgba(255, 255, 255, 0.2);
+  --modal-title-background-gradient-bottom-color: rgba(255, 255, 255, 0.1);
+  --modal-input-background-color: rgba(255, 255, 255, 0.1);
+  --modal-button-background-color: rgba(255, 255, 255, 0.1);
+  --hover-modal-button-background-color: rgba(255, 255, 255, 0.2);
+  --modal-confirm-button-background-color: rgba(255, 152, 0, 0.9);
+  --hover-modal-confirm-button-background-color: rgba(245, 124, 0, 0.95);
+  --spectate-button-background-color: rgba(255, 255, 255, 0.1);
+  --spectator-indicator-background-color: rgba(255, 235, 59, 0.9);
+  --spectator-count-background-color: rgba(255, 193, 7, 0.2);
+  --spectator-notice-background-color: rgba(255, 193, 7, 0.95);
+  --spectator-disabled-chat-input-background-color: rgba(255, 255, 255, 0.05);
+  --spectator-room-type-background-color: rgba(255, 193, 7, 0.9);
+  --disabled-emotes-button-background-color: rgba(255, 255, 255, 0.1);
+  --left-panel-color: rgba(255, 255, 255, 0.95);
+  --lobby-label-color: rgba(255, 255, 255, 0.95);
+  --external-links-color: rgba(255, 255, 255, 0.9);
+  --known-as-section-color: rgb(255, 255, 255);
+  --logform-button-color: rgba(255, 255, 255, 1);
+  --create-room-section-color: rgb(255, 255, 255);
+  --learn-more-section-color: rgba(255, 255, 255, 1);
+  --hover-learn-more-section-color: rgba(255, 152, 0, 1);
+  --lobby-form-color: rgba(255, 255, 255, 0.9);
+  --lobby-form-radio-label-color: rgba(255, 255, 255, 0.9);
+  --go-chat-button-color: rgba(255, 255, 255, 1);
+  --right-panel-color: rgba(255, 255, 255, 0.95);
+  --room-name-color: rgba(255, 255, 255, 0.95);
+  --room-details-color: rgba(100, 181, 246, 1);
+  --user-detail-color: rgba(255, 255, 255, 0.85);
+  --user-detail-number-color: rgba(255, 255, 255, 0.85);
+  --room-enter-button-color: rgba(255, 255, 255, 1);
+  --hover-room-enter-button-color: rgba(255, 255, 255, 1);
+  --room-bottom-section-color: rgba(255, 255, 255, 0.7);
+  --copyright-info-color: rgba(255, 255, 255, 0.7);
+  --toggle-menu-button-color: rgba(255, 255, 255, 1);
+  --hide-menu-button-color: rgba(255, 255, 255, 0.9);
+  --hover-hide-menu-button-color: rgba(255, 255, 255, 1);
+  --modal-content-info-color: rgba(255, 255, 255, 0.95);
+  --hover-close-modal-color: rgba(255, 255, 255, 1);
+  --layout-item-color: rgba(255, 255, 255, 0.85);
+  --creator-color: rgba(255, 255, 255, 0.7);
+  --creator-link-color: rgba(255, 255, 255, 0.85);
+  --visited-creator-link-color: rgba(255, 255, 255, 0.85);
+  --hover-creator-link-color: rgba(255, 255, 255, 1);
+  --modal-content-color: rgba(255, 255, 255, 0.95);
+  --hover-close-modal-button-color: rgba(255, 152, 0, 1);
+  --modal-message-color: rgba(255, 255, 255, 0.85);
+  --input-error-color: rgba(244, 67, 54, 1);
+  --modal-button-color: rgba(255, 255, 255, 0.9);
+  --modal-confirm-button-color: rgba(255, 255, 255, 1);
+  --spectate-button-color: rgba(255, 255, 255, 0.9);
+  --hover-spectate-button-color: rgba(255, 255, 255, 1);
+  --full-room-name-color: rgba(255, 255, 255, 0.6);
+  --spectator-indicator-color: rgba(51, 51, 51, 1);
+  --spectator-count-color: rgba(227, 116, 0, 1);
+  --spectator-notice-color: rgba(51, 51, 51, 1);
+  --spectator-room-type-color: rgba(51, 51, 51, 1);
+  --logform-border-color: rgba(255, 255, 255, 0.2);
+  --room-name-input-border-color: rgba(255, 255, 255, 0.2);
+  --room-top-border-color: rgba(255, 255, 255, 0.15);
+  --modal-content-info-border-color: rgba(255, 255, 255, 0.2);
+  --close-modal-border-color: rgba(255, 255, 255, 0.2);
+  --layout-item-border-color: rgba(255, 255, 255, 0.15);
+  --close-modal-button-border-color: rgba(255, 255, 255, 0.2);
+  --modal-input-border-color: rgba(255, 255, 255, 0.2);
+  --focus-modal-input-border-color: rgba(255, 152, 0, 0.8);
+  --modal-button-border-color: rgba(255, 255, 255, 0.2);
+  --hover-modal-button-border-color: rgba(255, 255, 255, 0.4);
+  --spectator-count-border-color: rgba(227, 116, 0, 0.4);
+  --modal-content-info-shadow-color: rgba(0, 0, 0, 0.3);
+  --modal-content-shadow-color: rgba(0, 0, 0, 0.4);
+  --focus-modal-input-shadow-color: rgba(255, 152, 0, 0.4);
+  --hover-spectate-button-shadow-color: rgba(255, 152, 0, 0.4);
+  --spectator-notice-shadow-color: rgba(0, 0, 0, 0.2);
+  --enter-button-shadow-color: rgba(0, 0, 0, 0.2);
+  --focus-creator-link-outline-color: rgba(255, 255, 255, 0.8);
+
+  --discord-icon-color: #5865f2;
+  --community-icon-color: #ff6d00;
+  --info-circle-icon-color: #64b5f6;
+  --youtube-play-circle-icon-color: #f44336;
+  --app-directory-icon-color: #ab47bc;
+  --documentation-icon-color: #66bb6a;
+  --donate-icon-color: #ec407a;
+  --themes-icon-gradient-left-color: #f44336;
+  --themes-icon-gradient-middle-color: #66bb6a;
+  --themes-icon-gradient-right-color: #42a5f5;
+}
+/* Font Declarations */
+/* Define custom fonts used throughout the lobby */
+@font-face {
+  font-family: "talkoSS"; /* Main font family for general text */
+  src: url("../fonts/Sansation_Light.ttf"); /* Light version of the font */
+}
+@font-face {
+  font-family: "talkoSS";
+  src: url("../fonts/Sansation_Bold.ttf"); /* Bold version for emphasis */
+  font-weight: bold;
+}
+@font-face {
+  font-family: "talkoText"; /* Special font for specific text elements */
+  src: url("../fonts/dited.otf");
+}
+/* Global Styles */
+/* Set default styles for the HTML and body elements */
+body,
+html {
+  margin: 0; /* Remove default margins */
+  padding: 0; /* Remove default padding */
+  height: 100%; /* Ensure body takes up full viewport height */
+  overflow: hidden; /* Hide overflow to prevent unwanted scroll bars */
+  font-family: talkoSS, Arial, sans-serif; /* Use custom font, fallback to Arial */
+  background: var(--background-color) var(--background-image) no-repeat center
+    center fixed;
+  background-size: cover;
+}
+/* Layout Containers */
+/* Flexbox container that holds the left and right panels */
+.container {
+  display: flex; /* Flex layout to align panels horizontally */
+  height: 100vh; /* Full viewport height */
+  overflow: hidden; /* Prevent overflow */
+}
+/* Ensure both panels fill the height of the container and allow scrolling */
+.left-panel,
+.right-panel {
+  height: 100%;
+  overflow-y: auto; /* Enable vertical scrolling */
+  box-sizing: border-box; /* Include padding/border in the element's width/height */
+}
+/* Left Panel Styles */
+/* Styles for the left panel that contains menu and form elements */
+.left-panel {
+  width: 320px; /* Fixed width for left panel */
+  background-color: var(--left-panel-background-color); /* Glass background */
+  color: var(--left-panel-color); /* White text color */
+  transition: transform 0.3s ease-in-out; /* Smooth transition for showing/hiding */
+  display: flex;
+  flex-direction: column; /* Stack child elements vertically */
+  margin-top: 23px; /* Space from the top */
+  height: calc(100vh - 23px); /* Adjust height considering the top margin */
+  overflow-y: auto; /* Enable vertical scrolling */
+  overflow-x: hidden; /* Disable horizontal scrolling */
+  scrollbar-width: none; /* Hide scrollbar in Firefox */
+  -ms-overflow-style: none; /* Hide scrollbar in Internet Explorer */
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.125);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+/* Hide scrollbar in WebKit browsers (Chrome, Safari) */
+.left-panel::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+/* Ensure all children of the left panel fit within the padding */
+.left-panel > * {
+  width: 100%;
+  box-sizing: border-box;
+  padding-left: 18px;
+  padding-right: 18px;
+}
+/* Header, known-as section, and create room section will have no horizontal padding */
+.panel-header,
+.known-as-section,
+.createRoom {
+  padding-left: 0;
+  padding-right: 0;
+}
+/* Ensure text inputs fill the full width of the container */
+#logform input,
+#lobbyForm input[type="text"] {
+  width: 100%;
+  box-sizing: border-box; /* Include padding in width */
+}
+/* Header section with Talkomatic branding */
+.panel-header {
+  text-align: center; /* Center the text */
+  padding-top: 20px;
+  padding-bottom: 8px;
+}
+/* Talkomatic title with bold orange text */
+.panel-header .talkomatic {
+  font-family: talkoSS, Arial, sans-serif;
+  font-weight: bold;
+  font-size: 24px;
+  color: var(--primary); /* Bright orange for emphasis */
+  margin-right: 5px;
+}
+/* Lobby label in white next to the Talkomatic logo */
+.panel-header .lobby {
+  font-family: talkoSS, Arial, sans-serif;
+  font-weight: normal;
+  font-size: 24px;
+  color: var(--lobby-label-color);
+}
+.external-links {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+  width: 100%;
+  font-family: monospace;
+}
+.external-links a {
+  justify-self: stretch;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  background-color: var(--external-links-background-color);
+  padding: 8px 12px;
+  border-radius: 3px;
+  color: var(--external-links-color);
+  text-decoration: none;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  transition: background-color 0.2s ease;
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+.external-links a:hover {
+  background-color: var(--hover-external-links-background-color);
+}
+.external-links a:visited {
+  color: var(--visited-external-links-background-color);
+}
+/* if there's an odd number of links, the last one spans both columns */
+.external-links > a:nth-last-child(1):nth-child(odd) {
+  grid-column: 1 / -1;
+}
+/* Known-as section with a light background */
+.known-as-section {
+  background-color: var(
+    --known-as-section-background-color
+  ); /* Light beige background for contrast */
+  padding: 18px;
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border-radius: 2px;
+}
+/* Style for the paragraph in the known-as section */
+.known-as-section p {
+  color: var(--known-as-section-color); /* white text */
+  margin: 0;
+  font-weight: bold;
+}
+/* Log Form Styles */
+/* Style for the sign-in form */
+#logform {
+  margin-top: 20px;
+  padding: 0 18px;
+  position: relative;
+  padding-bottom: 55px; /* Extra padding to account for the button */
+}
+/* Form layout: vertical stack of inputs */
+#logform form {
+  display: flex;
+  flex-direction: column;
+}
+/* Input fields in the form */
+#logform input {
+  margin-bottom: 15px;
+  padding: 12px;
+  border: 1px solid var(--logform-border-color); /* White border */
+  background-color: var(--logform-background-color); /* White background */
+  font-size: 16px;
+  font-family: talkoSS, Arial, sans-serif;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: white;
+}
+/* Submit button at the bottom of the form */
+#logform button {
+  position: absolute; /* Positioned at the bottom of the form */
+  bottom: 0;
+  right: 18px;
+  width: 100px;
+  padding: 12px 16px;
+  background-color: var(
+    --logform-button-background-color
+  ); /* Black background */
+  color: var(--logform-button-color); /* White text */
+  border: 1px solid var(--primary); /* Orange border */
+  cursor: pointer; /* Pointer cursor on hover */
+  font-family: talkoSS, Arial, sans-serif;
+  font-weight: light;
+  transition: background-color 0.3s ease, border-color 0.3s ease; /* Smooth hover transition */
+  font-size: 12px;
+  border-radius: 4px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 15px;
+}
+/* Icon next to the button text */
+#logform button .arrow-icon {
+  margin-left: 5px;
+  height: 14px;
+  width: 14px;
+}
+/* Hover effect for the button */
+#logform button:hover {
+  background-color: var(
+    --hover-logform-button-background-color
+  ); /* Light gray background on hover */
+  border-color: var(--primary); /* Keep orange border */
+}
+/* Create Room Section */
+/* Section where users can create new rooms */
+.createRoom {
+  background-color: var(
+    --create-room-section-background-color
+  ); /* Light background */
+  padding: 18px;
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border-radius: 2px;
+}
+/* Heading in the create room section */
+.createRoom p {
+  color: var(--create-room-section-color);
+  margin: 0;
+  font-weight: bold;
+  flex: 1;
+}
+/* Button to learn more about creating rooms */
+.createRoom .learn-more {
+  color: var(--learn-more-section-color); /* White text */
+  background-color: var(
+    --learn-more-section-background-color
+  ); /* Dark gray background */
+  padding: 12px 16px;
+  text-decoration: none; /* No underline */
+  font-size: 16px;
+  transition: color 0.3s ease; /* Smooth transition on hover */
+}
+/* Hover effect for learn more button */
+.createRoom .learn-more:hover {
+  color: var(--hover-learn-more-section-color); /* Orange text on hover */
+  text-decoration: underline; /* Add underline on hover */
+}
+/* Lobby Form Styles */
+/* Styles for the room creation form */
+#lobbyForm {
+  margin-top: 20px;
+  padding: 0 18px;
+  position: relative;
+  padding-bottom: 50px; /* Extra padding to accommodate the button */
+}
+/* Text input for room name */
+#lobbyForm input[type="text"] {
+  width: 90%; /* Adjust input width */
+  padding: 12px;
+  margin-bottom: 15px;
+  border: 1px solid var(--room-name-input-border-color); /* White border */
+  background-color: var(
+    --room-name-input-background-color
+  ); /* White background */
+  font-size: 16px;
+  font-family: talkoSS, Arial, sans-serif;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: white;
+}
+/* Layout for radio button groups */
+#lobbyForm .radio-group {
+  display: flex;
+  flex-direction: column; /* Stack radio buttons vertically */
+  margin-bottom: 15px;
+}
+/* Individual radio button labels */
+#lobbyForm .radio-group label {
+  margin-bottom: 10px;
+  color: var(--lobby-form-radio-label-color); /* White text */
+  font-size: 14px;
+  display: flex;
+  align-items: center; /* Align text and radio button vertically */
+  width: 100%;
+  box-sizing: border-box;
+}
+/* Space between radio button and label text */
+#lobbyForm .radio-group input[type="radio"] {
+  margin-right: 10px;
+}
+/* Icon next to radio label */
+#lobbyForm .radio-group .radio-icon {
+  width: 20px;
+  height: 20px;
+  margin-right: 10px;
+}
+/* Description text in lobby form */
+#lobbyForm p {
+  color: var(--lobby-form-color);
+  font-weight: light;
+  margin-bottom: 10px;
+}
+/* Container for the go chat button */
+.button-container {
+  position: absolute;
+  bottom: 20px;
+  right: 18px;
+  margin-top: 20px;
+}
+/* Button to join a chat */
+.go-chat-button {
+  padding: 12px 16px;
+  background-color: var(
+    --go-chat-button-background-color
+  ); /* Black background */
+  color: var(--go-chat-button-color); /* White text */
+  border: 1px solid var(--primary); /* Orange border */
+  border-radius: 4px; /* Rounded corners */
+  cursor: pointer;
+  font-family: talkoSS, Arial, sans-serif;
+  font-size: 14px;
+  transition: background-color 0.3s ease; /* Smooth hover transition */
+}
+/* Hover effect for the chat button */
+.go-chat-button:hover {
+  background-color: var(
+    --hover-go-chat-button-background-color
+  ); /* Orange background on hover */
+}
+/* Right Panel Styles */
+/* Main content area on the right side */
+.right-panel {
+  flex-grow: 1; /* Take up remaining space */
+  background-color: var(
+    --right-panel-background-color
+  ); /* Match the body background color */
+  color: var(--right-panel-color); /* White text */
+  padding-top: 30px;
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+/* Heading in the right panel */
+.right-panel h2 {
+  font-family: talkoSS, Arial, sans-serif;
+  font-weight: normal;
+  font-size: 25px;
+  color: var(--primary); /* Orange text for emphasis */
+  margin-bottom: 40px;
+  padding-left: 8px;
+}
+/* Message to prompt sign-in */
+#signInMessage {
+  padding-left: 20px;
+}
+/* Message shown when there are no rooms */
+#noRoomsMessage {
+  padding-left: 20px;
+}
+/* Room List Styles */
+/* Container for the list of available rooms */
+.roomList {
+  overflow-y: auto; /* Enable vertical scrolling */
+  display: flex;
+  flex-direction: column; /* Stack rooms vertically */
+}
+/* Container for each room */
+.rooms {
+  flex-grow: 1;
+}
+/* Individual room in the room list */
+.room {
+  background-color: var(--room-background-color); /* Black background */
+  padding: 8px 8px 0 8px;
+  position: relative;
+  border-top: 1px solid var(--room-top-border-color); /* White border at the top */
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+  margin-bottom: 8px;
+}
+/* Top section of a room */
+.room-top {
+  display: flex;
+  flex-direction: column; /* Stack elements vertically */
+}
+/* Information about the room */
+.room-info {
+  width: 100%;
+}
+/* Room name */
+.room-name {
+  font-size: 16px;
+  color: var(--room-name-color); /* White text */
+  margin-bottom: 5px;
+}
+/* Room details (e.g., number of users) */
+.room-details {
+  font-size: 14px;
+  color: var(--room-details-color); /* Cyan text */
+  margin-bottom: 5px;
+}
+/* User details section */
+.users-detail {
+  display: flex;
+  flex-direction: column; /* Stack user details vertically */
+  margin-bottom: 8px;
+}
+/* Styling for individual user details */
+.users-detail div {
+  font-size: 15px;
+  color: var(--user-detail-color); /* White text */
+  margin-bottom: 4px;
+}
+/* Number of users */
+.users-detail .user-number {
+  color: var(--user-detail-number-color);
+  margin-right: 5px;
+}
+/* Highlight user names in orange */
+.users-detail .user-name {
+  color: var(--primary); /* Orange color */
+}
+/* Enter room button */
+.enter-button {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background-color: var(
+    --room-enter-button-background-color
+  ); /* Black background */
+  color: var(--room-enter-button-color); /* White text */
+  border: 1px solid var(--primary); /* Orange border */
+  padding: 8px 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: talkoSS, Arial, sans-serif;
+  font-size: 14px;
+  transition: background-color 0.3s ease, color 0.3s ease; /* Smooth transition */
+}
+/* Hover effect for enter button */
+.enter-button:hover {
+  background-color: var(--primary); /* Orange background */
+  color: var(--hover-room-enter-button-color); /* Black text */
+}
+/* Disabled state for the enter button */
+.enter-button:disabled {
+  cursor: not-allowed; /* Show not-allowed cursor */
+}
+/* Bottom section of the room */
+.room-bottom {
+  font-size: 14px;
+  color: var(--room-bottom-section-color); /* Light gray text */
+  font-style: italic; /* Italicized text */
+  margin-top: 10px;
+}
+/* Copyright Info */
+/* Footer section with copyright and version information */
+.copyright-info {
+  padding: 20px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--copyright-info-color);
+  font-family: talkoss, Arial, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+}
+/* Styling for the version text */
+.copyright-info .version {
+  color: var(--primary); /* Orange text */
+  margin-right: 5px;
+}
+/* Dot separator between items */
+.copyright-info .dot {
+  margin: 0 5px;
+}
+/* Toggle and Hide Menu Buttons */
+/* Buttons to toggle and hide the left menu */
+.toggle-button,
+.hide-menu-button {
+  display: none; /* Initially hidden */
+  color: var(--toggle-menu-button-color); /* White text */
+  border: none;
+  padding: 10px;
+  cursor: pointer;
+  font-family: talkoSS, Arial, sans-serif;
+  transition: opacity 0.3s ease-in-out; /* Smooth transition */
+}
+/* Toggle button styles */
+.toggle-button {
+  position: fixed;
+  top: 23.5px;
+  left: 0;
+  z-index: 1001; /* Above other elements */
+  border-top-right-radius: 5px;
+  border-bottom-right-radius: 5px;
+  background-color: var(
+    --toggle-menu-button-background-color
+  ); /* Gray background */
+  font-size: 18px;
+  padding: 10px 15px 10px 10px;
+  opacity: 1;
+  transition: left 0.3s ease-in-out, opacity 0.3s ease-in-out;
+}
+/* Symbol for the toggle button (hamburger menu) */
+.toggle-button::after {
+  content: "≡";
+  margin-left: 10px;
+  font-size: 24px;
+}
+/* Hide menu button styles */
+.hide-menu-button {
+  margin-bottom: 10px;
+  background-color: var(--hide-menu-button-background-color);
+  width: 100%;
+  color: var(--hide-menu-button-color);
+  padding-top: 20px;
+  padding-left: 15px;
+  text-align: left;
+  font-size: 18px;
+}
+/* Hover effect for hide menu button */
+.hide-menu-button:hover {
+  background-color: var(
+    --hover-hide-menu-button-background-color
+  ); /* Light gray background */
+  color: var(--hover-hide-menu-button-color); /* Black text */
+}
+/* Modal base styles */
+.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--modal-background-color);
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+.modal.show {
+  display: flex;
+  opacity: 1;
+}
+.modal-content-info {
+  background-color: var(--modal-content-info-background-color);
+  margin: auto;
+  padding: 2rem;
+  border-radius: 8px;
+  max-width: 800px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  box-shadow: 0 4px 20px var(--modal-content-info-shadow-color);
+  border: 1px solid var(--modal-content-info-border-color);
+  color: var(--modal-content-info-color);
+  font-family: talkoSS, Arial, sans-serif;
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 16px 64px rgba(0, 0, 0, 0.4);
+}
+.close-modal {
+  position: absolute;
+  right: 1rem;
+  top: 1rem;
+  font-size: 1.8rem;
+  cursor: pointer;
+  color: var(--primary);
+  transition: color 0.2s;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--close-modal-border-color);
+  border-radius: 4px;
+  background-color: var(--close-modal-background-color);
+}
+.close-modal:hover {
+  background-color: var(--primary);
+  color: var(--hover-close-modal-color);
+}
+.modal h2 {
+  color: var(--primary);
+  font-size: 24px;
+  margin-bottom: 2rem;
+  font-weight: normal;
+  padding-right: 40px;
+}
+.modal-section {
+  margin-bottom: 2.5rem;
+}
+.modal-section h3 {
+  color: var(--primary);
+  margin-bottom: 1.5rem;
+  font-size: 20px;
+  font-weight: normal;
+}
+.room-type-info,
+.layout-info {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+.type-item,
+.layout-item {
+  background-color: var(--layout-item-background-color);
+  padding: 1.5rem;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  border: 1px solid var(--layout-item-border-color);
+  transition: border-color 0.3s ease;
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+.type-item:hover,
+.layout-item:hover {
+  border-color: var(--primary);
+}
+.info-icon {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 1rem;
+}
+.type-item h4,
+.layout-item h4 {
+  margin: 0.5rem 0;
+  color: var(--primary);
+  font-size: 18px;
+  font-weight: normal;
+}
+.type-item p,
+.layout-item p {
+  margin: 0;
+  color: var(--layout-item-color);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.creator {
+  color: var(--creator-color); /* Dark gray text */
+  font-size: 14px;
+}
+.creator-link {
+  color: var(--creator-link-color); /* Match the text color */
+  text-decoration: none; /* Remove default underline */
+  transition: all 0.2s ease; /* Smooth transition for hover effect */
+}
+.creator-link:visited {
+  color: var(
+    --visited-creator-link-color
+  ); /* Ensure visited links stay the same color */
+}
+.creator-link:hover {
+  text-decoration: underline; /* Add underline on hover */
+  color: var(--hover-creator-link-color); /* Slightly lighter on hover */
+}
+/* Optional: Add focus state for accessibility */
+.creator-link:focus {
+  outline: 2px solid var(--focus-creator-link-outline-color);
+  outline-offset: 2px;
+  text-decoration: underline;
+}
+/* Responsive Grid Layouts */
+@media (min-width: 768px) {
+  .room-type-info {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .layout-info {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+/* Mobile Responsiveness */
+@media (max-width: 767px) {
+  .modal-content-info {
+    width: 95%;
+    padding: 1.5rem;
+    margin: 1rem;
+  }
+  .room-type-info,
+  .layout-info {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  .type-item,
+  .layout-item {
+    padding: 1rem;
+  }
+  .modal h2 {
+    font-size: 20px;
+    margin-bottom: 1.5rem;
+  }
+  .modal-section h3 {
+    font-size: 18px;
+    margin-bottom: 1rem;
+  }
+  .type-item h4,
+  .layout-item h4 {
+    font-size: 16px;
+  }
+  .type-item p,
+  .layout-item p {
+    font-size: 14px;
+  }
+  .close-modal {
+    right: 0.5rem;
+    top: 0.5rem;
+  }
+}
+/* Scrollbar Styling */
+.modal-content::-webkit-scrollbar {
+  width: 8px;
+}
+.modal-content::-webkit-scrollbar-track {
+  background: var(--modal-scroll-bar-track-background-color);
+}
+.modal-content::-webkit-scrollbar-thumb {
+  background: var(--modal-scroll-bar-thumb-background-color);
+  border-radius: 4px;
+}
+.modal-content::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+/* Responsive Styles */
+/* Media query for screens narrower than 600px (small devices) */
+@media (max-width: 600px) {
+  .copyright-info {
+    flex-direction: column;
+  }
+  .copyright-info .dot {
+    display: none; /* Hide dot separator */
+  }
+  .copyright-info .copyright {
+    margin-top: 5px;
+  }
+  .left-panel {
+    width: 100%; /* Take full width on small screens */
+  }
+  .hide-menu-button {
+    width: 100%; /* Ensure the button spans the full width */
+  }
+}
+/* Media query for shorter screens (max height: 600px) */
+@media (max-height: 600px) {
+  .left-panel {
+    overflow-y: auto; /* Ensure scrolling if the panel overflows */
+  }
+  #lobbyForm {
+    padding-bottom: 100px; /* Extra padding for small screens */
+  }
+  .button-container {
+    bottom: 40px; /* Adjust button placement */
+  }
+}
+/* Media query for medium-sized screens (max width: 992px) */
+@media (max-width: 992px) {
+  .container {
+    flex-direction: column; /* Stack panels vertically on smaller screens */
+  }
+  .left-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%; /* Full height on mobile */
+    width: 320px;
+    max-width: 100%; /* Ensure the panel fits the screen */
+    z-index: 1000; /* Above other elements */
+    transform: translateX(-100%); /* Initially hidden off-screen */
+    padding-top: 60px; /* Space for the hide menu button */
+    margin-top: 0; /* Remove top margin */
+    overflow-y: auto; /* Enable scrolling */
+  }
+  /* Left panel when open */
+  .left-panel.open {
+    transform: translateX(0); /* Slide into view */
+  }
+  .right-panel {
+    width: 100%; /* Full width on mobile */
+    height: 100vh; /* Full height */
+    padding-top: 80px;
+  }
+  .toggle-button,
+  .hide-menu-button {
+    display: block; /* Show the buttons */
+  }
+  .toggle-button {
+    opacity: 1;
+    position: fixed;
+    top: 23.5px;
+    left: 0;
+    z-index: 1002; /* Ensure it's above the left panel */
+  }
+  .left-panel.open + .toggle-button {
+    opacity: 0;
+    left: -100px; /* Hide toggle button when the panel is open */
+  }
+  .right-panel h2 {
+    padding-left: 12px; /* Adjust heading padding */
+  }
+  .hide-menu-button {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 320px; /* Full width on mobile */
+    z-index: 1001;
+    margin-bottom: 0;
+    padding-top: 15px;
+    padding-bottom: 15px;
+  }
+}
+/* Custom Modal Styles */
+.custom-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--custom-modal-background-color);
+  z-index: 1000;
+  justify-content: center;
+  align-items: center;
+  font-family: talkoSS, Arial, sans-serif;
+  padding: 20px;
+  box-sizing: border-box;
+}
+.custom-modal.show {
+  display: flex;
+  animation: modalFadeIn 0.2s ease-out;
+}
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.modal-content {
+  background-color: var(--modal-content-background-color);
+  color: var(--modal-content-color);
+  border-radius: 8px;
+  padding: 24px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 0 20px var(--modal-content-shadow-color);
+  border: 1px solid var(--primary);
+  position: relative;
+  margin: 0 auto;
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 16px 64px rgba(0, 0, 0, 0.4);
+}
+.close-modal-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  cursor: pointer;
+  color: var(--primary);
+  background-color: var(--close-modal-button-background-color);
+  border-radius: 4px;
+  border: 1px solid var(--close-modal-button-border-color);
+  transition: all 0.2s;
+  line-height: 0;
+  padding-bottom: 4px;
+  z-index: 5;
+}
+.close-modal-btn:hover {
+  color: var(--hover-close-modal-button-color);
+  background-color: var(--hover-close-modal-button-background-color);
+  transform: scale(1.1);
+}
+#modalTitle {
+  margin-top: 0;
+  margin-right: 30px; /* Space for the X button */
+  background: linear-gradient(
+    to bottom,
+    var(--modal-title-background-gradient-top-color),
+    var(--modal-title-background-gradient-bottom-color)
+  );
+  color: var(--primary);
+  padding: 10px 15px;
+  border-radius: 4px 4px 0 0;
+  font-weight: bold;
+  margin-bottom: 20px;
+  letter-spacing: 0.5px;
+}
+#modalMessage {
+  margin-bottom: 22px;
+  line-height: 1.6;
+  color: var(--modal-message-color);
+  font-size: 16px;
+}
+#modalInputContainer {
+  margin-bottom: 24px;
+}
+#modalInput {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 10px;
+  background-color: var(--modal-input-background-color);
+  border: 1px solid var(--modal-input-border-color);
+  border-radius: 4px;
+  color: var(--primary);
+  font-family: talkoText, Arial, sans-serif;
+  font-size: 18px;
+  box-sizing: border-box;
+  transition: border-color 0.3s;
+}
+#modalInput:focus {
+  border-color: var(--focus-modal-input-border-color);
+  outline: none;
+  box-shadow: 0 0 0 1px var(--focus-modal-input-shadow-color);
+}
+.input-error {
+  color: var(--input-error-color);
+  font-size: 14px;
+  margin: 8px 0 0;
+  display: none;
+  padding-left: 2px;
+}
+.modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.modal-btn {
+  padding: 10px 18px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 15px;
+  background-color: var(--modal-button-background-color);
+  color: var(--modal-button-color);
+  border: 1px solid var(--modal-button-border-color);
+  font-family: talkoSS, Arial, sans-serif;
+  transition: all 0.2s;
+  min-width: 80px;
+}
+.modal-confirm-btn {
+  background-color: var(--modal-confirm-button-background-color);
+  color: var(--modal-confirm-button-color);
+  border: 1px solid var(--primary);
+}
+.modal-confirm-btn:hover {
+  background-color: var(--primary);
+  color: var(--hover-modal-confirm-button-background-color);
+  transform: translateY(-2px);
+}
+.modal-btn:hover {
+  background-color: var(--hover-modal-button-background-color);
+  border-color: var(--hover-modal-button-border-color);
+  transform: translateY(-2px);
+}
+.modal-btn:active,
+.modal-confirm-btn:active {
+  transform: translateY(0);
+}
+/* Mobile responsiveness */
+@media screen and (max-width: 768px) {
+  .custom-modal {
+    padding: 15px;
+  }
+  .modal-content {
+    width: 100%;
+    max-width: 450px;
+    padding: 20px;
+  }
+}
+@media screen and (max-width: 576px) {
+  .custom-modal {
+    padding: 12px;
+  }
+  .modal-content {
+    padding: 18px;
+    width: 100%;
+    margin: 0 12px;
+    max-width: none;
+  }
+  #modalTitle {
+    font-size: 16px;
+    padding: 8px 12px;
+    margin-bottom: 16px;
+  }
+  #modalMessage {
+    font-size: 15px;
+    margin-bottom: 18px;
+  }
+  .modal-btn {
+    padding: 8px 14px;
+    font-size: 14px;
+    min-width: 70px;
+  }
+  #modalInput {
+    font-size: 16px;
+    padding: 10px;
+  }
+  .close-modal-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 24px;
+  }
+}
+.fa-discord {
+  margin-right: 10px;
+  color: var(--discord-icon-color);
+}
+.fa-users {
+  margin-right: 10px;
+  color: var(--community-icon-color); /* Warm orange for community/people */
+}
+.fa-info-circle {
+  margin-right: 10px;
+  color: var(--info-circle-icon-color); /* Info blue */
+}
+.fa-play-circle {
+  margin-right: 10px;
+  color: var(
+    --youtube-play-circle-icon-color
+  ); /* YouTube red for video/streaming */
+}
+.fa-th-large {
+  margin-right: 10px;
+  color: var(--app-directory-icon-color); /* Purple for apps/directory */
+}
+.fa-book {
+  margin-right: 10px;
+  color: var(
+    --documentation-icon-color
+  ); /* Green for documentation/knowledge */
+}
+.fa-gift {
+  margin-right: 10px;
+  color: var(--donate-icon-color);
+}
+.fa-paintbrush {
+  margin-right: 10px;
+  background-image: linear-gradient(
+    82deg,
+    var(--themes-icon-gradient-left-color) 0%,
+    var(--themes-icon-gradient-middle-color) 50%,
+    var(--themes-icon-gradient-right-color) 100%
+  );
+  color: transparent;
+  background-clip: text;
+}
+/* Spectate button styling */
+.spectate-button {
+  background-color: var(--spectate-button-background-color) !important;
+  color: var(--spectate-button-color) !important;
+  border: 1px solid var(--primary) /* Orange border */ !important;
+  font-weight: bold;
+  border-radius: 5px;
+  transition: all 0.3s ease;
+  font-size: 14px;
+  transition: background-color 0.3s ease, color 0.3s ease; /* Smooth transition */
+}
+.spectate-button:hover {
+  background-color: var(--primary) !important;
+  color: var(--hover-spectate-button-color) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px var(--hover-spectate-button-shadow-color);
+}
+.room.full .spectate-button {
+  opacity: 1;
+  cursor: pointer;
+}
+/* Room element styling for full rooms with spectators */
+.room.full {
+  border-left: 3px solid var(--primary);
+}
+.room.full .room-name {
+  color: var(--full-room-name-color);
+}
+/* Spectator count styling in room list */
+.room-name {
+  font-weight: bold;
+}
+/* Spectator indicator in room page */
+.spectator-indicator {
+  padding: 5px 10px;
+  background-color: var(--spectator-indicator-background-color);
+  color: var(--spectator-indicator-color);
+  border-radius: 4px;
+  font-weight: bold;
+  font-size: 12px;
+  display: inline-block;
+  margin-right: 10px;
+}
+/* Spectator count in room navbar */
+.spectator-count {
+  font-size: 12px;
+  color: var(--spectator-count-color);
+  font-weight: bold;
+  padding: 2px 8px;
+  background-color: var(--spectator-count-background-color);
+  border-radius: 4px;
+  border: 1px solid var(--spectator-count-border-color);
+}
+/* Spectator notice styling */
+.spectator-notice {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--spectator-notice-background-color);
+  color: var(--spectator-notice-color);
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-weight: bold;
+  box-shadow: 0 4px 12px var(--spectator-notice-shadow-color);
+  z-index: 1000;
+  font-size: 14px;
+  animation: slideInFromRight 0.5s ease-out;
+}
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+/* Disabled input styling for spectators */
+.chat-input:not([contenteditable="true"]) {
+  background-color: var(
+    --spectator-disabled-chat-input-background-color
+  ) !important;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+/* Disabled button styling for spectators */
+button:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+/* Spectator mode room type styling */
+.room-type.spectator {
+  background-color: var(--spectator-room-type-background-color);
+  color: var(--spectator-room-type-color);
+  font-weight: bold;
+}
+/* Enhanced enter button styling */
+.enter-button {
+  transition: all 0.3s ease;
+  font-weight: bold;
+}
+.enter-button:not(.spectate-button):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px var(--enter-button-shadow-color);
+}
+/* Room list enhancements for spectator info */
+.users-detail {
+  margin-top: 5px;
+}
+.room-info {
+  flex: 1;
+}
+/* Spectator notification animations */
+@keyframes fadeInOut {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  10%,
+  90% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+/* Mobile responsive adjustments for spectator features */
+@media (max-width: 768px) {
+  .spectator-notice {
+    bottom: 10px;
+    right: 10px;
+    left: 10px;
+    font-size: 12px;
+    padding: 10px 12px;
+  }
+  .spectator-indicator {
+    font-size: 10px;
+    padding: 3px 6px;
+    margin-right: 5px;
+  }
+  .spectator-count {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+}
+/* Spectator mode emotes button disabled styling */
+#emotesButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--disabled-emotes-button-background-color) !important;
+}
+/* Room navbar enhancements for spectator count */
+.second-navbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.second-navbar .spectator-count {
+  margin-left: auto;
+}
+.spectate-button:hover::after {
+  opacity: 1;
+}
+/* Enhanced room styling for full rooms */
+.room.full {
+  position: relative;
+  overflow: visible;
+}
+.room.full::before {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  font-size: 16px;
+  opacity: 0.7;
+}
+
+/* Additional Glassmorphism Effects for Stats Modal */
+.stats-modal-content {
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  background: rgba(26, 26, 26, 0.8);
+  border: 2px solid rgba(255, 152, 0, 0.5);
+  box-shadow: 0 16px 64px rgba(0, 0, 0, 0.5);
+}
+
+.stats-card,
+.utilization-section,
+.room-types-section {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
