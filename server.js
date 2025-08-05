@@ -360,59 +360,67 @@ app.use((req, res, next) => {
 });
 
 // Security middleware
-helmet({
-  contentSecurityPolicy: {
-    useDefaults: true,
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: [
-        "'self'",
-        // Allow dynamic nonces, fix with backticks
-        (req, res) => `'nonce-${res.locals.nonce}'`,
-        "https://cdnjs.cloudflare.com",
-        "https://classic.talkomatic.co",
-        "https://unpkg.com",
-        "https://static.cloudflareinsights.com",
-        // Add more if needed
-      ],
-      scriptSrcElem: [
-        "'self'",
-        (req, res) => `'nonce-${res.locals.nonce}'`,
-        "https://cdnjs.cloudflare.com",
-        "https://classic.talkomatic.co",
-        "https://unpkg.com",
-        "https://static.cloudflareinsights.com",
-      ],
-      styleSrc: [
-        "'self'",
-        "'unsafe-inline'", // Needed for inline styles from Google Fonts
-        "https://cdnjs.cloudflare.com",
-        "https://fonts.googleapis.com",
-      ],
-      styleSrcElem: [
-        "'self'",
-        "'unsafe-inline'",
-        "https://cdnjs.cloudflare.com",
-        "https://fonts.googleapis.com",
-      ],
-      imgSrc: ["'self'", "data:", "https:", "blob:"],
-      fontSrc: [
-        "'self'",
-        "https://fonts.gstatic.com",
-        "https://cdnjs.cloudflare.com",
-        "https://classic.talkomatic.co",
-      ],
-      connectSrc: ["'self'", "https://classic.talkomatic.co"],
-      mediaSrc: ["'self'", "data:"], // Allow data: for audio/video
-      frameAncestors: ["'self'", "*"],
-      frameSrc: ["'none'"],
-      objectSrc: ["'none'"],
-    },
-  },
-  crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: "cross-origin" },
-  crossOriginOpenerPolicy: false,
+const helmet = require("helmet");
+
+// Make sure you set res.locals.nonce on each request!
+app.use((req, res, next) => {
+  res.locals.nonce = crypto.randomBytes(16).toString("base64");
+  next();
 });
+
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: [
+          "'self'",
+          (req, res) => `'nonce-${res.locals.nonce}'`,
+          "https://cdnjs.cloudflare.com",
+          "https://classic.talkomatic.co",
+          "https://unpkg.com",
+          "https://static.cloudflareinsights.com",
+        ],
+        scriptSrcElem: [
+          "'self'",
+          (req, res) => `'nonce-${res.locals.nonce}'`,
+          "https://cdnjs.cloudflare.com",
+          "https://classic.talkomatic.co",
+          "https://unpkg.com",
+          "https://static.cloudflareinsights.com",
+        ],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://cdnjs.cloudflare.com",
+          "https://fonts.googleapis.com",
+        ],
+        styleSrcElem: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://cdnjs.cloudflare.com",
+          "https://fonts.googleapis.com",
+        ],
+        imgSrc: ["'self'", "data:", "https:", "blob:"],
+        fontSrc: [
+          "'self'",
+          "https://fonts.gstatic.com",
+          "https://cdnjs.cloudflare.com",
+          "https://classic.talkomatic.co",
+        ],
+        connectSrc: ["'self'", "https://classic.talkomatic.co"],
+        mediaSrc: ["'self'", "data:"],
+        frameAncestors: ["'self'", "*"],
+        frameSrc: ["'none'"],
+        objectSrc: ["'none'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginOpenerPolicy: false,
+  })
+);
 
 app.use(xss());
 app.use(hpp());
