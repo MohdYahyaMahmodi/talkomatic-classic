@@ -62,6 +62,7 @@ async function initDB() {
   dbPromise = idb.openDB('talkomatic-themes', 1, {
     upgrade(db) {
       const store = db.createObjectStore('themes', { keyPath: 'id' });
+      db.createObjectStore('settings', { keyPath: 'key' });
       store.createIndex('by-date', 'dateAdded');
     }
   });
@@ -98,6 +99,28 @@ async function addUploadedTheme(name, content, thumbnail = "") {
 async function deleteUploadedTheme(id) {
   const db = await dbPromise;
   await db.delete('themes', id);
+}
+
+
+/**
+ * Save the current theme into IndexedDB
+ */
+async function setCurrentTheme(name, content) {
+  const db = await dbPromise;
+  await db.put('settings', {
+    key: 'currentTheme',
+    name,
+    content,
+    dateSaved: new Date().toISOString()
+  });
+}
+
+/**
+ * Retrieve the current theme from IndexedDB
+ */
+async function getCurrentTheme() {
+  const db = await dbPromise;
+  return await db.get('settings', 'currentTheme');
 }
 
 // =================================================================
@@ -194,15 +217,15 @@ function showImportThemes() {
 /**
  * Apply a theme to localStorage
  */
-function applyTheme(themeContent, themeName = "theme") {
+async function applyTheme(themeContent, themeName = "theme") {
   try {
-    localStorage.setItem("theme", themeContent);
+    await setCurrentTheme(themeName, themeContent);
     toastr.success(
       `${themeName} applied! Return to lobby to see changes.`,
       "Theme Applied"
     );
   } catch (error) {
-    console.error("Error applying theme:", error);
+    console.error("Error applying theme to IndexedDB:", error);
     toastr.error("Failed to apply theme. Please try again.", "Error");
   }
 }
@@ -215,7 +238,7 @@ async function applyCuratedTheme(filename, themeName, cardElement) {
     cardElement.style.opacity = "0.7";
 
     if (filename === "") {
-      applyTheme("", "Default Theme");
+      await applyTheme("", "Default Theme");
     } else {
       const response = await fetch(`themes/${filename}`);
 
@@ -224,7 +247,7 @@ async function applyCuratedTheme(filename, themeName, cardElement) {
       }
 
       const themeContent = await response.text();
-      applyTheme(themeContent, themeName);
+      await applyTheme(themeContent, themeName);
     }
 
     // Visual feedback
@@ -256,13 +279,13 @@ async function applyCuratedTheme(filename, themeName, cardElement) {
 /**
  * Apply an uploaded theme
  */
-function applyUploadedTheme(themeId, cardElement) {
-  const themes = getUploadedThemes();
+async function applyUploadedTheme(themeId, cardElement) {
+  const themes = await getUploadedThemes();
   const theme = themes.find((t) => t.id === themeId);
 
   if (theme) {
     cardElement.style.opacity = "0.7";
-    applyTheme(theme.content, theme.name);
+    await applyTheme(theme.content, theme.name);
 
     // Visual feedback
     cardElement.animate(
@@ -340,7 +363,7 @@ function hideThemeModal() {
 /**
  * Save theme from modal
  */
-function saveThemeFromModal() {
+async function saveThemeFromModal() {
   const themeName = modalThemeNameInput.value.trim();
 
   if (!themeName) {
@@ -352,7 +375,7 @@ function saveThemeFromModal() {
   if (pendingSaveData) {
     const newTheme = addUploadedTheme(themeName, pendingSaveData.content);
     renderThemes();
-    applyTheme(pendingSaveData.content, themeName);
+    await applyTheme(pendingSaveData.content, themeName);
     hideThemeModal();
 
     toastr.success(`Theme "${themeName}" saved and applied!`, "Success");
