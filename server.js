@@ -359,9 +359,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Security middleware
-const helmet = require("helmet");
-
 // Make sure you set res.locals.nonce on each request!
 app.use((req, res, next) => {
   res.locals.nonce = crypto.randomBytes(16).toString("base64");
