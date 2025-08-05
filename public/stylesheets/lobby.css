@@ -18,7 +18,7 @@
   --left-panel-background-color: #616161;
   --external-links-background-color: #444444;
   --hover-external-links-background-color: #1b1b1b;
-  --visited-external-links-background-color: white;
+  --visited-external-links-background-color: #1b1b1b;
   --known-as-section-background-color: #fdf5e6;
   --logform-background-color: white;
   --logform-button-background-color: black;
@@ -284,7 +284,7 @@ html {
 }
 
 .external-links a:visited {
-  color: var(--visited-external-links-background-color);
+  background-color: var(--visited-external-links-background-color);
 }
 
 /* if there’s an odd number of links, the last one spans both columns */
