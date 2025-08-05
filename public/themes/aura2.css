@@ -11,7 +11,7 @@
 :root {
   --primary: #ff9800;
   --background-color: #000;
-  --background-image: url("aura-backgroujnd.png");
+  --background-image: url("https://classic.talkomatic.co/themes/aura-background.png");
   --left-panel-background-color: rgba(255, 255, 255, 0.15);
   --external-links-background-color: rgba(255, 255, 255, 0.1);
   --hover-external-links-background-color: rgba(255, 255, 255, 0.2);
