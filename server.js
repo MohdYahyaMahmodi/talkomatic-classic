@@ -2783,22 +2783,23 @@ io.on("connection", (socket) => {
         ? socket.handshake.session.userId
         : null;
 
+      // Get username and location from session for logging
+      const username = socket.handshake.session?.username || "Unknown";
+      const location = socket.handshake.session?.location || "Unknown";
+
       if (userId) {
         clearAFKTimers(userId);
         await leaveRoom(socket, userId);
         userMessageBuffers.delete(userId);
-
         if (typingTimeouts.has(userId)) {
           clearTimeout(typingTimeouts.get(userId));
           typingTimeouts.delete(userId);
         }
-
         if (batchProcessingTimers.has(userId)) {
           clearTimeout(batchProcessingTimers.get(userId));
           batchProcessingTimers.delete(userId);
           pendingChatUpdates.delete(userId);
         }
-
         users.delete(userId);
       }
 
@@ -2810,8 +2811,9 @@ io.on("connection", (socket) => {
         else ipConnections.delete(socket.clientIp);
       }
 
+      // Updated log message to show username/location instead of socket ID
       console.log(
-        `Socket ${socket.id} disconnected. Reason: ${reason}. IP: ${socket.clientIp}`
+        `User "${username}" from "${location}" disconnected. Reason: ${reason}. IP: ${socket.clientIp}`
       );
     })
   );
