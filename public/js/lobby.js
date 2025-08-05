@@ -147,6 +147,22 @@ function getCookie(name) {
     return "";
 }
 
+let dbPromise;
+async function initDB() {
+  dbPromise = idb.openDB('talkomatic-themes', 1, {
+    upgrade(db) {
+      const store = db.createObjectStore('themes', { keyPath: 'id' });
+      db.createObjectStore('settings', { keyPath: 'key' });
+      store.createIndex('by-date', 'dateAdded');
+    }
+  });
+}
+
+async function getCurrentTheme() {
+  const db = await dbPromise;
+  return db.get('settings', 'currentTheme');
+}
+
 /**
  * Show a Toastr notification inviting the user to join Discord,
  * once every 14 days or until they dismiss it.
@@ -230,7 +246,7 @@ function showDiscordInviteNotification() {
 }
 
 // Run after DOM is fully loaded
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async () => {
     // Basic Toastr options (some overridden above)
     toastr.options = {
         closeButton: true,
@@ -253,22 +269,17 @@ document.addEventListener('DOMContentLoaded', function() {
         showDiscordInviteNotification();
     }, 2000);
 
-    // Create a style element to change the css corresponding to our selected theme
-    // in local storage if there is one
-    const theme = localStorage.getItem("theme");
-    if (theme === null || theme === "") {
-        // Theme is not set, return
-        return;
-    }
-    const themeOverrideStyleElement = document.createElement("style");
-    // Append style element to head
-    (document.head || document.getElementsByTagName('head')[0])
-    .appendChild(themeOverrideStyleElement);
-    themeOverrideStyleElement.type = "text/css";
-    if (themeOverrideStyleElement.styleSheet) {
-        themeOverrideStyleElement.styleSheet.cssText = theme;
-    } else {
-        themeOverrideStyleElement.appendChild(document.createTextNode(theme));
+    await initDB();
+    const saved = await getCurrentTheme();
+    if (saved && saved.content) {
+        const styleEl = document.createElement("style");
+        (document.head || document.getElementsByTagName('head')[0])
+          .appendChild(styleEl);
+        if (styleEl.styleSheet) {
+            styleEl.styleSheet.cssText = saved.content;
+        } else {
+            styleEl.appendChild(document.createTextNode(saved.content));
+        }
     }
 });
 
