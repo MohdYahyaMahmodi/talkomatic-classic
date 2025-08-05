@@ -16,6 +16,9 @@ const quickApplyButton = document.getElementById("quickApplyButton");
 const importThemeInput = document.getElementById("importThemeInput");
 const themeNameInput = document.getElementById("themeNameInput");
 const importApplyButton = document.getElementById("importApplyButton");
+const importThumbnailInput = document.getElementById("importThumbnailInput");
+const thumbnailPreview = document.getElementById("thumbnailPreview");
+const removeThumbnail = document.getElementById("removeThumbnail");
 
 // Modal elements
 const themeModal = document.getElementById("themeModal");
@@ -29,6 +32,7 @@ const searchInput = document.getElementById("searchTheme");
 // Theme content storage
 let quickThemeContent = "";
 let importThemeContent = "";
+let importThumbnailContent = "";
 let pendingSaveData = null;
 
 // Configure toastr notifications
@@ -50,58 +54,50 @@ toastr.options = {
 };
 
 // =================================================================
-// Local Storage Management for Uploaded Themes
+// IndexedDB-based Management for Uploaded Themes
 // =================================================================
 
-/**
- * Get uploaded themes from localStorage
- */
-function getUploadedThemes() {
-  try {
-    const stored = localStorage.getItem("uploadedThemes");
-    return stored ? JSON.parse(stored) : [];
-  } catch (error) {
-    console.error("Error reading uploaded themes:", error);
-    return [];
-  }
+let dbPromise;
+async function initDB() {
+  dbPromise = idb.openDB('talkomatic-themes', 1, {
+    upgrade(db) {
+      const store = db.createObjectStore('themes', { keyPath: 'id' });
+      store.createIndex('by-date', 'dateAdded');
+    }
+  });
 }
 
-/**
- * Save uploaded themes to localStorage
+/**  
+ * Get uploaded themes from indexedDB  
  */
-function saveUploadedThemes(themes) {
-  try {
-    localStorage.setItem("uploadedThemes", JSON.stringify(themes));
-  } catch (error) {
-    console.error("Error saving uploaded themes:", error);
-    toastr.error("Failed to save theme locally", "Storage Error");
-  }
+async function getUploadedThemes() {
+  const db = await dbPromise;
+  return (await db.getAllFromIndex('themes', 'by-date'))
+    .sort((a, b) => b.dateAdded.localeCompare(a.dateAdded));
 }
 
-/**
- * Add a new uploaded theme
+/**  
+ * Add a new uploaded theme  
  */
-function addUploadedTheme(name, content) {
-  const themes = getUploadedThemes();
-  const newTheme = {
+async function addUploadedTheme(name, content, thumbnail = "") {
+  const db = await dbPromise;
+  const theme = {
     id: Date.now(),
-    name: name,
-    content: content,
-    dateAdded: new Date().toISOString(),
+    name,
+    content,
+    thumbnail,
+    dateAdded: new Date().toISOString()
   };
-
-  themes.push(newTheme);
-  saveUploadedThemes(themes);
-  return newTheme;
+  await db.put('themes', theme);
+  return theme;
 }
 
 /**
  * Delete an uploaded theme
  */
-function deleteUploadedTheme(id) {
-  const themes = getUploadedThemes();
-  const filtered = themes.filter((theme) => theme.id !== id);
-  saveUploadedThemes(filtered);
+async function deleteUploadedTheme(id) {
+  const db = await dbPromise;
+  await db.delete('themes', id);
 }
 
 // =================================================================
@@ -118,29 +114,27 @@ function createThemeCard(theme) {
   if (theme.type === "uploaded") {
     card.dataset.uploadedId = theme.id;
     card.innerHTML = `
-            <div class="theme-badge uploaded">
-                <i class="fas fa-upload"></i> Uploaded
-            </div>
-            <div class="imported-thumbnail">IMPORTED</div>
-            <div class="theme-name">${theme.name}</div>
-            <div class="theme-author">You</div>
-        `;
+      <div class="theme-badge uploaded">
+        <i class="fas fa-upload"></i> Uploaded
+      </div>
+      ${theme.thumbnail
+        ? `<img src="${theme.thumbnail}" alt="${theme.name}" class="theme-thumbnail"/>`
+        : `<div class="imported-thumbnail">IMPORTED</div>`
+      }
+      <div class="theme-name">${theme.name}</div>
+      <div class="theme-author">You</div>
+    `;
   } else {
     card.dataset.file = theme.file || "";
     card.innerHTML = `
-            <div class="theme-badge ${
-              theme.badge === "official" ? "official" : "user-made"
-            }">
-                <i class="fas fa-${
-                  theme.badge === "official" ? "star" : "users"
-                }"></i> ${theme.badge === "official" ? "Official" : "User-made"}
-            </div>
-            <img src="${theme.thumbnail}" alt="${
-      theme.name
-    }" class="theme-thumbnail">
-            <div class="theme-name">${theme.name}</div>
-            <div class="theme-author">${theme.author}</div>
-        `;
+      <div class="theme-badge ${theme.badge === "official" ? "official" : "user-made"}">
+        <i class="fas fa-${theme.badge === "official" ? "star" : "users"}"></i>
+        ${theme.badge === "official" ? "Official" : "User-made"}
+      </div>
+      <img src="${theme.thumbnail}" alt="${theme.name}" class="theme-thumbnail">
+      <div class="theme-name">${theme.name}</div>
+      <div class="theme-author">${theme.author}</div>
+    `;
   }
 
   return card;
@@ -149,7 +143,7 @@ function createThemeCard(theme) {
 /**
  * Render all themes in the grid
  */
-function renderThemes() {
+async function renderThemes() {
   // Clear existing uploaded themes but keep curated ones
   const curatedCards = themeGrid.querySelectorAll(
     ".theme-card:not([data-uploaded-id])"
@@ -160,15 +154,9 @@ function renderThemes() {
   curatedCards.forEach((card) => themeGrid.appendChild(card));
 
   // Add uploaded themes
-  const uploadedThemes = getUploadedThemes();
-  uploadedThemes.forEach((theme) => {
-    const themeData = {
-      type: "uploaded",
-      id: theme.id,
-      name: theme.name,
-      content: theme.content,
-    };
-    const card = createThemeCard(themeData);
+  const uploadedThemes = await getUploadedThemes();
+  uploadedThemes.forEach((t) => {
+    const card = createThemeCard({ type: 'uploaded', ...t });
     themeGrid.appendChild(card);
   });
 }
@@ -428,29 +416,57 @@ importThemeInput.addEventListener("change", async (event) => {
   }
 });
 
+importThumbnailInput.addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    importThumbnailContent = reader.result;
+    thumbnailPreview.src = reader.result;
+    thumbnailPreview.style.display = 'block';
+    removeThumbnail.style.display = 'inline-block';
+
+    updateImportButton();
+  };
+  reader.readAsDataURL(file);
+});
+
+removeThumbnail.addEventListener('click', (e) => {
+  e.preventDefault();
+
+  importThumbnailInput.value = '';
+  importThumbnailContent = '';
+  thumbnailPreview.src = '';
+  thumbnailPreview.style.display = 'none';
+  removeThumbnail.style.display = 'none';
+
+  updateImportButton();
+  toastr.info('Thumbnail removed', 'Removed');
+});
+
 themeNameInput.addEventListener("input", updateImportButton);
 
 function updateImportButton() {
-  const hasContent = !!importThemeContent;
+  const hasCSS = !!importThemeContent;
   const hasName = !!themeNameInput.value.trim();
-  importApplyButton.disabled = !(hasContent && hasName);
+  importApplyButton.disabled = !(hasCSS && hasName);
 }
 
 importApplyButton.addEventListener("click", () => {
-  const themeName = themeNameInput.value.trim();
+  const name = themeNameInput.value.trim();
+  if (importThemeContent && name) {
+    addUploadedTheme(name, importThemeContent, importThumbnailContent).then(() => {
+      renderThemes();
+      applyTheme(importThemeContent, name);
 
-  if (importThemeContent && themeName) {
-    const newTheme = addUploadedTheme(themeName, importThemeContent);
-    renderThemes();
-    applyTheme(importThemeContent, themeName);
-
-    // Reset form
-    importThemeInput.value = "";
-    themeNameInput.value = "";
-    importThemeContent = "";
-    updateImportButton();
-
-    toastr.success(`Theme "${themeName}" saved and applied!`, "Success");
+      importThemeInput.value = '';
+      importThumbnailInput.value = '';
+      themeNameInput.value = '';
+      thumbnailPreview.style.display = 'none';
+      importThemeContent = importThumbnailContent = '';
+      updateImportButton();
+      toastr.success(`Theme "${name}" saved and applied!`, "Success");
+    });
   }
 });
 
@@ -541,9 +557,11 @@ document.addEventListener("contextmenu", (event) => {
 // =================================================================
 
 document.addEventListener("DOMContentLoaded", () => {
-  showCuratedThemes();
-  renderThemes();
-  updateImportButton();
+  initDB().then(() => {
+    showCuratedThemes();
+    renderThemes();
+    updateImportButton();
+  });
 
   // Welcome message
   setTimeout(() => {
