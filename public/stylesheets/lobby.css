@@ -284,7 +284,7 @@ html {
 }
 
 .external-links a:visited {
-  color: var(--visited-external-links-background-color);
+  background-color: var(--visited-external-links-background-color);
 }
 
 /* if there’s an odd number of links, the last one spans both columns */
