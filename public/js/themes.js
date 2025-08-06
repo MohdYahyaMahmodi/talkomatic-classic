@@ -59,11 +59,15 @@ toastr.options = {
 
 let dbPromise;
 async function initDB() {
-  dbPromise = idb.openDB('talkomatic-themes', 1, {
-    upgrade(db) {
-      const store = db.createObjectStore('themes', { keyPath: 'id' });
-      db.createObjectStore('settings', { keyPath: 'key' });
-      store.createIndex('by-date', 'dateAdded');
+  dbPromise = idb.openDB('talkomatic-themes', 2, {
+    upgrade(db, oldVersion, newVersion, transaction) {
+      if (oldVersion < 1) {
+        const store = db.createObjectStore('themes', { keyPath: 'id' });
+        store.createIndex('by-date', 'dateAdded');
+      }
+      if (oldVersion < 2) {
+        db.createObjectStore('settings', { keyPath: 'key' });
+      }
     }
   });
 }
@@ -107,6 +111,10 @@ async function deleteUploadedTheme(id) {
  */
 async function setCurrentTheme(name, content) {
   const db = await dbPromise;
+  if (!db.objectStoreNames.contains('settings')) {
+    console.error('Settings store missing! DB schema didn’t upgrade.');
+    return;
+  }
   await db.put('settings', {
     key: 'currentTheme',
     name,
