@@ -1959,15 +1959,15 @@ loadRooms().catch((err) => {
 });
 
 // Apply antibot and enhanced rate limiting to API routes
-app.use("/api", antibotMiddleware);
-app.use("/api", enhancedRateLimit);
-
-// Bot token management endpoints
 app.post(
   `/api/${CONFIG.VERSIONS.API}/bot-tokens/request`,
   handleBotTokenRequest
 );
 app.get(`/api/${CONFIG.VERSIONS.API}/bot-tokens/info`, handleBotTokenInfo);
+
+// Apply antibot to the rest of the API
+app.use("/api", antibotMiddleware);
+app.use("/api", enhancedRateLimit);
 
 app.get(`/api/${CONFIG.VERSIONS.API}/config`, (req, res) => {
   const cacheKey = "config";
