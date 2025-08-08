@@ -55,7 +55,9 @@ body,
 html {
   margin: 0;
   padding: 0;
+  /* Use dynamic viewport units to prevent white gaps when mobile keyboards appear */
   height: 100vh;
+  height: 100dvh;
   font-family: talkoSS, Arial, sans-serif;
   background-color: #f0f0f0;
   font-size: 16px;
@@ -65,7 +67,9 @@ html {
 .page-container {
   display: flex;
   flex-direction: column;
+  /* Match the visible viewport height on mobile */
   height: 100vh;
+  height: 100dvh;
 }
 
 /* =============================================================================
