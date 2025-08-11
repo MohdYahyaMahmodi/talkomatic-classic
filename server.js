@@ -339,9 +339,7 @@ function createIPBasedUser(ip) {
 function antibotMiddleware(req, res, next) {
   if (!CONFIG.FEATURES.ENABLE_STRICT_ANTIBOT) return next();
 
-  const clientIp =
-    req.headers["x-forwarded-for"]?.split(",")[0].trim() ||
-    req.socket.remoteAddress;
+  const clientIp = getClientIP(req);
   const botToken =
     req.headers["authorization"]?.replace("Bearer ", "") || req.query.token;
   const browserDetection = detectBrowserRequest(req);
@@ -408,9 +406,7 @@ function antibotMiddleware(req, res, next) {
  * Enhanced rate limiting based on user type and behavior
  */
 async function enhancedRateLimit(req, res, next) {
-  const clientIp =
-    req.headers["x-forwarded-for"]?.split(",")[0].trim() ||
-    req.socket.remoteAddress;
+  const clientIp = getClientIP(req);
 
   try {
     // Check if IP is suspicious
@@ -464,9 +460,7 @@ async function handleBotTokenRequest(req, res) {
     });
   }
 
-  const clientIp =
-    req.headers["x-forwarded-for"]?.split(",")[0].trim() ||
-    req.socket.remoteAddress;
+  const clientIp = getClientIP(req);
   const userAgent = req.headers["user-agent"] || "";
 
   // Prevent browser requests
@@ -697,13 +691,21 @@ const app = express();
 const server = http.createServer(app);
 
 // Proxy trust configuration
-const trustProxyConfig =
-  process.env.NODE_ENV === "production"
-    ? process.env.CLOUDFLARE_ENABLED === "true"
-      ? 2
-      : 1
-    : "127.0.0.1";
-app.set("trust proxy", trustProxyConfig);
+const trustProxyConfig = true; // Trust all proxies for Cloudflare
+
+// Enhanced IP detection function
+function getClientIP(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  const realIP = req.headers["x-real-ip"];
+  const cfConnectingIP = req.headers["cf-connecting-ip"]; // Cloudflare specific
+
+  if (cfConnectingIP) return cfConnectingIP;
+  if (realIP) return realIP;
+  if (forwarded) {
+    return forwarded.split(",")[0].trim();
+  }
+  return req.socket.remoteAddress || req.connection.remoteAddress;
+}
 
 // CORS Configuration
 const allowedOrigins = [
@@ -802,16 +804,29 @@ app.use(hpp());
 // Global rate limiter
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 2000,
+  max: 100, // Reduced from 2000
   standardHeaders: true,
   legacyHeaders: false,
+
+  // CRITICAL FIX: Use proper IP detection
+  keyGenerator: (req) => {
+    const ip = getClientIP(req);
+    return ip;
+  },
+
   message: {
     error: {
       code: ERROR_CODES.RATE_LIMITED,
-      message: "Too many requests, please try again later.",
+      message: "Too many requests from your IP, please try again later.",
     },
   },
+
+  onLimitReached: (req, res, options) => {
+    const ip = getClientIP(req);
+    console.warn(`Global rate limit exceeded for IP: ${ip}`);
+  },
 });
+
 app.use(limiter);
 
 // Session management
@@ -834,9 +849,7 @@ function enhancedSessionMiddleware(req, res, next) {
   sessionMiddleware(req, res, () => {
     // If IP-based users are enabled and user is not signed in
     if (CONFIG.FEATURES.ENABLE_IP_BASED_USERS && !req.session.username) {
-      const clientIp =
-        req.headers["x-forwarded-for"]?.split(",")[0].trim() ||
-        req.socket.remoteAddress;
+      const clientIp = getClientIP(req);
       const browserDetection = detectBrowserRequest(req);
 
       // Only create IP-based users for browser requests (not bots)
@@ -889,9 +902,10 @@ const io = socketIo(server, {
 // Enhanced Socket.IO middleware for connection control with antibot protection
 io.use((socket, next) => {
   try {
-    const clientIp =
-      socket.handshake.headers["x-forwarded-for"]?.split(",")[0].trim() ||
-      socket.handshake.address;
+    const clientIp = getClientIP({
+      headers: socket.handshake.headers,
+      socket: { remoteAddress: socket.handshake.address },
+    });
     const userAgent = socket.handshake.headers["user-agent"] || "";
     const botToken =
       socket.handshake.auth.token || socket.handshake.query.token;
@@ -2193,7 +2207,7 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
       );
     }
     // Check for room creation cooldown
-    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+    const ip = getClientIP(req);
     const now = Date.now();
     if (
       now - (lastRoomCreationTimes.get(ip) || 0) <
