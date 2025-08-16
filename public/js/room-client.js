@@ -7,7 +7,8 @@ const socket = io(); // Initialize Socket.IO connection
 let currentUsername = "";
 let currentLocation = "";
 let currentRoomId = "";
-let currentUserId = "";
+window.currentUserId = "";
+let currentUserId = window.currentUserId;
 let currentRoomLayout = "horizontal";
 let lastSentMessage = "";
 let currentRoomName = "";
@@ -23,6 +24,13 @@ const muteToggleButton = document.getElementById("muteToggle");
 const muteIcon = document.getElementById("muteIcon");
 
 const MAX_MESSAGE_LENGTH = 5000;
+
+// Function to get current room ID
+function getCurrentRoomId() {
+  return currentRoomId;
+}
+// Make it globally accessible for games client
+window.getCurrentRoomId = getCurrentRoomId;
 
 const ERROR_CODES = {
   VALIDATION_ERROR: "Validation Error",
@@ -86,7 +94,7 @@ const APPS_DATA = {
     description: "Uno, Hangman, Tic Tac Toe & more",
     icon: "🎮",
     iconClass: "placeholder",
-    status: "coming-soon",
+    status: "available",
     url: null,
     openInNewTab: false,
   },
@@ -140,6 +148,7 @@ function createAppDirectoryDropdown() {
 
   // Add apps to grid
   Object.entries(APPS_DATA).forEach(([appId, app]) => {
+    console.log(`Creating app item: ${appId} with status: ${app.status}`);
     const appItem = document.createElement("div");
     appItem.className = `app-item ${
       app.status === "coming-soon" ? "disabled" : ""
@@ -261,7 +270,8 @@ function hideAppDirectory() {
 }
 
 function handleAppClick(appId, app) {
-  console.log(`Opening app: ${app.name}`);
+  console.log(`Opening app: ${app.name} with ID: ${appId}`);
+  console.log(`App status: ${app.status}`);
 
   // Hide the dropdown
   hideAppDirectory();
@@ -279,17 +289,56 @@ function handleAppClick(appId, app) {
       break;
 
     case "infiniteboard":
-    case "minigames":
     case "fileshare":
       // Coming soon apps
       showInfoModal(
         `${app.name} is coming soon! We're working hard to bring you this feature.`
       );
       break;
+      
+    case "minigames":
+      console.log("Minigames case triggered - calling openMinigames()");
+      // Open the minigames interface
+      openMinigames();
+      break;
 
     default:
-      console.warn(`Unknown app: ${appId}`);
+      console.warn(`Unknown app: ${appId} - falling through to default case`);
       break;
+  }
+}
+
+function openMinigames() {
+  console.log("openMinigames() function called");
+  console.log("Current room ID:", currentRoomId);
+  
+  // Hide the app directory dropdown
+  hideAppDirectory();
+  
+  // Check if we're in a room
+  if (!currentRoomId) {
+    console.log("No room ID - showing error modal");
+    showErrorModal("You need to be in a room to play games!");
+    return;
+  }
+  
+  console.log("GameClient type:", typeof GameClient);
+  console.log("Window gameClient:", window.gameClient);
+  
+  // Initialize the game client if not already done
+  if (typeof GameClient !== 'undefined' && !window.gameClient) {
+    console.log("Creating new GameClient instance");
+    window.gameClient = new GameClient();
+    window.gameClient.init();
+  }
+  
+  // Show the game selection modal
+  if (window.gameClient) {
+    console.log("Calling showGameSelection() on gameClient");
+    window.gameClient.showGameSelection();
+  } else {
+    console.log("GameClient not available - showing error modal");
+    showErrorModal("Games are not available at the moment. Please try again later.");
   }
 }
 
@@ -1409,7 +1458,9 @@ socket.on("room full", () => {
 
 socket.on("room joined", (data) => {
   currentUserId = data.userId;
+  window.currentUserId = data.userId; // Set global user ID for games client
   currentRoomId = data.roomId;
+  window.currentRoomId = data.roomId; // Set global room ID for games client
   currentUsername = data.username;
   currentLocation = data.location;
   currentRoomLayout = data.layout || currentRoomLayout;
