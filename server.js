@@ -16,6 +16,12 @@ const crypto = require("crypto");
 const WordFilter = require("./public/js/word-filter.js");
 const util = require("util");
 const { RateLimiterMemory } = require("rate-limiter-flexible");
+const { GameManager } = require("./games.js");
+
+// ============================================================================
+// GLOBAL INSTANCES
+// ============================================================================
+const gameManager = new GameManager();
 
 // ============================================================================
 // GLOBAL ERROR HANDLERS
@@ -53,7 +59,7 @@ const CONFIG = {
     ROOM_SCALING_INCREMENT: 5, // How many rooms to add each scaling
     MAX_CONNECTIONS_PER_IP: 30,
     SOCKET_MAX_REQUESTS_WINDOW: 1,
-    SOCKET_MAX_REQUESTS_PER_WINDOW: 75,
+    SOCKET_MAX_REQUESTS_PER_WINDOW: 300, // Increased for testing
     CHAT_UPDATE_RATE_LIMIT: 500,
     TYPING_RATE_LIMIT: 60,
     CONNECTION_DELAY: 100,
@@ -63,8 +69,8 @@ const CONFIG = {
     BOT_DETECTION_JOIN_THRESHOLD: 10,
     BOT_DETECTION_WINDOW: 60000, // 1 minute
     // NEW: Enhanced rate limiting
-    MAX_REQUESTS_PER_MINUTE: 100,
-    MAX_BOT_REQUESTS_PER_MINUTE: 500,
+    MAX_REQUESTS_PER_MINUTE: 1000, // Increased for testing
+    MAX_BOT_REQUESTS_PER_MINUTE: 1000, // Increased for testing
     MAX_BOT_TOKENS_PER_IP: 3,
     BOT_TOKEN_REQUEST_COOLDOWN: 300000, // 5 minutes
     IP_USER_CLEANUP_INTERVAL: 3600000, // 1 hour
@@ -804,7 +810,14 @@ app.use(hpp());
 // Global rate limiter
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100, // Reduced from 2000
+  max: (req) => {
+    // Be more lenient for localhost development
+    const ip = getClientIP(req);
+    if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') {
+      return 10000; // 10,000 requests per 15 minutes for localhost
+    }
+    return 100; // 100 requests per 15 minutes for other IPs
+  },
   standardHeaders: true,
   legacyHeaders: false,
 
@@ -2386,6 +2399,332 @@ app.post(
 // ============================================================================
 io.on("connection", (socket) => {
   const clientIp = socket.clientIp || socket.handshake.address;
+  
+  // Use the global game manager instance
+
+  // Game-related socket event handlers
+  socket.on("create game", (data) => {
+    const { gameType, roomId, vsBot } = data;
+    
+    if (!gameType || !roomId) {
+      socket.emit("game:error", { message: "Missing game type or room ID" });
+      return;
+    }
+
+    const game = gameManager.createGame(roomId, gameType, socket.id, socket.handshake.session?.username || "Anonymous", vsBot);
+    if (game) {
+      
+      // For bot games, start the game immediately and send updated state
+      if (vsBot) {
+        // The game should already be in "playing" state with bot added
+        const gameState = game.getGameState();
+        
+        // Trigger bot's first move after a short delay
+        setTimeout(() => {
+          const currentGame = gameManager.getGame(game.id);
+          if (currentGame && currentGame.state === "playing") {
+            const botMoveResult = currentGame.makeBotMove();
+            if (botMoveResult) {
+              // Broadcast the bot's move to all players
+              io.to(roomId).emit("game:stateUpdate", { 
+                gameId: game.id, 
+                gameState: botMoveResult 
+              });
+              
+              // Check if bot move ended the game
+              if (botMoveResult.state === "finished") {
+                io.to(roomId).emit("game:gameOver", { 
+                  gameId: game.id, 
+                  winner: botMoveResult.winner,
+                  gameState: botMoveResult 
+                });
+                // Clean up the game
+                gameManager.removeGame(game.id);
+              }
+            }
+          }
+        }, 1000);
+        
+        socket.emit("game:created", { 
+          gameId: game.id, 
+          gameType, 
+          roomId, 
+          vsBot,
+          gameState: gameState
+        });
+      } else {
+        socket.emit("game:created", { 
+          gameId: game.id, 
+          gameType, 
+          roomId, 
+          vsBot 
+        });
+      }
+    } else {
+      socket.emit("game:error", { message: "Failed to create game" });
+    }
+  });
+
+  socket.on("join game", safe(async (data) => {
+    try {
+      const { gameId, roomId } = data;
+      if (!gameId || !roomId) {
+        socket.emit("game:error", { message: "Missing game ID or room ID" });
+        return;
+      }
+
+      const game = gameManager.getGame(gameId);
+      if (!game) {
+        socket.emit("game:error", { message: "Game not found" });
+        return;
+      }
+
+      try {
+        game.addPlayer(socket.id, socket.handshake.session?.username || "Anonymous");
+        socket.emit("game:joined", { 
+          gameId, 
+          playerSymbol: "O",
+          isPlayer: true,
+          gameState: game.getGameState() // Send complete game state to joining player
+        });
+        socket.to(roomId).emit("game:stateUpdate", { 
+          gameId, 
+          gameState: game.getGameState() 
+        });
+      } catch (error) {
+        socket.emit("game:error", { message: error.message });
+      }
+    } catch (error) {
+      console.error("Error joining game:", error);
+      socket.emit("game:error", { message: "Internal server error" });
+    }
+  }));
+
+  socket.on("make move", safe(async (data) => {
+    try {
+      const { gameId, position, roomId } = data;
+      if (!gameId || position === undefined || !roomId) {
+        socket.emit("game:error", { message: "Missing game ID, position, or room ID" });
+        return;
+      }
+
+      const game = gameManager.getGame(gameId);
+      if (!game) {
+        socket.emit("game:error", { message: "Game not found" });
+        return;
+      }
+
+      const moveResult = game.makeMove(socket.id, position);
+      if (moveResult.valid) {
+        // Emit updated game state to all players in the room
+        io.to(roomId).emit("game:stateUpdate", { 
+          gameId, 
+          gameState: moveResult.gameState 
+        });
+
+        // Check if game is over
+        if (moveResult.gameState.state === "finished") {
+          io.to(roomId).emit("game:gameOver", { 
+            gameId, 
+            winner: moveResult.gameState.winner,
+            gameState: moveResult.gameState 
+          });
+          // Clean up the game
+          gameManager.removeGame(gameId);
+        }
+        
+        // If the game indicates a bot should move, trigger it automatically
+        if (moveResult.botShouldMove) {
+          // Trigger bot move and get the result
+          const botMoveResult = game.makeBotMove();
+          if (botMoveResult) {
+            // Broadcast the bot's move to all players
+            io.to(roomId).emit("game:stateUpdate", { 
+              gameId, 
+              gameState: botMoveResult 
+            });
+            
+            // Check if bot move ended the game
+            if (botMoveResult.state === "finished") {
+              io.to(roomId).emit("game:gameOver", { 
+                gameId, 
+                winner: botMoveResult.winner,
+                gameState: botMoveResult 
+              });
+              // Clean up the game
+              gameManager.removeGame(gameId);
+            }
+          }
+        }
+      } else {
+        socket.emit("game:error", { message: moveResult.message });
+      }
+    } catch (error) {
+      console.error("Error making move:", error);
+      socket.emit("game:error", { message: "Internal server error" });
+    }
+  }));
+
+  socket.on("leave game", safe(async (data) => {
+    try {
+      const { gameId, roomId, userId } = data;
+      if (!gameId || !roomId) {
+        console.log("Leave game: Missing gameId or roomId", data);
+        return;
+      }
+
+      const game = gameManager.getGame(gameId);
+      if (game) {
+        // Use userId if provided, otherwise fall back to socket.id
+        const playerIdToRemove = userId || socket.id;
+        console.log("Leave game: Removing player", { gameId, roomId, playerIdToRemove, socketId: socket.id, userId });
+        
+        // Check if player exists in the game
+        const playerExists = game.players.find(p => p.id === playerIdToRemove);
+        if (playerExists) {
+          console.log("Leave game: Player found, removing", playerExists);
+          game.removePlayer(playerIdToRemove);
+          
+          // Notify other players
+          socket.to(roomId).emit("game:playerLeft", { gameId, playerId: playerIdToRemove });
+          
+          // If no players left, remove the game
+          if (game.getPlayerCount() === 0) {
+            console.log("Leave game: No players left, removing game", gameId);
+            gameManager.removeGame(gameId);
+          } else {
+            console.log("Leave game: Players remaining", game.getPlayerCount());
+          }
+        } else {
+          console.log("Leave game: Player not found in game", { playerIdToRemove, gamePlayers: game.players.map(p => ({ id: p.id, username: p.username })) });
+        }
+      } else {
+        console.log("Leave game: Game not found", gameId);
+      }
+    } catch (error) {
+      console.error("Error leaving game:", error);
+    }
+  }));
+
+  // Handle play again request
+  socket.on("play again", safe(async (data) => {
+    console.log("=== PLAY AGAIN EVENT RECEIVED ===");
+    console.log("Socket ID:", socket.id);
+    console.log("Data received:", data);
+    console.log("Data type:", typeof data);
+    console.log("Data keys:", Object.keys(data || {}));
+    
+    try {
+      const { gameId, roomId } = data;
+      console.log("Extracted gameId:", gameId);
+      console.log("Extracted roomId:", roomId);
+      
+      if (!gameId || !roomId) {
+        console.log("Play again: Missing gameId or roomId", data);
+        return;
+      }
+
+      console.log("Play again requested:", { gameId, roomId, socketId: socket.id });
+
+      // Get player info
+      const playerId = socket.id;
+      const username = socket.username || "Guest";
+      console.log("Player info:", { playerId, username });
+
+      // Get the original game to determine the mode
+      const originalGame = gameManager.getGame(gameId);
+      console.log("Original game found:", !!originalGame);
+      if (!originalGame) {
+        console.log("Play again: Original game not found", gameId);
+        return;
+      }
+
+      // Check if the original game was vs bot
+      const wasVsBot = originalGame.players.some(p => p.isBot);
+      console.log("Was vs bot:", wasVsBot);
+      
+      // Create a new game with the same mode
+      console.log("Creating new game...");
+      const newGame = gameManager.createGame(roomId, "tictactoe", playerId, username, wasVsBot);
+      console.log("New game created:", newGame.id);
+      
+      // If the original game was vs bot, the bot should already be added by createGame
+      // But we need to start the game immediately for bot games
+      if (wasVsBot) {
+        console.log("Starting bot game...");
+        newGame.startGame();
+      }
+      
+      console.log("New game created for play again:", newGame.id);
+      
+      // Send the new game to the player
+      console.log("Emitting game:created to player...");
+      socket.emit("game:created", { 
+        gameId: newGame.id, 
+        gameType: "tictactoe",
+        gameState: newGame.getGameState(),
+        vsBot: newGame.players.some(p => p.isBot)
+      });
+      
+      // Broadcast to room that a new game is available
+      console.log("Broadcasting game:notification to room...");
+      socket.to(roomId).emit("game:notification", { 
+        gameId: newGame.id, 
+        gameType: "tictactoe" 
+      });
+      
+      console.log("=== PLAY AGAIN COMPLETED SUCCESSFULLY ===");
+      
+    } catch (error) {
+      console.error("Error creating play again game:", error);
+      socket.emit("game:error", { message: "Failed to create new game" });
+    }
+  }));
+
+  // Handle spectate game request
+  socket.on("spectate game", safe(async (data) => {
+    try {
+      const { gameId, roomId } = data;
+      if (!gameId || !roomId) {
+        socket.emit("game:error", { message: "Missing game ID or room ID" });
+        return;
+      }
+
+      const game = gameManager.getGame(gameId);
+      if (!game) {
+        socket.emit("game:error", { message: "Game not found" });
+        return;
+      }
+
+      // Add spectator to the game
+      game.addSpectator(socket.id);
+      socket.emit("game:spectating", { 
+        gameId, 
+        gameState: game.getGameState(),
+        isSpectator: true 
+      });
+    } catch (error) {
+      console.error("Error spectating game:", error);
+      socket.emit("game:error", { message: "Internal server error" });
+    }
+  }));
+
+  // Handle get room games request
+  socket.on("get room games", safe(async (data) => {
+    try {
+      const { roomId } = data;
+      if (!roomId) {
+        socket.emit("game:error", { message: "Missing room ID" });
+        return;
+      }
+
+      const games = gameManager.getGamesInRoom(roomId);
+      socket.emit("room:games", { games, roomId });
+    } catch (error) {
+      console.error("Error getting room games:", error);
+      socket.emit("game:error", { message: "Internal server error" });
+    }
+  }));
 
   // Safe wrapper for socket handlers
   function safe(fn) {
@@ -3122,6 +3461,14 @@ io.on("connection", (socket) => {
       });
     })
   );
+
+  // ============================================================================
+  // GAME-RELATED SOCKET EVENTS
+  // ============================================================================
+  
+
+
+
 
   socket.on(
     "disconnect",

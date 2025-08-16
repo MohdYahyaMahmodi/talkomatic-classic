@@ -9,7 +9,11 @@ class GameManager {
     this.playerGames = new Map(); // userId -> gameId
   }
 
-  createGame(roomId, gameType, player1Id, player1Username) {
+  createGame(roomId, gameType, player1Id, player1Username, vsBot) {
+    // Ensure vsBot has a default value
+    if (vsBot === undefined) {
+      vsBot = false;
+    }
     const gameId = this.generateGameId();
 
     let game;
@@ -31,6 +35,11 @@ class GameManager {
 
     // Track player's active game
     this.playerGames.set(player1Id, gameId);
+
+    // If vsBot is true, add a bot player immediately
+    if (vsBot) {
+      game.addPlayer("bot", "Bot Player", true);
+    }
 
     return game;
   }
@@ -121,7 +130,7 @@ class GameManager {
     gamesToRemove.forEach((gameId) => this.removeGame(gameId));
 
     if (gamesToRemove.length > 0) {
-      console.log(`Cleaned up ${gamesToRemove.length} inactive games`);
+      // Cleaned up inactive games
     }
   }
 }
@@ -151,23 +160,97 @@ class TicTacToeGame {
     this.gameNumber = 1;
   }
 
-  addPlayer(playerId, username) {
+  addPlayer(playerId, username, isBot = false) {
     if (this.players.length >= 2) {
       throw new Error("Game is full");
     }
 
+    // Assign symbols based on player order
+    const symbol = this.players.length === 0 ? "X" : "O";
+    
     this.players.push({
       id: playerId,
       username: username,
-      symbol: "O",
+      symbol: symbol,
       score: 0,
+      isBot: isBot,
     });
 
     if (this.players.length === 2) {
       this.state = "playing";
+      
+      // If second player is a bot, the server will handle the bot's first move
+      // No need for setTimeout here as it can conflict with server-side logic
     }
 
     this.lastActivity = Date.now();
+  }
+  
+  removePlayer(playerId) {
+    this.players = this.players.filter(p => p.id !== playerId);
+    if (this.players.length < 2) {
+      this.state = "waiting";
+    }
+    this.lastActivity = Date.now();
+  }
+  
+  getPlayerCount() {
+    return this.players.length;
+  }
+
+  makeBotMove() {
+    if (this.state !== "playing") {
+      return;
+    }
+    
+    const currentPlayer = this.players[this.currentPlayerIndex];
+    if (!currentPlayer || !currentPlayer.isBot) {
+      return;
+    }
+
+    // Simple AI: find first available move
+    const availableMoves = this.board
+      .map((cell, index) => ({ cell, index }))
+      .filter(({ cell }) => cell === "");
+
+    if (availableMoves.length > 0) {
+      // Choose random available move
+      const randomMove = availableMoves[Math.floor(Math.random() * availableMoves.length)];
+      
+      // Make the move directly without recursive call
+      this.board[randomMove.index] = currentPlayer.symbol;
+      
+      // Record the move
+      this.moveHistory.push({
+        playerId: "bot",
+        username: "Bot Player",
+        symbol: currentPlayer.symbol,
+        position: randomMove.index,
+        timestamp: Date.now(),
+      });
+
+      // Check for winner
+      const winner = this.checkWinner();
+      if (winner) {
+        this.winner = winner.symbol;
+        this.winningLine = winner.line;
+        this.state = "finished";
+      } else if (this.board.every((cell) => cell !== "")) {
+        // It's a draw
+        this.state = "finished";
+        this.winner = "draw";
+      } else {
+        // Switch turns back to human player (index 0)
+        this.currentPlayerIndex = 0;
+      }
+      
+      this.lastActivity = Date.now();
+      
+      // Return the updated game state for the server to broadcast
+      return this.getGameState();
+    } else {
+      return null;
+    }
   }
 
   addSpectator(userId) {
@@ -188,7 +271,8 @@ class TicTacToeGame {
     }
 
     if (this.players[this.currentPlayerIndex].id !== playerId) {
-      throw new Error("Not your turn");
+      const currentPlayer = this.players[this.currentPlayerIndex];
+      throw new Error(`Not your turn. It's ${currentPlayer?.username || 'the other player'}'s turn.`);
     }
 
     if (position < 0 || position > 8) {
@@ -233,6 +317,18 @@ class TicTacToeGame {
     } else {
       // Switch turns
       this.currentPlayerIndex = 1 - this.currentPlayerIndex;
+      const nextPlayer = this.players[this.currentPlayerIndex];
+      
+      // If next player is a bot, automatically make the bot move
+      if (nextPlayer && nextPlayer.isBot) {
+        // Return a special flag to indicate the server should trigger the bot move
+        return {
+          valid: true,
+          gameState: this.getGameState(),
+          botShouldMove: true,
+          nextPlayerIndex: this.currentPlayerIndex
+        };
+      }
     }
 
     return {
