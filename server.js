@@ -1578,6 +1578,9 @@ async function loadRooms() {
             } else {
               item[1].bannedUserIds = new Set();
             }
+            item[1].users = [];
+            item[1].lastActiveTime = Date.now();
+            startRoomDeletionTimer(item[0]);
           }
           return item;
         })
