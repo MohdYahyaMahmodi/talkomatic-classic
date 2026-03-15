@@ -196,7 +196,7 @@ class StatsModal {
       version: document.getElementById("modalStatsVersion"),
       uptime: document.getElementById("modalStatsUptime"),
       utilizationPercentage: document.getElementById(
-        "modalUtilizationPercentage"
+        "modalUtilizationPercentage",
       ),
       utilizationFill: document.getElementById("modalUtilizationFill"),
       public: document.getElementById("modalStatsPublic"),
@@ -283,7 +283,7 @@ class StatsModal {
 
       if (!healthResponse.ok) {
         throw new Error(
-          `HTTP ${healthResponse.status}: ${healthResponse.statusText}`
+          `HTTP ${healthResponse.status}: ${healthResponse.statusText}`,
         );
       }
 
@@ -332,7 +332,7 @@ class StatsModal {
     this.elements.utilizationPercentage.textContent = `${utilization}%`;
     this.elements.utilizationFill.style.width = `${Math.min(
       utilization,
-      100
+      100,
     )}%`;
 
     // Update room types
@@ -346,7 +346,7 @@ class StatsModal {
     // Update last updated time
     this.lastUpdateTime = new Date();
     this.elements.lastUpdated.textContent = `Last updated ${this.formatTime(
-      this.lastUpdateTime
+      this.lastUpdateTime,
     )}`;
   }
 
@@ -427,10 +427,10 @@ const roomListContainer = document.querySelector(".roomList");
 const dynamicRoomList = document.getElementById("dynamicRoomList");
 const usernameInput = logForm.querySelector('input[placeholder="Your Name"]');
 const locationInput = logForm.querySelector(
-  'input[placeholder="Location (optional)"]'
+  'input[placeholder="Location (optional)"]',
 );
 const roomNameInput = createRoomForm.querySelector(
-  'input[placeholder="Room Name"]'
+  'input[placeholder="Room Name"]',
 );
 const goChatButton = createRoomForm.querySelector(".go-chat-button");
 const signInButton = logForm.querySelector('button[type="submit"]');
@@ -488,7 +488,7 @@ socket.on("connect_error", (error) => {
   if (connectionRetryCount < MAX_RETRIES) {
     connectionRetryCount++;
     console.log(
-      `Retrying connection (${connectionRetryCount}/${MAX_RETRIES})...`
+      `Retrying connection (${connectionRetryCount}/${MAX_RETRIES})...`,
     );
 
     // If we get a connection error, try to reconnect with a clean session
@@ -502,7 +502,7 @@ socket.on("connect_error", (error) => {
   } else {
     window.showErrorModal(
       "Unable to connect to the server. Please refresh the page and try again.",
-      "SERVER_ERROR"
+      "SERVER_ERROR",
     );
   }
 });
@@ -585,17 +585,17 @@ goChatButton.addEventListener("click", () => {
   if (!socket.connected) {
     window.showErrorModal(
       "Not connected to server. Please wait for connection or refresh the page.",
-      "SERVER_ERROR"
+      "SERVER_ERROR",
     );
     return;
   }
 
   const roomName = roomNameInput.value.trim().slice(0, MAX_ROOM_NAME_LENGTH);
   const roomType = document.querySelector(
-    'input[name="roomType"]:checked'
+    'input[name="roomType"]:checked',
   )?.value;
   const roomLayout = document.querySelector(
-    'input[name="roomLayout"]:checked'
+    'input[name="roomLayout"]:checked',
   )?.value;
   const accessCode = accessCodeInput.querySelector("input").value;
 
@@ -603,7 +603,7 @@ goChatButton.addEventListener("click", () => {
     if (roomType === "semi-private") {
       if (!accessCode || accessCode.length !== 6 || !/^\d+$/.test(accessCode)) {
         window.showErrorModal(
-          "Please enter a valid 6-digit access code for the semi-private room."
+          "Please enter a valid 6-digit access code for the semi-private room.",
         );
         return;
       }
@@ -628,7 +628,7 @@ dynamicRoomList.addEventListener("click", (e) => {
     if (!socket.connected) {
       window.showErrorModal(
         "Not connected to server. Please wait for connection or refresh the page.",
-        "SERVER_ERROR"
+        "SERVER_ERROR",
       );
       return;
     }
@@ -666,7 +666,7 @@ function promptAccessCode(roomId) {
         lastUsedAccessCode = accessCode;
         joinRoom(roomId, accessCode);
       }
-    }
+    },
   );
 }
 
@@ -674,7 +674,7 @@ function joinRoom(roomId, accessCode = null) {
   if (!socket.connected) {
     window.showErrorModal(
       "Not connected to server. Please wait for connection or refresh the page.",
-      "SERVER_ERROR"
+      "SERVER_ERROR",
     );
     return;
   }
@@ -781,7 +781,7 @@ socket.on("error", (error) => {
   window.showErrorModal(
     (error.error.replaceDefaultText ? "" : `An error occurred: `) +
       error.error.message,
-    error.error.code
+    error.error.code,
   );
 });
 
@@ -892,11 +892,10 @@ function showRoomList() {
 }
 
 function initLobby() {
+  document.querySelector('input[name="roomType"][value="public"]').checked =
+    true;
   document.querySelector(
-    'input[name="roomType"][value="public"]'
-  ).checked = true;
-  document.querySelector(
-    'input[name="roomLayout"][value="horizontal"]'
+    'input[name="roomLayout"][value="horizontal"]',
   ).checked = true;
 
   // Initialize stats modal

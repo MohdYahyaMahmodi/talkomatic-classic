@@ -14,47 +14,47 @@
 // ============================================================================
 
 // DOM Element References
-const leftPanel = document.getElementById('leftPanel');
-const toggleButton = document.getElementById('toggleButton');
-const hideMenuButton = document.getElementById('hideMenuButton');
+const leftPanel = document.getElementById("leftPanel");
+const toggleButton = document.getElementById("toggleButton");
+const hideMenuButton = document.getElementById("hideMenuButton");
 
 // Modal functionality
-const roomInfoModal = document.getElementById('roomInfoModal');
-const learnMoreBtn = document.querySelector('.learn-more');
-const closeRoomInfoBtn = document.querySelector('.close-modal');
+const roomInfoModal = document.getElementById("roomInfoModal");
+const learnMoreBtn = document.querySelector(".learn-more");
+const closeRoomInfoBtn = document.querySelector(".close-modal");
 
 /**
  * Toggles the left panel open/closed state
  */
 function toggleLeftPanel() {
-    leftPanel.classList.toggle('open');
-    toggleButton.style.opacity = leftPanel.classList.contains('open') ? '0' : '1';
+  leftPanel.classList.toggle("open");
+  toggleButton.style.opacity = leftPanel.classList.contains("open") ? "0" : "1";
 }
 
 /**
  * Hides the left panel
  */
 function hideLeftPanel() {
-    leftPanel.classList.remove('open');
-    setTimeout(() => {
-        toggleButton.style.opacity = '1';
-    }, 300);
+  leftPanel.classList.remove("open");
+  setTimeout(() => {
+    toggleButton.style.opacity = "1";
+  }, 300);
 }
 
 /**
  * Handles window resize events
  */
 function handleResize() {
-    if (window.innerWidth > 992) {
-        leftPanel.classList.remove('open');
-        toggleButton.style.opacity = '0';
-        hideMenuButton.style.display = 'none';
-    } else {
-        if (!leftPanel.classList.contains('open')) {
-            toggleButton.style.opacity = '1';
-        }
-        hideMenuButton.style.display = 'block';
+  if (window.innerWidth > 992) {
+    leftPanel.classList.remove("open");
+    toggleButton.style.opacity = "0";
+    hideMenuButton.style.display = "none";
+  } else {
+    if (!leftPanel.classList.contains("open")) {
+      toggleButton.style.opacity = "1";
     }
+    hideMenuButton.style.display = "block";
+  }
 }
 
 /**
@@ -62,62 +62,63 @@ function handleResize() {
  * @param {Event} event - The click event
  */
 function handleOutsideClick(event) {
-    const isClickInside = leftPanel.contains(event.target) || toggleButton.contains(event.target);
-    if (!isClickInside && leftPanel.classList.contains('open')) {
-        hideLeftPanel();
-    }
+  const isClickInside =
+    leftPanel.contains(event.target) || toggleButton.contains(event.target);
+  if (!isClickInside && leftPanel.classList.contains("open")) {
+    hideLeftPanel();
+  }
 }
 
 // Event Listeners for the panel
-document.addEventListener('click', handleOutsideClick);
-window.addEventListener('resize', handleResize);
-hideMenuButton.addEventListener('click', hideLeftPanel);
-toggleButton.addEventListener('click', toggleLeftPanel);
+document.addEventListener("click", handleOutsideClick);
+window.addEventListener("resize", handleResize);
+hideMenuButton.addEventListener("click", hideLeftPanel);
+toggleButton.addEventListener("click", toggleLeftPanel);
 
 /**
  * Initial Setup
  */
 function init() {
-    if (window.innerWidth <= 992) {
-        toggleButton.style.opacity = '1';
-    }
+  if (window.innerWidth <= 992) {
+    toggleButton.style.opacity = "1";
+  }
 }
 
 /**
  * Opens the room info modal with a fade-in animation
  */
 function openRoomInfoModal() {
-    roomInfoModal.style.display = 'flex';
-    // Trigger reflow
-    roomInfoModal.offsetHeight;
-    roomInfoModal.classList.add('show');
+  roomInfoModal.style.display = "flex";
+  // Trigger reflow
+  roomInfoModal.offsetHeight;
+  roomInfoModal.classList.add("show");
 }
 
 /**
  * Closes the room info modal with a fade-out animation
  */
 function closeRoomInfoModal() {
-    roomInfoModal.classList.remove('show');
-    setTimeout(() => {
-        roomInfoModal.style.display = 'none';
-    }, 300);
+  roomInfoModal.classList.remove("show");
+  setTimeout(() => {
+    roomInfoModal.style.display = "none";
+  }, 300);
 }
 
 // Event listeners for room info modal
-learnMoreBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    openRoomInfoModal();
+learnMoreBtn.addEventListener("click", (e) => {
+  e.preventDefault();
+  openRoomInfoModal();
 });
-closeRoomInfoBtn.addEventListener('click', closeRoomInfoModal);
-roomInfoModal.addEventListener('click', (e) => {
-    if (e.target === roomInfoModal) {
-        closeRoomInfoModal();
-    }
+closeRoomInfoBtn.addEventListener("click", closeRoomInfoModal);
+roomInfoModal.addEventListener("click", (e) => {
+  if (e.target === roomInfoModal) {
+    closeRoomInfoModal();
+  }
 });
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && roomInfoModal.classList.contains('show')) {
-        closeRoomInfoModal();
-    }
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && roomInfoModal.classList.contains("show")) {
+    closeRoomInfoModal();
+  }
 });
 
 /**
@@ -125,10 +126,10 @@ document.addEventListener('keydown', (e) => {
  * Sets a cookie with given name, value, and expiration in days
  */
 function setCookie(name, value, days) {
-    const d = new Date();
-    d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
-    const expires = "expires=" + d.toUTCString();
-    document.cookie = name + "=" + value + ";" + expires + ";path=/";
+  const d = new Date();
+  d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
+  const expires = "expires=" + d.toUTCString();
+  document.cookie = name + "=" + value + ";" + expires + ";path=/";
 }
 
 /**
@@ -136,35 +137,35 @@ function setCookie(name, value, days) {
  * Returns the cookie value or an empty string if not found
  */
 function getCookie(name) {
-    const nameEQ = name + "=";
-    const ca = document.cookie.split(';');
-    for (let i = 0; i < ca.length; i++) {
-        let c = ca[i].trim();
-        if (c.indexOf(nameEQ) === 0) {
-            return c.substring(nameEQ.length, c.length);
-        }
+  const nameEQ = name + "=";
+  const ca = document.cookie.split(";");
+  for (let i = 0; i < ca.length; i++) {
+    let c = ca[i].trim();
+    if (c.indexOf(nameEQ) === 0) {
+      return c.substring(nameEQ.length, c.length);
     }
-    return "";
+  }
+  return "";
 }
 
 let dbPromise;
 async function initDB() {
-  dbPromise = idb.openDB('talkomatic-themes', 2, {
+  dbPromise = idb.openDB("talkomatic-themes", 2, {
     upgrade(db, oldVersion, newVersion, transaction) {
       if (oldVersion < 1) {
-        const store = db.createObjectStore('themes', { keyPath: 'id' });
-        store.createIndex('by-date', 'dateAdded');
+        const store = db.createObjectStore("themes", { keyPath: "id" });
+        store.createIndex("by-date", "dateAdded");
       }
       if (oldVersion < 2) {
-        db.createObjectStore('settings', { keyPath: 'key' });
+        db.createObjectStore("settings", { keyPath: "key" });
       }
-    }
+    },
   });
 }
 
 async function getCurrentTheme() {
   const db = await dbPromise;
-  return db.get('settings', 'currentTheme');
+  return db.get("settings", "currentTheme");
 }
 
 /**
@@ -172,119 +173,121 @@ async function getCurrentTheme() {
  * once every 14 days or until they dismiss it.
  */
 function showDiscordInviteNotification() {
-    // If cookie says "true", means user previously dismissed
-    if (getCookie('dismissedDiscordInvite') === 'true') {
-        return; // Do not show again
-    }
+  // If cookie says "true", means user previously dismissed
+  if (getCookie("dismissedDiscordInvite") === "true") {
+    return; // Do not show again
+  }
 
-    // Configure Toastr for a sticky notification (until closed)
-    toastr.options = {
-        closeButton: true,
-        positionClass: "toast-top-right",
-        timeOut: 0,
-        extendedTimeOut: 0,
-        tapToDismiss: false,
-        preventDuplicates: false,
-        showDuration: 300,
-        hideDuration: 300,
-        showEasing: "swing",
-        hideEasing: "linear",
-        showMethod: "fadeIn",
-        hideMethod: "fadeOut"
-    };
+  // Configure Toastr for a sticky notification (until closed)
+  toastr.options = {
+    closeButton: true,
+    positionClass: "toast-top-right",
+    timeOut: 0,
+    extendedTimeOut: 0,
+    tapToDismiss: false,
+    preventDuplicates: false,
+    showDuration: 300,
+    hideDuration: 300,
+    showEasing: "swing",
+    hideEasing: "linear",
+    showMethod: "fadeIn",
+    hideMethod: "fadeOut",
+  };
 
-    const titleText = "Join Our Discord!";
+  const titleText = "Join Our Discord!";
 
-    // Build a small DOM fragment for the toast content
-    const container = document.createElement('div');
-    container.style.display = 'flex';
-    container.style.flexDirection = 'column';
-    container.style.gap = '8px';
+  // Build a small DOM fragment for the toast content
+  const container = document.createElement("div");
+  container.style.display = "flex";
+  container.style.flexDirection = "column";
+  container.style.gap = "8px";
 
-    // A short description
-    const desc = document.createElement('div');
-    desc.textContent = "For community help, support, bug reports, or just to meet others!";
-    container.appendChild(desc);
+  // A short description
+  const desc = document.createElement("div");
+  desc.textContent =
+    "For community help, support, bug reports, or just to meet others!";
+  container.appendChild(desc);
 
-    // A styled button to open Discord
-    const button = document.createElement('button');
-    button.textContent = "Join Discord";
-    button.style.backgroundColor = '#5865F2';
-    button.style.color = '#FFF';
-    button.style.border = 'none';
-    button.style.padding = '6px 12px';
-    button.style.borderRadius = '4px';
-    button.style.cursor = 'pointer';
-    button.style.fontWeight = 'bold';
+  // A styled button to open Discord
+  const button = document.createElement("button");
+  button.textContent = "Join Discord";
+  button.style.backgroundColor = "#5865F2";
+  button.style.color = "#FFF";
+  button.style.border = "none";
+  button.style.padding = "6px 12px";
+  button.style.borderRadius = "4px";
+  button.style.cursor = "pointer";
+  button.style.fontWeight = "bold";
 
-    // Click => open the Discord link in new tab
-    button.addEventListener('click', (e) => {
-        e.stopPropagation(); // So clicking button won't also trigger toast click
-        window.open('https://discord.gg/N7tJznESrE', '_blank');
+  // Click => open the Discord link in new tab
+  button.addEventListener("click", (e) => {
+    e.stopPropagation(); // So clicking button won't also trigger toast click
+    window.open("https://discord.gg/N7tJznESrE", "_blank");
+  });
+  container.appendChild(button);
+
+  // Convert container to HTML for Toastr
+  const contentHTML = container.outerHTML;
+
+  // Show an info toast
+  const $toast = toastr.info(contentHTML, titleText);
+
+  // If the user clicks anywhere on the toast (except the close button),
+  // open the Discord link in a new tab
+  if ($toast) {
+    $toast.on("click", function (e) {
+      // If user didn't click the close button, open the link
+      if (!$(e.target).hasClass("toast-close-button")) {
+        window.open("https://discord.gg/N7tJznESrE", "_blank");
+      }
     });
-    container.appendChild(button);
+  }
 
-    // Convert container to HTML for Toastr
-    const contentHTML = container.outerHTML;
-
-    // Show an info toast
-    const $toast = toastr.info(contentHTML, titleText);
-
-    // If the user clicks anywhere on the toast (except the close button),
-    // open the Discord link in a new tab
-    if ($toast) {
-        $toast.on('click', function(e) {
-            // If user didn't click the close button, open the link
-            if (!$(e.target).hasClass('toast-close-button')) {
-                window.open('https://discord.gg/N7tJznESrE', '_blank');
-            }
-        });
-    }
-
-    // When user clicks the X, set cookie for 14 days
-    if ($toast && $toast.find('.toast-close-button')) {
-        $toast.find('.toast-close-button').on('click', function() {
-            setCookie('dismissedDiscordInvite', 'true', 14);
-        });
-    }
+  // When user clicks the X, set cookie for 14 days
+  if ($toast && $toast.find(".toast-close-button")) {
+    $toast.find(".toast-close-button").on("click", function () {
+      setCookie("dismissedDiscordInvite", "true", 14);
+    });
+  }
 }
 
 // Run after DOM is fully loaded
-document.addEventListener('DOMContentLoaded', async () => {
-    // Basic Toastr options (some overridden above)
-    toastr.options = {
-        closeButton: true,
-        newestOnTop: true,
-        positionClass: "toast-top-right",
-        timeOut: 0,
-        extendedTimeOut: 0,
-        tapToDismiss: true,
-        preventDuplicates: false,
-        showDuration: 300,
-        hideDuration: 300,
-        showEasing: "swing",
-        hideEasing: "linear",
-        showMethod: "fadeIn",
-        hideMethod: "fadeOut"
-    };
+document.addEventListener("DOMContentLoaded", async () => {
+  // Basic Toastr options (some overridden above)
+  toastr.options = {
+    closeButton: true,
+    newestOnTop: true,
+    positionClass: "toast-top-right",
+    timeOut: 0,
+    extendedTimeOut: 0,
+    tapToDismiss: true,
+    preventDuplicates: false,
+    showDuration: 300,
+    hideDuration: 300,
+    showEasing: "swing",
+    hideEasing: "linear",
+    showMethod: "fadeIn",
+    hideMethod: "fadeOut",
+  };
 
-    // Show the Discord invite after a brief delay
-    setTimeout(() => {
-        showDiscordInviteNotification();
-    }, 2000);
+  // Show the Discord invite after a brief delay
+  setTimeout(() => {
+    showDiscordInviteNotification();
+  }, 2000);
 
-    await initDB();
-    const saved = await getCurrentTheme();
-    if (saved && saved.content) {
-        const styleEl = document.createElement("style");
-        (document.head || document.getElementsByTagName('head')[0])
-          .appendChild(styleEl);
-        if (styleEl.styleSheet) {
-            styleEl.styleSheet.cssText = saved.content;
-        } else {
-            styleEl.appendChild(document.createTextNode(saved.content));
-        }
+  await initDB();
+  const saved = await getCurrentTheme();
+  if (saved && saved.content) {
+    const styleEl = document.createElement("style");
+    (document.head || document.getElementsByTagName("head")[0]).appendChild(
+      styleEl,
+    );
+    if (styleEl.styleSheet) {
+      styleEl.styleSheet.cssText = saved.content;
+    } else {
+      styleEl.appendChild(document.createTextNode(saved.content));
     }
+  }
 });
 
 // Run initial setup
