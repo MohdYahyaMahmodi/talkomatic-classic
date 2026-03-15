@@ -283,7 +283,7 @@ function handleAppClick(appId, app) {
     case "fileshare":
       // Coming soon apps
       showInfoModal(
-        `${app.name} is coming soon! We're working hard to bring you this feature.`
+        `${app.name} is coming soon! We're working hard to bring you this feature.`,
       );
       break;
 
@@ -934,7 +934,7 @@ function insertEmoteFromAutocompleteClick(emoteCode, capturedEmoteInfo) {
               chatInput.removeEventListener("input", checkForEmote);
             }
           },
-          { once: true }
+          { once: true },
         );
       }
     }, 10);
@@ -1223,7 +1223,7 @@ function updateVotesUI(votes) {
     const userId = row.dataset.userId;
     const voteButton = row.querySelector(".vote-button");
     const votesAgainstUser = Object.values(votes).filter(
-      (v) => v === userId
+      (v) => v === userId,
     ).length;
 
     if (userId === currentUserId) {
@@ -1265,7 +1265,7 @@ function updateVotesUI(votes) {
 function updateCurrentMessages(messages) {
   Object.keys(messages).forEach((userId) => {
     const chatDiv = document.querySelector(
-      `.chat-row[data-user-id="${userId}"] .chat-input`
+      `.chat-row[data-user-id="${userId}"] .chat-input`,
     );
     if (chatDiv) {
       const messageText = messages[userId].slice(0, MAX_MESSAGE_LENGTH);
@@ -1298,7 +1298,7 @@ function updateCurrentMessages(messages) {
           try {
             setCursorPosition(
               chatDiv,
-              Math.min(cursorPosition, messageText.length)
+              Math.min(cursorPosition, messageText.length),
             );
           } catch (e) {
             console.error("Error restoring cursor:", e);
@@ -1381,7 +1381,7 @@ socket.on("access code required", () => {
           window.location.href = "/index.html";
         });
       }
-    }
+    },
   );
 });
 
@@ -1394,7 +1394,7 @@ socket.on("kicked", () => {
     "You have been removed from the room by a majority vote.",
     () => {
       window.location.href = "/index.html";
-    }
+    },
   );
 });
 
@@ -1403,7 +1403,7 @@ socket.on("room full", () => {
     "This room is full. You will be redirected to the lobby.",
     () => {
       window.location.href = "/index.html";
-    }
+    },
   );
 });
 
@@ -1443,7 +1443,7 @@ socket.on("room not found", () => {
     "The room you are trying to join does not exist or has been deleted. Redirecting to lobby.",
     () => {
       window.location.href = "/index.html";
-    }
+    },
   );
 });
 
@@ -1473,7 +1473,7 @@ socket.on("user left", (userId) => {
   // Only remove the specific user's row
   if (userId !== currentUserId) {
     const userRow = document.querySelector(
-      `.chat-row[data-user-id="${userId}"]`
+      `.chat-row[data-user-id="${userId}"]`,
     );
     if (userRow) {
       userRow.remove();
@@ -1544,7 +1544,7 @@ socket.on("room update", (roomData) => {
   // Restore state
   inputValues.forEach((value, userId) => {
     const chatDiv = document.querySelector(
-      `.chat-row[data-user-id="${userId}"] .chat-input`
+      `.chat-row[data-user-id="${userId}"] .chat-input`,
     );
     if (chatDiv) {
       if (userId === currentUserId) {
@@ -1584,7 +1584,7 @@ socket.on("afk timeout", (data) => {
     data.message ?? "You have been removed from the room due to inactivity.",
     () => {
       window.location.href = data.redirectTo ?? "/";
-    }
+    },
   );
 });
 
@@ -1593,7 +1593,7 @@ socket.on("error", (error) => {
   showErrorModal(
     (error.error.replaceDefaultText ? "" : `An error occurred: `) +
       error.error.message,
-    error.error.code
+    error.error.code,
   );
 });
 
@@ -1783,15 +1783,15 @@ socket.on("offensive word detected", (data) => {
   // DEPRECATED
 
   console.warn(
-    "For talkomatic developers: the 'offensive word detected' event is now deprecated in favor of directly sending the censored text in the 'chat update' event as a bugfix."
+    "For talkomatic developers: the 'offensive word detected' event is now deprecated in favor of directly sending the censored text in the 'chat update' event as a bugfix.",
   );
   console.info(
-    "This is kept for compatibility, but avoid calling this event if necessary."
+    "This is kept for compatibility, but avoid calling this event if necessary.",
   );
 
   const { userId, filteredMessage } = data;
   const chatDiv = document.querySelector(
-    `.chat-row[data-user-id="${userId}"] .chat-input`
+    `.chat-row[data-user-id="${userId}"] .chat-input`,
   );
   if (!chatDiv) return;
 
@@ -1820,7 +1820,7 @@ socket.on("offensive word detected", (data) => {
       try {
         setCursorPosition(
           chatDiv,
-          Math.min(cursorPosition, filteredMessage.length)
+          Math.min(cursorPosition, filteredMessage.length),
         );
       } catch (e) {
         console.error("Error restoring cursor position:", e);
@@ -1831,7 +1831,7 @@ socket.on("offensive word detected", (data) => {
     // Update other user's display
     updateOtherUserMessage(
       chatDiv,
-      filteredMessage.slice(0, MAX_MESSAGE_LENGTH)
+      filteredMessage.slice(0, MAX_MESSAGE_LENGTH),
     );
   }
 });
@@ -1856,7 +1856,7 @@ function getCursorPosition(element) {
         node,
         NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
         null,
-        false
+        false,
       );
 
       while (walker.nextNode()) {
@@ -1895,7 +1895,7 @@ function setCursorPosition(element, position) {
       element,
       NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
       null,
-      false
+      false,
     );
 
     while (walk.nextNode()) {
@@ -2059,7 +2059,7 @@ function displayChatMessage(data) {
   }
 
   const chatRow = document.querySelector(
-    `.chat-row[data-user-id="${data.userId}"]`
+    `.chat-row[data-user-id="${data.userId}"]`,
   );
   if (!chatRow) return;
 
@@ -2310,7 +2310,7 @@ function adjustLayout() {
     const rowGap = 10;
     const totalGap = (chatRows.length - 1) * rowGap;
     const chatRowHeight = Math.floor(
-      (availableHeight - totalGap) / chatRows.length
+      (availableHeight - totalGap) / chatRows.length,
     );
 
     chatRows.forEach((row) => {
@@ -2328,7 +2328,7 @@ function adjustLayout() {
     const columnGap = 10;
     const totalGap = (chatRows.length - 1) * columnGap;
     const chatColumnWidth = Math.floor(
-      (availableWidth - totalGap) / chatRows.length
+      (availableWidth - totalGap) / chatRows.length,
     );
 
     chatRows.forEach((row) => {
@@ -2343,7 +2343,7 @@ function adjustLayout() {
   // Restore focus if needed
   if (activeUserId) {
     const activeInput = document.querySelector(
-      `.chat-row[data-user-id="${activeUserId}"] .chat-input`
+      `.chat-row[data-user-id="${activeUserId}"] .chat-input`,
     );
     if (activeInput) {
       setTimeout(() => {
@@ -2359,7 +2359,7 @@ function handleViewportChange() {
     if (window.visualViewport.height < window.innerHeight) {
       viewport.setAttribute(
         "content",
-        "width=device-width, initial-scale=1, maximum-scale=1"
+        "width=device-width, initial-scale=1, maximum-scale=1",
       );
       document.body.style.height = `${window.visualViewport.height}px`;
     } else {

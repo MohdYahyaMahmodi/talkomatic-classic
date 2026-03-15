@@ -22,7 +22,7 @@
     Security Policy (CSP) purposes to allow only authorized scripts to run.
     Last updated: 2024
 -->
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <!-- Head Section: Metadata and External Resources -->
   <head>
@@ -238,7 +238,9 @@
         border: 1px solid #444;
         border-radius: 12px;
         padding: 20px;
-        transition: transform 0.2s ease, border-color 0.2s ease;
+        transition:
+          transform 0.2s ease,
+          border-color 0.2s ease;
       }
 
       .stats-card:hover {
@@ -512,6 +514,10 @@
           gap: 10px;
           text-align: center;
         }
+      }
+
+      #noRoomsMessage {
+        color: white;
       }
     </style>
     <script src="https://unpkg.com/idb@8.0.3/build/umd.js"></script>

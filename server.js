@@ -26,7 +26,7 @@ process.on("unhandledRejection", (reason, promise) => {
   console.error("Promise:", promise);
   console.error(
     "Stack:",
-    reason instanceof Error ? reason.stack : "No stack trace available"
+    reason instanceof Error ? reason.stack : "No stack trace available",
   );
   console.error("=====================================");
 });
@@ -77,7 +77,7 @@ const CONFIG = {
     // NEW: Enhanced features
     ENABLE_STRICT_ANTIBOT: true,
     ENABLE_BOT_TOKENS: true,
-    ENABLE_IP_BASED_USERS: true,
+    ENABLE_IP_BASED_USERS: false,
     REQUIRE_USER_AGENT: true,
   },
   TIMING: {
@@ -125,12 +125,12 @@ let wordFilter;
 try {
   wordFilter = new WordFilter(
     path.join(__dirname, "public", "js", "offensive_words.json"),
-    path.join(__dirname, "public", "js", "character_substitutions.json")
+    path.join(__dirname, "public", "js", "character_substitutions.json"),
   );
 } catch (err) {
   console.error(
     "Failed to initialize WordFilter. Word filtering will be disabled.",
-    err
+    err,
   );
   wordFilter = {
     checkText: () => ({ hasOffensiveWord: false }),
@@ -248,7 +248,7 @@ function detectBrowserRequest(req) {
 
   // Check for common browser indicators
   const hasBrowserUserAgent = /Mozilla|Chrome|Safari|Firefox|Edge|Opera/i.test(
-    userAgent
+    userAgent,
   );
   const hasHtmlAccept = acceptHeader.includes("text/html");
   const hasLanguageHeader = acceptLanguage.length > 0;
@@ -429,7 +429,7 @@ async function enhancedRateLimit(req, res, next) {
       "X-RateLimit-Limit": rateLimitResult.totalHits || "unknown",
       "X-RateLimit-Remaining": rateLimitResult.remainingPoints || 0,
       "X-RateLimit-Reset": new Date(
-        Date.now() + rateLimitResult.msBeforeNext
+        Date.now() + rateLimitResult.msBeforeNext,
       ).toISOString(),
     });
 
@@ -513,14 +513,14 @@ async function handleBotTokenRequest(req, res) {
   ipBotTokenCounts.set(clientIp, currentTokenCount + 1);
 
   console.log(
-    `Bot token generated for ${clientIp}: ${token.substring(0, 10)}...`
+    `Bot token generated for ${clientIp}: ${token.substring(0, 10)}...`,
   );
 
   res.status(201).json({
     token,
     expiresIn: CONFIG.TIMING.BOT_TOKEN_EXPIRY,
     expiresAt: new Date(
-      Date.now() + CONFIG.TIMING.BOT_TOKEN_EXPIRY
+      Date.now() + CONFIG.TIMING.BOT_TOKEN_EXPIRY,
     ).toISOString(),
     usage: {
       rateLimit:
@@ -561,7 +561,7 @@ async function handleBotTokenInfo(req, res) {
     createdAt: new Date(tokenData.createdAt).toISOString(),
     lastUsed: new Date(tokenData.lastUsed).toISOString(),
     expiresAt: new Date(
-      tokenData.createdAt + CONFIG.TIMING.BOT_TOKEN_EXPIRY
+      tokenData.createdAt + CONFIG.TIMING.BOT_TOKEN_EXPIRY,
     ).toISOString(),
     uses: tokenData.uses || 0,
     rateLimit:
@@ -630,7 +630,7 @@ function getRoomStatistics() {
   const currentLimit = calculateCurrentRoomLimit();
   const roomTypes = { public: 0, "semi-private": 0, private: 0 };
   const roomsWithUsers = Array.from(rooms.values()).filter(
-    (room) => room.users && room.users.length > 0
+    (room) => room.users && room.users.length > 0,
   ).length;
   for (const [, room] of rooms) {
     if (roomTypes[room.type] !== undefined) {
@@ -647,7 +647,7 @@ function getRoomStatistics() {
     utilizationPercentage:
       totalRooms > 0
         ? Math.round(
-            (totalUsers / (totalRooms * CONFIG.LIMITS.MAX_ROOM_CAPACITY)) * 100
+            (totalUsers / (totalRooms * CONFIG.LIMITS.MAX_ROOM_CAPACITY)) * 100,
           )
         : 0,
   };
@@ -725,7 +725,7 @@ const corsOptions = {
     }
     return callback(
       new Error("The CORS policy does not allow access from this origin."),
-      false
+      false,
     );
   },
   methods: ["GET", "POST"],
@@ -795,7 +795,7 @@ app.use(
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
     crossOriginOpenerPolicy: false,
-  })
+  }),
 );
 
 app.use(xss());
@@ -819,11 +819,6 @@ const limiter = rateLimit({
       code: ERROR_CODES.RATE_LIMITED,
       message: "Too many requests from your IP, please try again later.",
     },
-  },
-
-  onLimitReached: (req, res, options) => {
-    const ip = getClientIP(req);
-    console.warn(`Global rate limit exceeded for IP: ${ip}`);
   },
 });
 
@@ -929,7 +924,7 @@ io.use((socket, next) => {
       if (CONFIG.FEATURES.ENABLE_BOT_TOKENS) {
         if (!botToken) {
           return next(
-            new Error("Bot token required for automated socket access")
+            new Error("Bot token required for automated socket access"),
           );
         }
 
@@ -969,7 +964,7 @@ io.use((socket, next) => {
           const eventName = packet[0];
           if (
             ["error", "connect", "disconnect", "disconnecting"].includes(
-              eventName
+              eventName,
             )
           ) {
             return nextMiddleware();
@@ -990,14 +985,14 @@ io.use((socket, next) => {
             .then(() => nextMiddleware())
             .catch(() => {
               console.warn(
-                `Socket rate limit exceeded for ${eventName} from ${socket.id} (bot: ${socket.isBot})`
+                `Socket rate limit exceeded for ${eventName} from ${socket.id} (bot: ${socket.isBot})`,
               );
               socket.emit(
                 "error",
                 createErrorResponse(
                   ERROR_CODES.RATE_LIMITED,
-                  "Rate limit exceeded: Too many requests per second."
-                )
+                  "Rate limit exceeded: Too many requests per second.",
+                ),
               );
             });
         });
@@ -1034,7 +1029,7 @@ app.use(
         res.setHeader("Content-Type", "font/ttf");
       }
     },
-  })
+  }),
 );
 
 // ============================================================================
@@ -1044,7 +1039,7 @@ function createErrorResponse(
   code,
   message,
   details = null,
-  replaceDefaultText = false
+  replaceDefaultText = false,
 ) {
   const response = { error: { code, message, replaceDefaultText } };
   if (details) response.error.details = details;
@@ -1208,7 +1203,7 @@ function detectBotBehavior(userId, clientIp) {
   userAttempts.push(now);
   // Clean old attempts
   const validAttempts = userAttempts.filter(
-    (time) => now - time < CONFIG.LIMITS.BOT_DETECTION_WINDOW
+    (time) => now - time < CONFIG.LIMITS.BOT_DETECTION_WINDOW,
   );
   userJoinAttempts.set(userId, validAttempts);
   // Track join attempts per IP
@@ -1218,7 +1213,7 @@ function detectBotBehavior(userId, clientIp) {
   const ipAttempts = ipJoinAttempts.get(clientIp);
   ipAttempts.push(now);
   const validIpAttempts = ipAttempts.filter(
-    (time) => now - time < CONFIG.LIMITS.BOT_DETECTION_WINDOW
+    (time) => now - time < CONFIG.LIMITS.BOT_DETECTION_WINDOW,
   );
   ipJoinAttempts.set(clientIp, validIpAttempts);
   // Check for bot behavior
@@ -1228,7 +1223,7 @@ function detectBotBehavior(userId, clientIp) {
     validIpAttempts.length > CONFIG.LIMITS.BOT_DETECTION_JOIN_THRESHOLD * 2;
   if (isBotUser || isBotIp) {
     console.warn(
-      `Bot behavior detected - User: ${userId}, IP: ${clientIp}, UserAttempts: ${validAttempts.length}, IPAttempts: ${validIpAttempts.length}`
+      `Bot behavior detected - User: ${userId}, IP: ${clientIp}, UserAttempts: ${validAttempts.length}, IPAttempts: ${validIpAttempts.length}`,
     );
     suspiciousUsers.set(userId, {
       ip: clientIp,
@@ -1343,7 +1338,7 @@ async function processPendingChatUpdates(userId, socket) {
     try {
       const pointsToConsume = Math.min(
         1 + Math.floor(pendingData.diffs.length / 10),
-        2
+        2,
       );
       await chatUpdateLimiter.consume(userId, pointsToConsume);
     } catch (rateErr) {
@@ -1373,7 +1368,7 @@ async function processPendingChatUpdates(userId, socket) {
         ) {
           diff.text = (diff.text || "").substring(
             0,
-            CONFIG.LIMITS.MAX_MESSAGE_LENGTH - consolidatedMessage.length
+            CONFIG.LIMITS.MAX_MESSAGE_LENGTH - consolidatedMessage.length,
           );
         }
         consolidatedMessage =
@@ -1384,7 +1379,7 @@ async function processPendingChatUpdates(userId, socket) {
         diff.index = Math.min(diff.index, consolidatedMessage.length);
         diff.count = Math.min(
           diff.count,
-          consolidatedMessage.length - diff.index
+          consolidatedMessage.length - diff.index,
         );
         consolidatedMessage =
           consolidatedMessage.slice(0, diff.index) +
@@ -1396,7 +1391,7 @@ async function processPendingChatUpdates(userId, socket) {
           consolidatedMessage.length -
             Math.min(
               replaceTextLength,
-              consolidatedMessage.length - diff.index
+              consolidatedMessage.length - diff.index,
             ) +
             replaceTextLength >
           CONFIG.LIMITS.MAX_MESSAGE_LENGTH
@@ -1407,13 +1402,13 @@ async function processPendingChatUpdates(userId, socket) {
               (consolidatedMessage.length -
                 Math.min(
                   replaceTextLength,
-                  consolidatedMessage.length - diff.index
-                ))
+                  consolidatedMessage.length - diff.index,
+                )),
           );
         }
         const endReplaceIndex = Math.min(
           diff.index + replaceTextLength,
-          consolidatedMessage.length
+          consolidatedMessage.length,
         );
         consolidatedMessage =
           consolidatedMessage.slice(0, diff.index) +
@@ -1460,7 +1455,7 @@ async function processPendingChatUpdates(userId, socket) {
         userId,
         setTimeout(() => {
           processPendingChatUpdates(userId, socket);
-        }, CONFIG.TIMING.BATCH_PROCESSING_INTERVAL)
+        }, CONFIG.TIMING.BATCH_PROCESSING_INTERVAL),
       );
     } else {
       pendingChatUpdates.delete(userId);
@@ -1492,7 +1487,7 @@ function checkChatCircuit() {
     chatCircuitState.isOpen = true;
     chatCircuitState.lastFailure = now;
     console.warn(
-      `Chat circuit breaker opened after ${chatCircuitState.failures} failures`
+      `Chat circuit breaker opened after ${chatCircuitState.failures} failures`,
     );
   }
   return !chatCircuitState.isOpen;
@@ -1511,7 +1506,7 @@ async function saveRooms() {
     const timeSinceLastSave = now - lastSaveTimestamp;
     if (timeSinceLastSave < SAVE_INTERVAL_MIN) {
       console.log(
-        `Skipping room save (last save was ${timeSinceLastSave}ms ago)`
+        `Skipping room save (last save was ${timeSinceLastSave}ms ago)`,
       );
       return;
     }
@@ -1556,13 +1551,27 @@ async function loadRooms() {
   try {
     const roomsData = await fs.readFile(
       path.join(__dirname, "rooms.json"),
-      "utf8"
+      "utf8",
     );
     const loadedRoomsArray = JSON.parse(roomsData);
     if (Array.isArray(loadedRoomsArray)) {
       rooms = new Map(
         loadedRoomsArray.map((item) => {
           if (item[1]) {
+            // ====== FIX: Clear users from loaded rooms ======
+            // These users had socket connections to the previous server process.
+            // They have no active sockets now, so they'd be permanent ghosts.
+            const userCount = item[1].users ? item[1].users.length : 0;
+            if (userCount > 0) {
+              console.log(
+                `Clearing ${userCount} stale user(s) from loaded room: ${item[1].name || item[0]}`,
+              );
+            }
+            item[1].users = [];
+            // Reset lastActiveTime so deletion timer logic works correctly
+            item[1].lastActiveTime = Date.now();
+            // ====== END FIX ======
+
             if (item[1].bannedUserIds) {
               if (item[1].bannedUserIds instanceof Set) {
                 // Already a Set
@@ -1570,7 +1579,7 @@ async function loadRooms() {
                 item[1].bannedUserIds = new Set(item[1].bannedUserIds);
               } else if (typeof item[1].bannedUserIds === "object") {
                 item[1].bannedUserIds = new Set(
-                  Object.values(item[1].bannedUserIds)
+                  Object.values(item[1].bannedUserIds),
                 );
               } else {
                 item[1].bannedUserIds = new Set();
@@ -1580,12 +1589,23 @@ async function loadRooms() {
             }
           }
           return item;
-        })
+        }),
       );
-      console.log(`Loaded ${rooms.size} rooms from disk.`);
+      console.log(`Loaded ${rooms.size} rooms from disk (all users cleared).`);
+
+      // ====== FIX: Start deletion timers for all loaded (now-empty) rooms ======
+      for (const [roomId, room] of rooms) {
+        if (!room.users || room.users.length === 0) {
+          startRoomDeletionTimer(roomId);
+          console.log(
+            `Started deletion timer for empty loaded room: ${roomId}`,
+          );
+        }
+      }
+      // ====== END FIX ======
     } else {
       console.warn(
-        "rooms.json was not in the expected format. Starting with empty rooms."
+        "rooms.json was not in the expected format. Starting with empty rooms.",
       );
       rooms = new Map();
     }
@@ -1597,7 +1617,7 @@ async function loadRooms() {
       console.error(
         "Error loading rooms:",
         error,
-        ". Starting with empty rooms map."
+        ". Starting with empty rooms map.",
       );
       rooms = new Map();
     }
@@ -1725,7 +1745,7 @@ async function leaveRoom(socket, userId) {
       }
       socket.handshake.session.currentRoom = null;
       await promisifySessionSave(socket.handshake.session).catch((err) =>
-        console.error("Session save failed in leaveRoom:", err)
+        console.error("Session save failed in leaveRoom:", err),
       );
     }
     userMessageBuffers.delete(userId);
@@ -1740,8 +1760,8 @@ async function leaveRoom(socket, userId) {
         "error",
         createErrorResponse(
           ERROR_CODES.SERVER_ERROR,
-          "Error processing leave room."
-        )
+          "Error processing leave room.",
+        ),
       );
     }
   }
@@ -1754,8 +1774,8 @@ function joinRoom(socket, roomId, userId) {
         "error",
         createErrorResponse(
           ERROR_CODES.NOT_FOUND,
-          "Room not found (invalid ID format)."
-        )
+          "Room not found (invalid ID format).",
+        ),
       );
       return;
     }
@@ -1763,7 +1783,7 @@ function joinRoom(socket, roomId, userId) {
     if (!room) {
       socket.emit(
         "error",
-        createErrorResponse(ERROR_CODES.NOT_FOUND, "Room not found.")
+        createErrorResponse(ERROR_CODES.NOT_FOUND, "Room not found."),
       );
       return;
     }
@@ -1772,8 +1792,8 @@ function joinRoom(socket, roomId, userId) {
         "error",
         createErrorResponse(
           ERROR_CODES.FORBIDDEN,
-          "You have been banned from rejoining this room."
-        )
+          "You have been banned from rejoining this room.",
+        ),
       );
       return;
     }
@@ -1795,8 +1815,8 @@ function joinRoom(socket, roomId, userId) {
           "error",
           createErrorResponse(
             ERROR_CODES.FORBIDDEN,
-            "Access denied due to suspicious activity. Please try again later."
-          )
+            "Access denied due to suspicious activity. Please try again later.",
+          ),
         );
         return;
       }
@@ -1805,8 +1825,8 @@ function joinRoom(socket, roomId, userId) {
           "error",
           createErrorResponse(
             ERROR_CODES.RATE_LIMITED,
-            "Too many room join attempts. Please slow down and try again later."
-          )
+            "Too many room join attempts. Please slow down and try again later.",
+          ),
         );
         return;
       }
@@ -1824,22 +1844,22 @@ function joinRoom(socket, roomId, userId) {
             ERROR_CODES.FORBIDDEN,
             `You are already in a room: "${currentRoomName}". Please leave that room first before joining another one.`,
             { currentRoomId, currentRoomName },
-            true
-          )
+            true,
+          ),
         );
         return;
       }
       const sameNameLocCount = getUsernameLocationRoomsCount(
         username,
-        location
+        location,
       );
       if (sameNameLocCount >= CONFIG.LIMITS.MAX_ROOMS_PER_USER) {
         socket.emit(
           "error",
           createErrorResponse(
             ERROR_CODES.FORBIDDEN,
-            "This username/location combination is already in a room. Please leave that room first."
-          )
+            "This username/location combination is already in a room. Please leave that room first.",
+          ),
         );
         return;
       }
@@ -1851,7 +1871,7 @@ function joinRoom(socket, roomId, userId) {
     if (room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY) {
       socket.emit(
         "room full",
-        createErrorResponse(ERROR_CODES.ROOM_FULL, "This room is full.")
+        createErrorResponse(ERROR_CODES.ROOM_FULL, "This room is full."),
       );
       return;
     }
@@ -1874,8 +1894,8 @@ function joinRoom(socket, roomId, userId) {
             "error",
             createErrorResponse(
               ERROR_CODES.SERVER_ERROR,
-              "Failed to save session on joining room."
-            )
+              "Failed to save session on joining room.",
+            ),
           );
           return;
         }
@@ -1886,7 +1906,7 @@ function joinRoom(socket, roomId, userId) {
       emitJoinRoomSuccess(socket, room, userId, username, location);
     }
     debouncedSaveRooms().catch((err) =>
-      console.error("Failed to save rooms after join:", err)
+      console.error("Failed to save rooms after join:", err),
     );
   } catch (err) {
     console.error("Critical error in joinRoom logic:", err);
@@ -1894,8 +1914,8 @@ function joinRoom(socket, roomId, userId) {
       "error",
       createErrorResponse(
         ERROR_CODES.SERVER_ERROR,
-        "An unexpected error occurred while joining the room."
-      )
+        "An unexpected error occurred while joining the room.",
+      ),
     );
   }
 }
@@ -1948,7 +1968,7 @@ function handleTyping(socket, userId, username, isTyping) {
             .to(socket.roomId)
             .emit("user typing", { userId, username, isTyping: false });
           typingTimeouts.delete(userId);
-        }, CONFIG.TIMING.TYPING_TIMEOUT)
+        }, CONFIG.TIMING.TYPING_TIMEOUT),
       );
     } else {
       socket
@@ -1975,7 +1995,7 @@ loadRooms().catch((err) => {
 // Apply antibot and enhanced rate limiting to API routes
 app.post(
   `/api/${CONFIG.VERSIONS.API}/bot-tokens/request`,
-  handleBotTokenRequest
+  handleBotTokenRequest,
 );
 app.get(`/api/${CONFIG.VERSIONS.API}/bot-tokens/info`, handleBotTokenInfo);
 
@@ -2060,7 +2080,7 @@ app.get("/js/emojiList.json", async (req, res) => {
       __dirname,
       "public",
       "js",
-      "emojiList.json"
+      "emojiList.json",
     );
     const data = await fs.readFile(emojiListPath, "utf8");
     emojiListCache.data = data;
@@ -2085,7 +2105,7 @@ function apiAuth(req, res, next) {
       res,
       ERROR_CODES.UNAUTHORIZED,
       "Forbidden: invalid or missing x-api-key.",
-      403
+      403,
     );
   }
   next();
@@ -2126,7 +2146,7 @@ app.get(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, (req, res) => {
       res,
       ERROR_CODES.SERVER_ERROR,
       "Internal server error",
-      500
+      500,
     );
   }
 });
@@ -2147,7 +2167,7 @@ app.get(`/api/${CONFIG.VERSIONS.API}/rooms/:id`, apiAuth, (req, res) => {
         res,
         ERROR_CODES.NOT_FOUND,
         "Room not found",
-        404
+        404,
       );
     const roomData = {
       id: room.id,
@@ -2172,7 +2192,7 @@ app.get(`/api/${CONFIG.VERSIONS.API}/rooms/:id`, apiAuth, (req, res) => {
       res,
       ERROR_CODES.SERVER_ERROR,
       "Internal server error",
-      500
+      500,
     );
   }
 });
@@ -2192,7 +2212,7 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
         ERROR_CODES.VALIDATION_ERROR,
         "Validation failed",
         400,
-        validationErrors
+        validationErrors,
       );
     }
     // Enhanced room limit check with dynamic scaling
@@ -2203,7 +2223,7 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
         res,
         ERROR_CODES.ROOM_LIMIT_REACHED,
         `Server has reached its current room limit (${currentLimit} rooms). Current usage: ${stats.totalUsers} users in ${stats.totalRooms} rooms.`,
-        429
+        429,
       );
     }
     // Check for room creation cooldown
@@ -2217,7 +2237,7 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
         res,
         ERROR_CODES.RATE_LIMITED,
         "Creating rooms too frequently.",
-        429
+        429,
       );
     }
     let roomName = enforceRoomNameLimit(data.name);
@@ -2227,7 +2247,7 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
         res,
         ERROR_CODES.ROOM_NAME_EXISTS,
         "A room with this name already exists. Please choose a different name.",
-        409
+        409,
       );
     }
     if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
@@ -2237,7 +2257,7 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
           res,
           ERROR_CODES.VALIDATION_ERROR,
           "Room name contains forbidden words.",
-          400
+          400,
         );
       }
     }
@@ -2252,7 +2272,7 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
           res,
           ERROR_CODES.SERVER_ERROR,
           "Could not create room, server busy. Try again.",
-          500
+          500,
         );
       }
     } while (rooms.has(roomId));
@@ -2273,7 +2293,7 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
       if (!req.session.validatedRooms) req.session.validatedRooms = {};
       req.session.validatedRooms[roomId] = data.accessCode;
       await promisifySessionSave(req.session).catch((err) =>
-        console.error("API session save error:", err)
+        console.error("API session save error:", err),
       );
     }
     // Invalidate caches
@@ -2283,7 +2303,7 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
     // Log room creation with statistics
     const stats = getRoomStatistics();
     console.log(
-      `Room created: ${roomId} (${roomName}) | Current: ${stats.totalRooms}/${stats.currentLimit} rooms, ${stats.totalUsers} users`
+      `Room created: ${roomId} (${roomName}) | Current: ${stats.totalRooms}/${stats.currentLimit} rooms, ${stats.totalUsers} users`,
     );
     return res.status(201).json({
       success: true,
@@ -2296,7 +2316,7 @@ app.post(`/api/${CONFIG.VERSIONS.API}/rooms`, apiAuth, async (req, res) => {
       res,
       ERROR_CODES.SERVER_ERROR,
       "Internal server error",
-      500
+      500,
     );
   }
 });
@@ -2313,14 +2333,14 @@ app.post(
           res,
           ERROR_CODES.NOT_FOUND,
           "Room not found",
-          404
+          404,
         );
       if (room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY) {
         return sendErrorResponse(
           res,
           ERROR_CODES.ROOM_FULL,
           "Room is full",
-          400
+          400,
         );
       }
       if (room.type === "semi-private") {
@@ -2334,7 +2354,7 @@ app.post(
               res,
               ERROR_CODES.FORBIDDEN,
               "Access code required",
-              403
+              403,
             );
           if (
             typeof req.body.accessCode !== "string" ||
@@ -2345,7 +2365,7 @@ app.post(
               res,
               ERROR_CODES.VALIDATION_ERROR,
               "Invalid access code format",
-              400
+              400,
             );
           }
           if (room.accessCode !== req.body.accessCode) {
@@ -2353,14 +2373,14 @@ app.post(
               res,
               ERROR_CODES.FORBIDDEN,
               "Incorrect access code",
-              403
+              403,
             );
           }
           if (req.session) {
             if (!req.session.validatedRooms) req.session.validatedRooms = {};
             req.session.validatedRooms[roomId] = req.body.accessCode;
             await promisifySessionSave(req.session).catch((err) =>
-              console.error("API join session save error:", err)
+              console.error("API join session save error:", err),
             );
           }
         }
@@ -2375,10 +2395,10 @@ app.post(
         res,
         ERROR_CODES.SERVER_ERROR,
         "Internal server error",
-        500
+        500,
       );
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -2397,20 +2417,20 @@ io.on("connection", (socket) => {
           `Socket handler error in ${
             fn.name || "unnamed handler"
           } from ${clientIp}:`,
-          err
+          err,
         );
         try {
           socket.emit(
             "error",
             createErrorResponse(
               ERROR_CODES.SERVER_ERROR,
-              "Internal server error processing your request."
-            )
+              "Internal server error processing your request.",
+            ),
           );
           socket._errorCount = (socket._errorCount || 0) + 1;
           if (socket._errorCount > 10) {
             console.warn(
-              `Disconnecting socket ${socket.id} after multiple errors`
+              `Disconnecting socket ${socket.id} after multiple errors`,
             );
             socket.disconnect(true);
           }
@@ -2465,7 +2485,7 @@ io.on("connection", (socket) => {
           socket.handshake.session.isIPBased = true;
 
           await promisifySessionSave(socket.handshake.session).catch((err) =>
-            console.error("Session save error for IP user:", err)
+            console.error("Session save error for IP user:", err),
           );
         }
       }
@@ -2488,7 +2508,7 @@ io.on("connection", (socket) => {
           isBot: !!socket.isBot,
         });
       }
-    })
+    }),
   );
 
   socket.on(
@@ -2499,8 +2519,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.BAD_REQUEST,
-            "Invalid data for joining lobby."
-          )
+            "Invalid data for joining lobby.",
+          ),
         );
         return;
       }
@@ -2520,8 +2540,8 @@ io.on("connection", (socket) => {
             "error",
             createErrorResponse(
               ERROR_CODES.VALIDATION_ERROR,
-              "Username contains forbidden words."
-            )
+              "Username contains forbidden words.",
+            ),
           );
           return;
         }
@@ -2530,8 +2550,8 @@ io.on("connection", (socket) => {
             "error",
             createErrorResponse(
               ERROR_CODES.VALIDATION_ERROR,
-              "Location contains forbidden words."
-            )
+              "Location contains forbidden words.",
+            ),
           );
           return;
         }
@@ -2542,8 +2562,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.SERVER_ERROR,
-            "Session not available."
-          )
+            "Session not available.",
+          ),
         );
         return;
       }
@@ -2557,8 +2577,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.SERVER_ERROR,
-            "Failed to save session."
-          )
+            "Failed to save session.",
+          ),
         );
         throw err;
       });
@@ -2573,7 +2593,7 @@ io.on("connection", (socket) => {
         isIPBased: false,
         isBot: !!socket.isBot,
       });
-    })
+    }),
   );
 
   socket.on(
@@ -2584,8 +2604,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.BAD_REQUEST,
-            "Invalid data for creating room."
-          )
+            "Invalid data for creating room.",
+          ),
         );
         return;
       }
@@ -2597,8 +2617,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.UNAUTHORIZED,
-            "You must be signed in to create a room."
-          )
+            "You must be signed in to create a room.",
+          ),
         );
         return;
       }
@@ -2621,8 +2641,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.FORBIDDEN,
-            "Anonymous users cannot create rooms."
-          )
+            "Anonymous users cannot create rooms.",
+          ),
         );
         return;
       }
@@ -2634,8 +2654,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.ROOM_LIMIT_REACHED,
-            `Server has reached its current room limit (${currentLimit} rooms). Current usage: ${stats.totalUsers} users in ${stats.totalRooms} rooms.`
-          )
+            `Server has reached its current room limit (${currentLimit} rooms). Current usage: ${stats.totalUsers} users in ${stats.totalRooms} rooms.`,
+          ),
         );
         return;
       }
@@ -2648,8 +2668,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.FORBIDDEN,
-            "You are already in a room. Please leave that room first before creating a new one."
-          )
+            "You are already in a room. Please leave that room first before creating a new one.",
+          ),
         );
         return;
       }
@@ -2658,8 +2678,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.FORBIDDEN,
-            "You are already in a room. Please leave that room first before creating a new one."
-          )
+            "You are already in a room. Please leave that room first before creating a new one.",
+          ),
         );
         return;
       }
@@ -2673,8 +2693,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.RATE_LIMITED,
-            "Creating rooms too frequently."
-          )
+            "Creating rooms too frequently.",
+          ),
         );
         return;
       }
@@ -2685,8 +2705,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.ROOM_NAME_EXISTS,
-            "A room with this name already exists. Please choose a different name."
-          )
+            "A room with this name already exists. Please choose a different name.",
+          ),
         );
         return;
       }
@@ -2698,8 +2718,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.VALIDATION_ERROR,
-            "Room name contains forbidden words."
-          )
+            "Room name contains forbidden words.",
+          ),
         );
         return;
       }
@@ -2716,8 +2736,8 @@ io.on("connection", (socket) => {
             "error",
             createErrorResponse(
               ERROR_CODES.SERVER_ERROR,
-              "Could not generate unique room ID. Try again."
-            )
+              "Could not generate unique room ID. Try again.",
+            ),
           );
           return;
         }
@@ -2741,7 +2761,7 @@ io.on("connection", (socket) => {
           socket.handshake.session.validatedRooms = {};
         socket.handshake.session.validatedRooms[roomId] = data.accessCode;
         await promisifySessionSave(socket.handshake.session).catch((err) =>
-          console.error("Session save error (create room):", err)
+          console.error("Session save error (create room):", err),
         );
       }
       // Invalidate caches
@@ -2752,9 +2772,9 @@ io.on("connection", (socket) => {
       // Log room creation with statistics
       const stats = getRoomStatistics();
       console.log(
-        `Room created via socket: ${roomId} (${roomName}) | Current: ${stats.totalRooms}/${stats.currentLimit} rooms, ${stats.totalUsers} users`
+        `Room created via socket: ${roomId} (${roomName}) | Current: ${stats.totalRooms}/${stats.currentLimit} rooms, ${stats.totalUsers} users`,
       );
-    })
+    }),
   );
 
   socket.on(
@@ -2765,8 +2785,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.BAD_REQUEST,
-            "Invalid data for joining room."
-          )
+            "Invalid data for joining room.",
+          ),
         );
         return;
       }
@@ -2774,7 +2794,7 @@ io.on("connection", (socket) => {
       if (!room) {
         socket.emit(
           "room not found",
-          createErrorResponse(ERROR_CODES.NOT_FOUND, "Room not found.")
+          createErrorResponse(ERROR_CODES.NOT_FOUND, "Room not found."),
         );
         return;
       }
@@ -2788,14 +2808,16 @@ io.on("connection", (socket) => {
           if (!location) socket.handshake.session.location = "On The Web";
         } else {
           console.error(
-            "No session available for socket " + socket.id + " during join room"
+            "No session available for socket " +
+              socket.id +
+              " during join room",
           );
           socket.emit(
             "error",
             createErrorResponse(
               ERROR_CODES.SERVER_ERROR,
-              "Session error, cannot join room."
-            )
+              "Session error, cannot join room.",
+            ),
           );
           return;
         }
@@ -2817,8 +2839,8 @@ io.on("connection", (socket) => {
               ERROR_CODES.FORBIDDEN,
               `You are already in a room: "${currentRoomName}". Please leave that room first before joining another one.`,
               { currentRoomId, currentRoomName },
-              true
-            )
+              true,
+            ),
           );
           return;
         }
@@ -2844,15 +2866,18 @@ io.on("connection", (socket) => {
             "error",
             createErrorResponse(
               ERROR_CODES.VALIDATION_ERROR,
-              "Invalid access code format."
-            )
+              "Invalid access code format.",
+            ),
           );
           return;
         }
         if (room.accessCode !== codeToUse) {
           socket.emit(
             "error",
-            createErrorResponse(ERROR_CODES.FORBIDDEN, "Incorrect access code.")
+            createErrorResponse(
+              ERROR_CODES.FORBIDDEN,
+              "Incorrect access code.",
+            ),
           );
           return;
         }
@@ -2861,12 +2886,12 @@ io.on("connection", (socket) => {
             socket.handshake.session.validatedRooms = {};
           socket.handshake.session.validatedRooms[data.roomId] = codeToUse;
           await promisifySessionSave(socket.handshake.session).catch((err) =>
-            console.error("Session save error (join room access code):", err)
+            console.error("Session save error (join room access code):", err),
           );
         }
       }
       joinRoom(socket, data.roomId, userId);
-    })
+    }),
   );
 
   socket.on(
@@ -2875,7 +2900,7 @@ io.on("connection", (socket) => {
       if (!data || typeof data !== "object" || !data.targetUserId) {
         socket.emit(
           "error",
-          createErrorResponse(ERROR_CODES.BAD_REQUEST, "Invalid vote data.")
+          createErrorResponse(ERROR_CODES.BAD_REQUEST, "Invalid vote data."),
         );
         return;
       }
@@ -2896,13 +2921,13 @@ io.on("connection", (socket) => {
       io.to(roomId).emit("update votes", room.votes);
       // Check if user should be kicked
       const votesAgainstTarget = Object.values(room.votes).filter(
-        (v) => v === targetUserId
+        (v) => v === targetUserId,
       ).length;
       const totalUsers = room.users.length;
       if (totalUsers >= 3 && votesAgainstTarget > Math.floor(totalUsers / 2)) {
         const targetSocket = [...io.sockets.sockets.values()].find(
           (s) =>
-            s.handshake.session.userId === targetUserId && s.roomId === roomId
+            s.handshake.session.userId === targetUserId && s.roomId === roomId,
         );
         if (targetSocket) {
           targetSocket.emit("kicked");
@@ -2911,7 +2936,7 @@ io.on("connection", (socket) => {
           await leaveRoom(targetSocket, targetUserId);
         }
       }
-    })
+    }),
   );
 
   socket.on(
@@ -2924,7 +2949,7 @@ io.on("connection", (socket) => {
         clearAFKTimers(userId);
         await leaveRoom(socket, userId);
       }
-    })
+    }),
   );
 
   socket.on(
@@ -2935,8 +2960,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.CIRCUIT_OPEN,
-            "System is temporarily unavailable. Please try again later."
-          )
+            "System is temporarily unavailable. Please try again later.",
+          ),
         );
         return;
       }
@@ -2957,8 +2982,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.BAD_REQUEST,
-            "Invalid chat update data format."
-          )
+            "Invalid chat update data format.",
+          ),
         );
         return;
       }
@@ -2967,7 +2992,7 @@ io.on("connection", (socket) => {
       if (!["full-replace", "add", "delete", "replace"].includes(diff.type)) {
         socket.emit(
           "error",
-          createErrorResponse(ERROR_CODES.BAD_REQUEST, "Unknown diff type.")
+          createErrorResponse(ERROR_CODES.BAD_REQUEST, "Unknown diff type."),
         );
         return;
       }
@@ -2982,8 +3007,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.BAD_REQUEST,
-            "Diff text must be a string."
-          )
+            "Diff text must be a string.",
+          ),
         );
         return;
       }
@@ -2996,7 +3021,7 @@ io.on("connection", (socket) => {
       ) {
         socket.emit(
           "error",
-          createErrorResponse(ERROR_CODES.BAD_REQUEST, "Invalid diff index.")
+          createErrorResponse(ERROR_CODES.BAD_REQUEST, "Invalid diff index."),
         );
         return;
       }
@@ -3009,8 +3034,8 @@ io.on("connection", (socket) => {
           "error",
           createErrorResponse(
             ERROR_CODES.BAD_REQUEST,
-            "Invalid diff count for delete."
-          )
+            "Invalid diff count for delete.",
+          ),
         );
         return;
       }
@@ -3026,10 +3051,10 @@ io.on("connection", (socket) => {
           userId,
           setTimeout(() => {
             processPendingChatUpdates(userId, socket);
-          }, CONFIG.TIMING.BATCH_PROCESSING_INTERVAL)
+          }, CONFIG.TIMING.BATCH_PROCESSING_INTERVAL),
         );
       }
-    })
+    }),
   );
 
   socket.on(
@@ -3055,7 +3080,7 @@ io.on("connection", (socket) => {
       });
       if (!data || typeof data.isTyping !== "boolean") return;
       handleTyping(socket, userId, username, data.isTyping);
-    })
+    }),
   );
 
   socket.on(
@@ -3089,7 +3114,7 @@ io.on("connection", (socket) => {
         apiCache.set(cacheKey, { timestamp: Date.now(), data: publicRooms });
       }
       socket.emit("initial rooms", publicRooms);
-    })
+    }),
   );
 
   socket.on(
@@ -3098,7 +3123,7 @@ io.on("connection", (socket) => {
       if (!roomId || typeof roomId !== "string") {
         socket.emit(
           "error",
-          createErrorResponse(ERROR_CODES.BAD_REQUEST, "Room ID is required.")
+          createErrorResponse(ERROR_CODES.BAD_REQUEST, "Room ID is required."),
         );
         return;
       }
@@ -3106,7 +3131,7 @@ io.on("connection", (socket) => {
       if (!room) {
         socket.emit(
           "error",
-          createErrorResponse(ERROR_CODES.NOT_FOUND, "Room not found.")
+          createErrorResponse(ERROR_CODES.NOT_FOUND, "Room not found."),
         );
         return;
       }
@@ -3120,7 +3145,7 @@ io.on("connection", (socket) => {
         currentMessages: getCurrentMessages(room.users),
         isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
       });
-    })
+    }),
   );
 
   socket.on(
@@ -3158,9 +3183,9 @@ io.on("connection", (socket) => {
       console.log(
         `User "${username}" from "${location}" disconnected. Reason: ${reason}. IP: ${
           socket.clientIp
-        }${socket.isBot ? " [BOT]" : ""}`
+        }${socket.isBot ? " [BOT]" : ""}`,
       );
-    })
+    }),
   );
 
   socket.on(
@@ -3170,7 +3195,7 @@ io.on("connection", (socket) => {
       if (!userId || !socket.roomId) return;
       setupAFKTimers(socket, userId);
       console.log(`AFK response from user ${userId}: ${JSON.stringify(data)}`);
-    })
+    }),
   );
 });
 
@@ -3184,7 +3209,7 @@ setInterval(() => {
   // Clean up old join attempts
   for (const [userId, attempts] of userJoinAttempts.entries()) {
     const validAttempts = attempts.filter(
-      (time) => now - time < CONFIG.LIMITS.BOT_DETECTION_WINDOW
+      (time) => now - time < CONFIG.LIMITS.BOT_DETECTION_WINDOW,
     );
     if (validAttempts.length === 0) {
       userJoinAttempts.delete(userId);
@@ -3194,7 +3219,7 @@ setInterval(() => {
   }
   for (const [ip, attempts] of ipJoinAttempts.entries()) {
     const validAttempts = attempts.filter(
-      (time) => now - time < CONFIG.LIMITS.BOT_DETECTION_WINDOW
+      (time) => now - time < CONFIG.LIMITS.BOT_DETECTION_WINDOW,
     );
     if (validAttempts.length === 0) {
       ipJoinAttempts.delete(ip);
@@ -3326,7 +3351,7 @@ setInterval(async () => {
     if (deletedCount > 0) {
       const stats = getRoomStatistics();
       console.log(
-        `Cleaned up ${deletedCount} empty rooms. Current: ${stats.totalRooms}/${stats.currentLimit} rooms, ${stats.totalUsers} users`
+        `Cleaned up ${deletedCount} empty rooms. Current: ${stats.totalRooms}/${stats.currentLimit} rooms, ${stats.totalUsers} users`,
       );
     }
   } catch (err) {
@@ -3334,43 +3359,135 @@ setInterval(async () => {
   }
 }, 600000); // Every 10 minutes
 
+// Ghost user cleanup — validates room users against active socket connections
+setInterval(() => {
+  try {
+    // Build a Set of all userIds that have active socket connections
+    const activeSocketUserIds = new Set();
+    for (const [, socket] of io.sockets.sockets) {
+      const userId = socket.handshake?.session?.userId;
+      if (userId) {
+        activeSocketUserIds.add(userId);
+      }
+    }
+
+    let totalGhostsRemoved = 0;
+    const roomsToCheck = [];
+
+    for (const [roomId, room] of rooms) {
+      if (!room.users || room.users.length === 0) continue;
+
+      const beforeCount = room.users.length;
+
+      // Filter out any user that doesn't have an active socket connection
+      room.users = room.users.filter((user) => {
+        const hasSocket = activeSocketUserIds.has(user.id);
+        if (!hasSocket) {
+          console.log(
+            `Ghost user detected and removed: "${user.username}" (${user.id}) from room "${room.name}" (${roomId})`,
+          );
+          // Clean up associated resources
+          userMessageBuffers.delete(user.id);
+          clearAFKTimers(user.id);
+          if (typingTimeouts.has(user.id)) {
+            clearTimeout(typingTimeouts.get(user.id));
+            typingTimeouts.delete(user.id);
+          }
+          if (batchProcessingTimers.has(user.id)) {
+            clearTimeout(batchProcessingTimers.get(user.id));
+            batchProcessingTimers.delete(user.id);
+            pendingChatUpdates.delete(user.id);
+          }
+        }
+        return hasSocket;
+      });
+
+      const removedCount = beforeCount - room.users.length;
+      if (removedCount > 0) {
+        totalGhostsRemoved += removedCount;
+        roomsToCheck.push(roomId);
+
+        // Clean up votes referencing removed users
+        if (room.votes) {
+          for (const visibleUserId of Object.keys(room.votes)) {
+            if (!activeSocketUserIds.has(visibleUserId)) {
+              delete room.votes[visibleUserId];
+            }
+          }
+          for (const [voterId, targetId] of Object.entries(room.votes)) {
+            if (!activeSocketUserIds.has(targetId)) {
+              delete room.votes[voterId];
+            }
+          }
+        }
+      }
+    }
+
+    // Start deletion timers for rooms that are now empty
+    for (const roomId of roomsToCheck) {
+      const room = rooms.get(roomId);
+      if (room) {
+        updateRoom(roomId);
+        if (room.users.length === 0) {
+          startRoomDeletionTimer(roomId);
+        }
+      }
+    }
+
+    if (totalGhostsRemoved > 0) {
+      console.log(
+        `Ghost cleanup: removed ${totalGhostsRemoved} ghost user(s) from ${roomsToCheck.length} room(s)`,
+      );
+      updateLobby();
+      debouncedSaveRooms().catch((err) =>
+        console.error("Failed to save rooms after ghost cleanup:", err),
+      );
+    }
+  } catch (err) {
+    console.error("Error in ghost user cleanup:", err);
+  }
+}, 60000); // Every 1 minute
+
 // Enhanced server monitoring with bot token statistics
 setInterval(() => {
   try {
     const memoryUsage = process.memoryUsage();
     const heapUsedPercentage = Math.round(
-      (memoryUsage.heapUsed / memoryUsage.heapTotal) * 100
+      (memoryUsage.heapUsed / memoryUsage.heapTotal) * 100,
     );
     const stats = getRoomStatistics();
     // Log current server status
     console.log(`=== ENHANCED SERVER STATUS ===`);
     console.log(`Connected clients: ${io.sockets.sockets.size}`);
     console.log(
-      `Rooms: ${stats.totalRooms}/${stats.currentLimit} (${stats.emptyRooms} empty)`
+      `Rooms: ${stats.totalRooms}/${stats.currentLimit} (${stats.emptyRooms} empty)`,
     );
     console.log(
-      `Users: ${stats.totalUsers} (${stats.utilizationPercentage}% utilization)`
+      `Users: ${stats.totalUsers} (${stats.utilizationPercentage}% utilization)`,
     );
     console.log(
-      `Room types: Public: ${stats.roomTypes.public}, Semi-Private: ${stats.roomTypes["semi-private"]}, Private: ${stats.roomTypes.private}`
+      `Room types: Public: ${stats.roomTypes.public}, Semi-Private: ${stats.roomTypes["semi-private"]}, Private: ${stats.roomTypes.private}`,
     );
     console.log(`Active bot tokens: ${botTokens.size}`);
     console.log(`IP-based users: ${ipBasedUsers.size}`);
     console.log(`Memory: ${heapUsedPercentage}% heap usage`);
     console.log(`===============================`);
     // Memory warnings
-    if (heapUsedPercentage > 85) {
+    const heapUsedMB = Math.round(memoryUsage.heapUsed / 1024 / 1024);
+    const heapTotalMB = Math.round(memoryUsage.heapTotal / 1024 / 1024);
+    if (heapUsedMB > 400) {
+      // Only warn if actually using 400MB+
       console.warn(`MEMORY WARNING: Heap usage at ${heapUsedPercentage}%`);
       if (heapUsedPercentage > 90) {
         console.warn(
-          "EMERGENCY MEMORY CLEANUP: Clearing large message buffers"
+          "EMERGENCY MEMORY CLEANUP: Clearing large message buffers",
         );
         for (const [userId, message] of userMessageBuffers.entries()) {
           if (message.length > 1000) {
             userMessageBuffers.set(
               userId,
               message.substring(0, 1000) +
-                "... [truncated for system stability]"
+                "... [truncated for system stability]",
             );
           }
         }
@@ -3388,7 +3505,7 @@ setInterval(() => {
       for (const [ip, count] of ipConnections.entries()) {
         if (count > CONFIG.LIMITS.MAX_CONNECTIONS_PER_IP * 0.8) {
           console.warn(
-            `IP warning: ${ip} has ${count} connections (max: ${CONFIG.LIMITS.MAX_CONNECTIONS_PER_IP})`
+            `IP warning: ${ip} has ${count} connections (max: ${CONFIG.LIMITS.MAX_CONNECTIONS_PER_IP})`,
           );
         }
       }
@@ -3397,6 +3514,57 @@ setInterval(() => {
     console.error("Error in enhanced server monitor:", err);
   }
 }, 120000); // Every 2 minutes
+
+function purgeAllGhostUsers() {
+  // At startup, there are ZERO active socket connections,
+  // so every user in every room is a ghost.
+  let totalPurged = 0;
+
+  for (const [roomId, room] of rooms) {
+    if (room.users && room.users.length > 0) {
+      console.log(
+        `Startup purge: clearing ${room.users.length} ghost(s) from room "${room.name}" (${roomId})`,
+      );
+      totalPurged += room.users.length;
+
+      // Clean up resources for each ghost user
+      for (const user of room.users) {
+        userMessageBuffers.delete(user.id);
+        clearAFKTimers(user.id);
+        if (typingTimeouts.has(user.id)) {
+          clearTimeout(typingTimeouts.get(user.id));
+          typingTimeouts.delete(user.id);
+        }
+      }
+
+      room.users = [];
+      room.votes = {};
+      room.lastActiveTime = Date.now();
+
+      // Start deletion timer for this now-empty room
+      startRoomDeletionTimer(roomId);
+    }
+  }
+
+  if (totalPurged > 0) {
+    console.log(
+      `Startup purge complete: removed ${totalPurged} total ghost user(s)`,
+    );
+    // Save the cleaned state
+    debouncedSaveRooms().catch((err) =>
+      console.error("Failed to save rooms after startup purge:", err),
+    );
+  } else {
+    console.log("Startup purge: no ghost users found");
+  }
+}
+
+// Run the purge after rooms are loaded but before accepting connections.
+// We use a short delay to ensure loadRooms() has completed.
+setTimeout(() => {
+  purgeAllGhostUsers();
+  updateLobby();
+}, 2000);
 
 // ============================================================================
 // SERVER STARTUP
@@ -3461,9 +3629,9 @@ Security Enhancements:
   // Log initial statistics
   const stats = getRoomStatistics();
   console.log(
-    `Initial state: ${stats.totalRooms}/${stats.currentLimit} rooms, ${stats.totalUsers} users`
+    `Initial state: ${stats.totalRooms}/${stats.currentLimit} rooms, ${stats.totalUsers} users`,
   );
   console.log(
-    `Bot tokens: ${botTokens.size} active, IP users: ${ipBasedUsers.size}`
+    `Bot tokens: ${botTokens.size} active, IP users: ${ipBasedUsers.size}`,
   );
 });
