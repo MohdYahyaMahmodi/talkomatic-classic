@@ -139,6 +139,21 @@ app.use(xss());
 app.use(hpp());
 
 app.use(
+  express.static(path.join(__dirname, "public"), {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith(".js")) {
+        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        res.setHeader("Cache-Control", "public, max-age=31536000");
+      } else if (filePath.endsWith(".css"))
+        res.setHeader("Cache-Control", "public, max-age=31536000");
+      else if (filePath.match(/\.(jpg|jpeg|png|gif|ico|svg)$/))
+        res.setHeader("Cache-Control", "public, max-age=31536000");
+      if (filePath.endsWith(".ttf")) res.setHeader("Content-Type", "font/ttf");
+    },
+  }),
+);
+
+app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
@@ -288,21 +303,6 @@ io.use((socket, next) => {
 io.use(sharedsession(sessionMiddleware, { autoSave: true }));
 
 // ── Static Files ────────────────────────────────────────────────────────────
-
-app.use(
-  express.static(path.join(__dirname, "public"), {
-    setHeaders: (res, filePath) => {
-      if (filePath.endsWith(".js")) {
-        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-        res.setHeader("Cache-Control", "public, max-age=31536000");
-      } else if (filePath.endsWith(".css"))
-        res.setHeader("Cache-Control", "public, max-age=31536000");
-      else if (filePath.match(/\.(jpg|jpeg|png|gif|ico|svg)$/))
-        res.setHeader("Cache-Control", "public, max-age=31536000");
-      if (filePath.endsWith(".ttf")) res.setHeader("Content-Type", "font/ttf");
-    },
-  }),
-);
 
 // ── API Routes ──────────────────────────────────────────────────────────────
 
@@ -494,13 +494,11 @@ app.post(`${API}/rooms`, apiAuth, async (req, res) => {
     state.apiCache.delete("public_rooms");
     rooms.updateLobby();
     await rooms.debouncedSaveRooms();
-    res
-      .status(201)
-      .json({
-        success: true,
-        roomId,
-        currentStatistics: rooms.getRoomStatistics(),
-      });
+    res.status(201).json({
+      success: true,
+      roomId,
+      currentStatistics: rooms.getRoomStatistics(),
+    });
   } catch (e) {
     console.error("POST rooms error:", e);
     sendErrorResponse(res, ERROR_CODES.SERVER_ERROR, "Internal error", 500);

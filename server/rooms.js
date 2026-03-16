@@ -412,31 +412,11 @@ async function processPendingChatUpdates(userId, socket) {
     msg = enforceCharacterLimit(msg);
     state.userMessageBuffers.set(userId, msg);
 
-    let appropriate = true;
-    if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
-      const result = wordFilter.checkText(msg);
-      if (result.hasOffensiveWord) {
-        appropriate = false;
-        const censored = wordFilter.filterText(msg);
-        state.userMessageBuffers.set(userId, censored);
-        io()
-          .to(socket.roomId)
-          .emit("chat update", {
-            userId,
-            username,
-            diff: { type: "full-replace", text: censored },
-          });
-      }
-    }
-    if (appropriate) {
-      socket
-        .to(socket.roomId)
-        .emit("chat update", {
-          userId,
-          username,
-          diff: { type: "full-replace", text: msg },
-        });
-    }
+    socket.to(socket.roomId).emit("chat update", {
+      userId,
+      username,
+      diff: { type: "full-replace", text: msg },
+    });
 
     setupAFKTimers(socket, userId);
     if (pending.diffs.length > 0) {
@@ -627,15 +607,13 @@ function joinRoom(socket, roomId, userId) {
 }
 
 function emitJoinSuccess(socket, room, userId, username, location) {
-  io()
-    .to(room.id)
-    .emit("user joined", {
-      id: userId,
-      username,
-      location,
-      roomName: room.name,
-      roomType: room.type,
-    });
+  io().to(room.id).emit("user joined", {
+    id: userId,
+    username,
+    location,
+    roomName: room.name,
+    roomType: room.type,
+  });
   updateRoom(room.id);
   updateLobby();
   socket.emit("room joined", {
