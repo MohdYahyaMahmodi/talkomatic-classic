@@ -1442,14 +1442,28 @@ socket.on("room update", (roomData) => {
   const activeEl = document.activeElement;
   const saved = new Map();
   let savedCursor = 0;
+
+  // Save RAW text, not filtered display text
   document.querySelectorAll(".chat-row").forEach((row) => {
     const uid = row.dataset.userId;
     const ci = row.querySelector(".chat-input");
     if (ci) {
-      saved.set(uid, getPlainText(ci));
+      if (uid === currentUserId) {
+        // Use selfRawText which always has the real unfiltered text
+        saved.set(uid, selfRawText);
+      } else {
+        // Use stored raw text, fall back to display text if not available
+        saved.set(
+          uid,
+          ci.dataset.rawText !== undefined
+            ? ci.dataset.rawText
+            : getPlainText(ci),
+        );
+      }
       if (activeEl === ci) savedCursor = getCursorPosition(ci);
     }
   });
+
   const existing = new Set();
   document
     .querySelectorAll(".chat-row")
@@ -1465,14 +1479,14 @@ socket.on("room update", (roomData) => {
     if (!current.has(r.dataset.userId) && r.dataset.userId !== currentUserId)
       r.remove();
   });
-  saved.forEach((val, uid) => {
+  saved.forEach((rawVal, uid) => {
     const ci = document.querySelector(
       `.chat-row[data-user-id="${uid}"] .chat-input`,
     );
     if (!ci) return;
     if (uid === currentUserId) {
-      selfRawText = val;
-      const display = applyWordFilter(val);
+      selfRawText = rawVal;
+      const display = applyWordFilter(rawVal);
       ci.innerHTML = "";
       ci.textContent = display;
       replaceEmotes(ci);
@@ -1488,7 +1502,10 @@ socket.on("room update", (roomData) => {
           placeCursorAtEnd(ci);
         }
       }
-    } else renderOtherUserMessage(ci, val);
+    } else {
+      // Pass raw text so dataset.rawText stays correct
+      renderOtherUserMessage(ci, rawVal);
+    }
   });
   if (roomData.votes) updateVotesUI(roomData.votes);
   adjustLayout();
