@@ -1,6 +1,7 @@
 // ============================================================================
-// lobby-client.js - Enhanced with server statistics
+// lobby-client.js - Enhanced with server statistics & anti-spam lobby sorting
 // ============================================================================
+
 // Modal functionality wrapped in an IIFE to avoid conflicts
 (function () {
   // Only initialize once to avoid duplicate event listeners
@@ -759,9 +760,6 @@ function signOut() {
   }
 }
 
-// Add an event listener for your sign-out button if you have one
-// document.getElementById('signOutButton').addEventListener('click', signOut);
-
 socket.on("lobby update", (rooms) => {
   updateLobby(rooms);
 });
@@ -860,6 +858,45 @@ function getRoomTypeDisplay(type) {
   }
 }
 
+// ============================================================================
+// Anti-Spam: Activity-based room sorting
+// ============================================================================
+// Rooms are sorted so that active, multi-user rooms appear at the top and
+// single-occupant stale rooms sink to the bottom. This makes bot-spam rooms
+// invisible to real users even before the server cleans them up.
+//
+// Sort priority (descending):
+//   1. Rooms with 2+ users, sorted by user count (most users first)
+//   2. Among rooms with equal user count, sorted by recent chat activity
+//   3. Single-occupant rooms, sorted by most recently active first
+//   4. Empty rooms last (shouldn't normally appear but handled gracefully)
+// ============================================================================
+
+/**
+ * Sort rooms by activity and occupancy for anti-spam lobby display.
+ * Multi-user rooms always appear above single-occupant rooms.
+ */
+function sortRoomsByActivity(rooms) {
+  return rooms.slice().sort((a, b) => {
+    // Primary: user count descending (multi-user rooms first)
+    if (a.users.length !== b.users.length) {
+      return b.users.length - a.users.length;
+    }
+
+    // Secondary: most recent chat activity first
+    const aActivity = a.lastChatActivity || 0;
+    const bActivity = b.lastChatActivity || 0;
+    if (aActivity !== bActivity) {
+      return bActivity - aActivity;
+    }
+
+    // Tertiary: most recently created first
+    const aCreated = a.createdAt || 0;
+    const bCreated = b.createdAt || 0;
+    return bCreated - aCreated;
+  });
+}
+
 function updateLobby(rooms) {
   dynamicRoomList.innerHTML = "";
   const publicRooms = rooms.filter((room) => room.type !== "private");
@@ -871,7 +908,10 @@ function updateLobby(rooms) {
     noRoomsMessage.style.display = "none";
     dynamicRoomList.style.display = "block";
 
-    publicRooms.forEach((room) => {
+    // Sort rooms: active multi-user rooms first, stale solo rooms last
+    const sortedRooms = sortRoomsByActivity(publicRooms);
+
+    sortedRooms.forEach((room) => {
       const roomElement = createRoomElement(room);
       dynamicRoomList.appendChild(roomElement);
     });
@@ -952,12 +992,46 @@ function initLobby() {
         });
       }
     } else {
-      // If no saved credentials, check with server as usual
+      // No saved credentials — auto-generate a guest identity
+      const guestDigits = Math.floor(10000 + Math.random() * 90000);
+      const guestUsername = `Guest${guestDigits}`;
+      const guestLocation = "Earth";
+
+      // Fill the form so the user sees what they got
+      usernameInput.value = guestUsername;
+      locationInput.value = guestLocation;
+
+      // Save to localStorage so they stay signed in on refresh
+      localStorage.setItem("talkomaticUsername", guestUsername);
+      localStorage.setItem("talkomaticLocation", guestLocation);
+
+      // Update state
+      currentUsername = guestUsername;
+      currentLocation = guestLocation;
+      isSignedIn = true;
+
+      signInButton.textContent = "Change ";
+      const guestImg = document.createElement("img");
+      guestImg.src = "images/icons/pencil.png";
+      guestImg.alt = "Arrow";
+      guestImg.classList.add("arrow-icon");
+      signInButton.appendChild(guestImg);
+      createRoomForm.classList.remove("hidden");
+
+      // Auto sign-in
       if (socket.connected) {
-        socket.emit("check signin status");
+        socket.emit("join lobby", {
+          username: guestUsername,
+          location: guestLocation,
+        });
+        showRoomList();
       } else {
         socket.once("connect", () => {
-          socket.emit("check signin status");
+          socket.emit("join lobby", {
+            username: guestUsername,
+            location: guestLocation,
+          });
+          showRoomList();
         });
       }
     }

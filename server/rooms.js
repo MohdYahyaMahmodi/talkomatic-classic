@@ -1,6 +1,13 @@
 // ╔═══════════════════════════════════════════════════════════════════════════╗
 // ║  FILE 3: server/rooms.js                                                ║
 // ║  Room management, chat processing, AFK, sockets, cleanup                ║
+// ║                                                                         ║
+// ║  Anti-spam systems:                                                     ║
+// ║  • Pressure-based cleanup: solo rooms die faster as total count rises   ║
+// ║  • Smart room limit: only "healthy" rooms count toward creation cap     ║
+// ║  • Per-IP room creation limits and rate limiting                        ║
+// ║  • AFK resets only on actual typing (chat update), not any event        ║
+// ║  • Lobby broadcasts include activity metadata for client-side sorting   ║
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
 const path = require("path");
@@ -62,8 +69,177 @@ function getUserCurrentRoom(userId) {
   return null;
 }
 
+// ── Anti-Spam: Per-IP Room Counting ─────────────────────────────────────────
+
+/**
+ * Count how many rooms currently have at least one user connected from
+ * the given IP address. Uses the live socket set for accuracy.
+ */
+function getRoomCountByIP(clientIp) {
+  if (!io() || !clientIp) return 0;
+  // Collect all roomIds that have a socket from this IP
+  const roomIds = new Set();
+  for (const [, s] of io().sockets.sockets) {
+    if (s.clientIp === clientIp && s.roomId) {
+      roomIds.add(s.roomId);
+    }
+  }
+  return roomIds.size;
+}
+
+// ── Anti-Spam: Pressure System ──────────────────────────────────────────────
+
+/**
+ * Get the current TTL for single-occupant rooms based on total room count.
+ * Higher room counts → shorter TTLs → faster cleanup of solo rooms.
+ */
+function getSoloRoomTTL() {
+  const totalRooms = state.rooms.size;
+  const tiers = CONFIG.LIMITS.PRESSURE_TIERS;
+  // Walk tiers in reverse to find the highest matching threshold
+  for (let i = tiers.length - 1; i >= 0; i--) {
+    if (totalRooms >= tiers[i].threshold) return tiers[i].ttl;
+  }
+  // Fallback to the most lenient tier
+  return tiers[0].ttl;
+}
+
+/**
+ * Returns true if a room is "healthy" — meaning it should count toward the
+ * base creation limit. A room is healthy if it has 2+ users, OR it was
+ * created within the HEALTHY_ROOM_AGE_MS window (grace period for new rooms).
+ */
+function isHealthyRoom(room) {
+  if (room.users && room.users.length >= 2) return true;
+  const age = Date.now() - (room.createdAt || room.lastActiveTime || 0);
+  return age < CONFIG.LIMITS.HEALTHY_ROOM_AGE_MS;
+}
+
+/**
+ * Count rooms that are "healthy" — these are what count against the base
+ * room creation limit. Bot-occupied solo rooms don't block real users.
+ */
+function getHealthyRoomCount() {
+  let count = 0;
+  for (const [, room] of state.rooms) {
+    if (isHealthyRoom(room)) count++;
+  }
+  return count;
+}
+
+/**
+ * Run the pressure cleanup pass. Deletes single-occupant rooms that have
+ * exceeded the current pressure-adjusted TTL. Multi-user rooms are NEVER
+ * touched by this system.
+ */
+async function pressureCleanup() {
+  const now = Date.now();
+  const ttl = getSoloRoomTTL();
+  const toDelete = [];
+
+  for (const [roomId, room] of state.rooms) {
+    // Never touch rooms with 2+ users
+    if (room.users && room.users.length >= 2) continue;
+
+    if (room.users && room.users.length === 1) {
+      // Room has exactly 1 user — check solo timestamp
+      const soloSince = state.roomSoloSince.get(roomId);
+      if (soloSince && now - soloSince >= ttl) {
+        toDelete.push(roomId);
+      }
+    } else if (!room.users || room.users.length === 0) {
+      // Empty room — let the existing deletion timer handle it, but
+      // if it somehow survived, clean it up if it's old
+      if (now - room.lastActiveTime > CONFIG.TIMING.ROOM_DELETION_TIMEOUT) {
+        toDelete.push(roomId);
+      }
+    }
+  }
+
+  if (toDelete.length === 0) return;
+
+  for (const roomId of toDelete) {
+    const room = state.rooms.get(roomId);
+    if (!room) continue;
+
+    // Kick the solo user if present
+    if (room.users && room.users.length === 1) {
+      const soloUser = room.users[0];
+      const soloSocket = findSocketByUserId(soloUser.id, roomId);
+      if (soloSocket) {
+        soloSocket.emit("afk timeout", {
+          message:
+            "Your room was closed due to extended single-occupancy. " +
+            "You can create a new room anytime.",
+          redirectTo: "/",
+        });
+        await leaveRoom(soloSocket, soloUser.id);
+      }
+    }
+
+    // Delete the room
+    state.rooms.delete(roomId);
+    state.roomSoloSince.delete(roomId);
+    state.roomLastChatActivity.delete(roomId);
+    if (state.roomDeletionTimers.has(roomId)) {
+      clearTimeout(state.roomDeletionTimers.get(roomId));
+      state.roomDeletionTimers.delete(roomId);
+    }
+  }
+
+  updateLobby();
+  await debouncedSaveRooms();
+  const currentTTL = Math.round(ttl / 1000);
+  console.log(
+    `[PRESSURE] Cleaned ${toDelete.length} solo room(s) | ` +
+      `Total: ${state.rooms.size} | TTL: ${currentTTL}s`,
+  );
+}
+
+/**
+ * Update the solo-since timestamp for a room. Call this whenever room
+ * occupancy changes.
+ */
+function updateRoomSoloTracking(roomId) {
+  const room = state.rooms.get(roomId);
+  if (!room) {
+    state.roomSoloSince.delete(roomId);
+    return;
+  }
+  if (room.users && room.users.length === 1) {
+    // Just became solo — set timestamp if not already tracked
+    if (!state.roomSoloSince.has(roomId)) {
+      state.roomSoloSince.set(roomId, Date.now());
+    }
+  } else {
+    // Not solo (0 or 2+ users) — clear tracking
+    state.roomSoloSince.delete(roomId);
+  }
+}
+
+/**
+ * Find a connected socket by userId and optionally roomId.
+ */
+function findSocketByUserId(userId, roomId) {
+  if (!io()) return null;
+  for (const [, s] of io().sockets.sockets) {
+    if (
+      s.handshake?.session?.userId === userId &&
+      (!roomId || s.roomId === roomId)
+    ) {
+      return s;
+    }
+  }
+  return null;
+}
+
 // ── Room Utilities ──────────────────────────────────────────────────────────
 
+/**
+ * Calculate the effective room creation limit. Uses healthy room count
+ * against the base limit, with dynamic scaling if enabled. The hard cap
+ * is always enforced on total room count regardless.
+ */
 function calculateCurrentRoomLimit() {
   if (!CONFIG.FEATURES.ENABLE_DYNAMIC_SCALING)
     return CONFIG.LIMITS.BASE_MAX_ROOMS;
@@ -98,19 +274,26 @@ function getRoomStatistics() {
   const totalRooms = state.rooms.size;
   const totalUsers = getTotalUserCount();
   const currentLimit = calculateCurrentRoomLimit();
+  const healthyRooms = getHealthyRoomCount();
   const types = { public: 0, "semi-private": 0, private: 0 };
   let roomsWithUsers = 0;
+  let soloRooms = 0;
   for (const [, room] of state.rooms) {
     if (types[room.type] !== undefined) types[room.type]++;
     if (room.users && room.users.length > 0) roomsWithUsers++;
+    if (room.users && room.users.length === 1) soloRooms++;
   }
   return {
     totalRooms,
     totalUsers,
     currentLimit,
+    healthyRooms,
+    soloRooms,
     roomsWithUsers,
     emptyRooms: totalRooms - roomsWithUsers,
     roomTypes: types,
+    currentSoloTTL: Math.round(getSoloRoomTTL() / 1000),
+    hardCap: CONFIG.LIMITS.HARD_MAX_ROOMS,
     utilizationPercentage:
       totalRooms > 0
         ? Math.round(
@@ -239,6 +422,8 @@ function startRoomDeletionTimer(roomId) {
     if (room && room.users.length === 0) {
       state.rooms.delete(roomId);
       state.roomDeletionTimers.delete(roomId);
+      state.roomSoloSince.delete(roomId);
+      state.roomLastChatActivity.delete(roomId);
       updateLobby();
       await debouncedSaveRooms();
       console.log(`Room ${roomId} deleted (empty timeout).`);
@@ -252,6 +437,7 @@ function startRoomDeletionTimer(roomId) {
 function updateLobby() {
   if (!io()) return;
   try {
+    const now = Date.now();
     const publicRooms = Array.from(state.rooms.values())
       .filter((r) => r.type !== "private")
       .map((r) => ({
@@ -260,6 +446,9 @@ function updateLobby() {
         type: r.type,
         isFull: r.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
         userCount: r.users.length,
+        // Anti-spam: include activity metadata for client-side sorting
+        lastChatActivity: state.roomLastChatActivity.get(r.id) || 0,
+        createdAt: r.createdAt || r.lastActiveTime || 0,
         users: (r.users || []).map((u) => ({
           id: u.id,
           username: u.username,
@@ -412,13 +601,20 @@ async function processPendingChatUpdates(userId, socket) {
     msg = enforceCharacterLimit(msg);
     state.userMessageBuffers.set(userId, msg);
 
+    // ── Anti-spam: track room-level chat activity ──
+    if (socket.roomId) {
+      state.roomLastChatActivity.set(socket.roomId, Date.now());
+    }
+
     socket.to(socket.roomId).emit("chat update", {
       userId,
       username,
       diff: { type: "full-replace", text: msg },
     });
 
+    // AFK reset happens here — this is the ONLY place AFK resets from user action
     setupAFKTimers(socket, userId);
+
     if (pending.diffs.length > 0) {
       state.batchProcessingTimers.set(
         userId,
@@ -458,6 +654,10 @@ async function leaveRoom(socket, userId) {
       socket.leave(roomId);
       io().to(roomId).emit("user left", userId);
       updateRoom(roomId);
+
+      // ── Anti-spam: update solo tracking on occupancy change ──
+      updateRoomSoloTracking(roomId);
+
       if (room.users.length === 0) startRoomDeletionTimer(roomId);
     }
     if (socket.handshake.session) {
@@ -577,6 +777,9 @@ function joinRoom(socket, roomId, userId) {
     socket.roomId = roomId;
     setupAFKTimers(socket, userId);
 
+    // ── Anti-spam: update solo tracking on occupancy change ──
+    updateRoomSoloTracking(roomId);
+
     if (socket.handshake.session) {
       socket.handshake.session.currentRoom = roomId;
       socket.handshake.session.save((err) => {
@@ -637,7 +840,7 @@ function emitJoinSuccess(socket, room, userId, username, location) {
 
 function handleTyping(socket, userId, username, isTyping) {
   if (!socket.roomId) return;
-  setupAFKTimers(socket, userId);
+  // Note: typing does NOT reset AFK — only chat update does
   if (state.typingTimeouts.has(userId))
     clearTimeout(state.typingTimeouts.get(userId));
   if (isTyping) {
@@ -688,10 +891,10 @@ function registerSocketHandlers() {
       };
     }
 
-    socket.onAny(() => {
-      if (socket.roomId && socket.handshake.session?.userId)
-        setupAFKTimers(socket, socket.handshake.session.userId);
-    });
+    // ── IMPORTANT: onAny no longer resets AFK ──
+    // Previously, any event (including "get rooms") would reset AFK timers,
+    // making it trivial for bots to stay alive. Now AFK only resets inside
+    // processPendingChatUpdates (actual typing). This is intentional.
 
     socket.on(
       "check signin status",
@@ -851,15 +1054,31 @@ function registerSocketHandlers() {
             ),
           );
 
-        const limit = calculateCurrentRoomLimit();
-        if (state.rooms.size >= limit)
+        // ── Hard cap: absolute ceiling on total rooms ──
+        if (state.rooms.size >= CONFIG.LIMITS.HARD_MAX_ROOMS) {
           return socket.emit(
             "error",
             createErrorResponse(
               ERROR_CODES.ROOM_LIMIT_REACHED,
-              `Room limit reached (${limit}).`,
+              "Server is at maximum capacity. Please try again shortly.",
             ),
           );
+        }
+
+        // ── Smart limit: only healthy rooms count toward creation cap ──
+        const healthyCount = getHealthyRoomCount();
+        const limit = calculateCurrentRoomLimit();
+        if (healthyCount >= limit) {
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.ROOM_LIMIT_REACHED,
+              `Room limit reached (${limit}). Try again in a moment.`,
+            ),
+          );
+        }
+
+        // ── Per-user limits (existing) ──
         if (
           getUsernameLocationRoomsCount(username, location) >=
           CONFIG.LIMITS.MAX_ROOMS_PER_USER
@@ -874,6 +1093,7 @@ function registerSocketHandlers() {
             createErrorResponse(ERROR_CODES.FORBIDDEN, "Already in a room."),
           );
 
+        // ── Per-user creation cooldown (existing) ──
         const now = Date.now();
         if (
           now - (state.lastRoomCreationTimes.get(userId) || 0) <
@@ -886,6 +1106,34 @@ function registerSocketHandlers() {
               "Creating rooms too fast.",
             ),
           );
+
+        // ── Anti-spam: Per-IP room count limit ──
+        const ipRoomCount = getRoomCountByIP(clientIp);
+        if (ipRoomCount >= CONFIG.LIMITS.MAX_ROOMS_PER_IP) {
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.RATE_LIMITED,
+              "Too many rooms from this connection.",
+            ),
+          );
+        }
+
+        // ── Anti-spam: Per-IP creation rate limit ──
+        const lastIpCreation = state.ipLastRoomCreation.get(clientIp) || 0;
+        if (now - lastIpCreation < CONFIG.LIMITS.IP_ROOM_CREATION_COOLDOWN) {
+          const waitSec = Math.ceil(
+            (CONFIG.LIMITS.IP_ROOM_CREATION_COOLDOWN - (now - lastIpCreation)) /
+              1000,
+          );
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.RATE_LIMITED,
+              `Please wait ${waitSec}s before creating another room.`,
+            ),
+          );
+        }
 
         let roomName = enforceRoomNameLimit(data.name);
         if (roomNameExists(roomName))
@@ -908,7 +1156,10 @@ function registerSocketHandlers() {
             ),
           );
 
+        // ── All checks passed — create the room ──
         state.lastRoomCreationTimes.set(userId, now);
+        state.ipLastRoomCreation.set(clientIp, now);
+
         let roomId,
           attempts = 0;
         do {
@@ -934,6 +1185,7 @@ function registerSocketHandlers() {
           votes: {},
           bannedUserIds: new Set(),
           lastActiveTime: now,
+          createdAt: now,
         });
 
         if (data.type === "semi-private" && data.accessCode) {
@@ -949,7 +1201,10 @@ function registerSocketHandlers() {
         await debouncedSaveRooms();
         const stats = getRoomStatistics();
         console.log(
-          `Room created: ${roomId} (${roomName}) | ${stats.totalRooms}/${stats.currentLimit} rooms`,
+          `Room created: ${roomId} (${roomName}) by IP:${clientIp} | ` +
+            `Total: ${stats.totalRooms}/${stats.hardCap} | ` +
+            `Healthy: ${stats.healthyRooms}/${stats.currentLimit} | ` +
+            `Solo TTL: ${stats.currentSoloTTL}s`,
         );
       }),
     );
@@ -1066,11 +1321,7 @@ function registerSocketHandlers() {
           room.users.length >= 3 &&
           votesAgainst > Math.floor(room.users.length / 2)
         ) {
-          const target = [...io().sockets.sockets.values()].find(
-            (s) =>
-              s.handshake.session?.userId === data.targetUserId &&
-              s.roomId === roomId,
-          );
+          const target = findSocketByUserId(data.targetUserId, roomId);
           if (target) {
             target.emit("kicked");
             if (!room.bannedUserIds) room.bannedUserIds = new Set();
@@ -1150,7 +1401,7 @@ function registerSocketHandlers() {
             ),
           );
 
-        setupAFKTimers(socket, userId);
+        // AFK reset is inside processPendingChatUpdates, not here
         if (!state.pendingChatUpdates.has(userId))
           state.pendingChatUpdates.set(userId, { diffs: [] });
         state.pendingChatUpdates.get(userId).diffs.push(diff);
@@ -1172,7 +1423,7 @@ function registerSocketHandlers() {
         if (!socket.roomId || !socket.handshake.session?.userId) return;
         const userId = socket.handshake.session.userId;
         const username = socket.handshake.session.username || "Anonymous";
-        setupAFKTimers(socket, userId);
+        // Note: typing does NOT reset AFK timers
         if (data?.isTyping === false) {
           handleTyping(socket, userId, username, false);
           return;
@@ -1200,6 +1451,8 @@ function registerSocketHandlers() {
               type: r.type,
               isFull: r.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
               userCount: r.users.length,
+              lastChatActivity: state.roomLastChatActivity.get(r.id) || 0,
+              createdAt: r.createdAt || r.lastActiveTime || 0,
               users: (r.users || []).map((u) => ({
                 id: u.id,
                 username: u.username,
@@ -1284,6 +1537,15 @@ function registerSocketHandlers() {
 // ── Cleanup Intervals ───────────────────────────────────────────────────────
 
 function startCleanupIntervals() {
+  // ── Anti-spam: Pressure cleanup (configurable, default 30s) ──
+  setInterval(async () => {
+    try {
+      await pressureCleanup();
+    } catch (err) {
+      console.error("Pressure cleanup error:", err);
+    }
+  }, CONFIG.LIMITS.PRESSURE_CLEANUP_INTERVAL);
+
   // Bot detection cleanup (2 min)
   setInterval(() => {
     const now = Date.now();
@@ -1378,6 +1640,17 @@ function startCleanupIntervals() {
     for (const [k, v] of state.apiCache.entries()) {
       if (now - v.timestamp > state.API_CACHE_TTL) state.apiCache.delete(k);
     }
+    // Clean stale IP creation timestamps (older than 5 min)
+    for (const [ip, ts] of state.ipLastRoomCreation.entries()) {
+      if (now - ts > 300000) state.ipLastRoomCreation.delete(ip);
+    }
+    // Clean stale solo tracking for rooms that no longer exist
+    for (const roomId of state.roomSoloSince.keys()) {
+      if (!state.rooms.has(roomId)) state.roomSoloSince.delete(roomId);
+    }
+    for (const roomId of state.roomLastChatActivity.keys()) {
+      if (!state.rooms.has(roomId)) state.roomLastChatActivity.delete(roomId);
+    }
   }, 180000);
 
   // Empty room cleanup (10 min)
@@ -1393,6 +1666,8 @@ function startCleanupIntervals() {
     }
     for (const id of toDelete) {
       state.rooms.delete(id);
+      state.roomSoloSince.delete(id);
+      state.roomLastChatActivity.delete(id);
       if (state.roomDeletionTimers.has(id)) {
         clearTimeout(state.roomDeletionTimers.get(id));
         state.roomDeletionTimers.delete(id);
@@ -1445,6 +1720,7 @@ function startCleanupIntervals() {
       const r = state.rooms.get(id);
       if (r) {
         updateRoom(id);
+        updateRoomSoloTracking(id);
         if (r.users.length === 0) startRoomDeletionTimer(id);
       }
     }
@@ -1461,7 +1737,12 @@ function startCleanupIntervals() {
     const stats = getRoomStatistics();
     const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
     console.log(
-      `[STATUS] Clients:${io().sockets.sockets.size} Rooms:${stats.totalRooms}/${stats.currentLimit} Users:${stats.totalUsers} Heap:${heapMB}MB Tokens:${state.botTokens.size}`,
+      `[STATUS] Clients:${io().sockets.sockets.size} ` +
+        `Rooms:${stats.totalRooms}/${stats.hardCap} ` +
+        `Healthy:${stats.healthyRooms}/${stats.currentLimit} ` +
+        `Solo:${stats.soloRooms} TTL:${stats.currentSoloTTL}s ` +
+        `Users:${stats.totalUsers} Heap:${heapMB}MB ` +
+        `Tokens:${state.botTokens.size}`,
     );
     if (heapMB > 400) {
       console.warn(`MEMORY WARNING: ${heapMB}MB heap`);

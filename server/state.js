@@ -21,7 +21,7 @@ const CONFIG = {
     MAX_ROOM_CAPACITY: 5,
     BASE_MAX_ROOMS: 15,
     ROOM_SCALING_INCREMENT: 5,
-    MAX_CONNECTIONS_PER_IP: 30,
+    MAX_CONNECTIONS_PER_IP: 8,
     SOCKET_MAX_REQUESTS_WINDOW: 1,
     SOCKET_MAX_REQUESTS_PER_WINDOW: 75,
     CHAT_UPDATE_RATE_LIMIT: 500,
@@ -37,6 +37,29 @@ const CONFIG = {
     MAX_BOT_TOKENS_PER_IP: 3,
     BOT_TOKEN_REQUEST_COOLDOWN: 300000,
     IP_USER_CLEANUP_INTERVAL: 3600000,
+
+    // ── Anti-Spam: Per-IP Room Limits ─────────────────────────────────
+    MAX_ROOMS_PER_IP: 2,
+    IP_ROOM_CREATION_COOLDOWN: 30000, // 30s between room creations per IP
+
+    // ── Anti-Spam: Pressure System ────────────────────────────────────
+    // Hard ceiling — no room creation beyond this regardless of health
+    HARD_MAX_ROOMS: 50,
+
+    // Pressure tiers: [roomCountThreshold, singleOccupantTTL in ms]
+    // As total room count rises, solo rooms die faster
+    PRESSURE_TIERS: [
+      { threshold: 0, ttl: 20 * 60 * 1000 }, // 0-14:  20 minutes
+      { threshold: 15, ttl: 10 * 60 * 1000 }, // 15-29: 10 minutes
+      { threshold: 30, ttl: 3 * 60 * 1000 }, // 30-39: 3 minutes
+      { threshold: 40, ttl: 60 * 1000 }, // 40-49: 1 minute
+    ],
+
+    // Rooms with 2+ users OR created within this window count as "healthy"
+    HEALTHY_ROOM_AGE_MS: 5 * 60 * 1000, // 5 minutes
+
+    // How often the pressure cleanup interval runs
+    PRESSURE_CLEANUP_INTERVAL: 30000, // 30 seconds
   },
   FEATURES: {
     ENABLE_WORD_FILTER: true,
@@ -148,6 +171,20 @@ const state = {
   ipBotTokenCounts: new Map(),
   botTokenRequests: new Map(),
   ipBasedUsers: new Map(),
+
+  // ── Anti-Spam: Per-IP room creation tracking ──────────────────────
+  // Maps IP -> timestamp of last room creation (regardless of session)
+  ipLastRoomCreation: new Map(),
+
+  // ── Anti-Spam: Per-room solo timestamp ────────────────────────────
+  // Maps roomId -> timestamp when the room first became single-occupant.
+  // Deleted when room gets 2+ users or is cleaned up.
+  roomSoloSince: new Map(),
+
+  // ── Anti-Spam: Per-room last chat activity ────────────────────────
+  // Maps roomId -> timestamp of last chat update in that room.
+  // Used for lobby sorting; updated on every chat update.
+  roomLastChatActivity: new Map(),
 
   // Caches
   normalizeCache: new Map(),
