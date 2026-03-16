@@ -73,9 +73,12 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization", "x-api-key"],
 };
 
+// ── Middleware (order matters!) ──────────────────────────────────────────────
+
 app.use(express.json({ limit: "100kb" }));
 app.use(cors(corsOptions));
 app.use(cookieParser());
+
 app.use((req, res, next) => {
   res.locals.nonce = crypto.randomBytes(16).toString("base64");
   next();
@@ -138,21 +141,7 @@ app.use(
 app.use(xss());
 app.use(hpp());
 
-app.use(
-  express.static(path.join(__dirname, "public"), {
-    setHeaders: (res, filePath) => {
-      if (filePath.endsWith(".js")) {
-        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-        res.setHeader("Cache-Control", "public, max-age=31536000");
-      } else if (filePath.endsWith(".css"))
-        res.setHeader("Cache-Control", "public, max-age=31536000");
-      else if (filePath.match(/\.(jpg|jpeg|png|gif|ico|svg)$/))
-        res.setHeader("Cache-Control", "public, max-age=31536000");
-      if (filePath.endsWith(".ttf")) res.setHeader("Content-Type", "font/ttf");
-    },
-  }),
-);
-
+// Rate limiter — skip static file requests so they don't eat the limit
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -160,6 +149,14 @@ app.use(
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: (req) => getClientIP(req),
+    skip: (req) => {
+      const url = req.path || req.url;
+      return (
+        /\.(js|css|png|jpg|jpeg|gif|ico|svg|ttf|otf|woff|woff2|mp3|wav|ogg|json|map)$/i.test(
+          url,
+        ) || url.startsWith("/socket.io/")
+      );
+    },
     message: {
       error: { code: ERROR_CODES.RATE_LIMITED, message: "Too many requests." },
     },
@@ -302,7 +299,22 @@ io.use((socket, next) => {
 
 io.use(sharedsession(sessionMiddleware, { autoSave: true }));
 
-// ── Static Files ────────────────────────────────────────────────────────────
+// ── Static Files (AFTER session so HTML pages get session cookies) ───────────
+
+app.use(
+  express.static(path.join(__dirname, "public"), {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith(".js")) {
+        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        res.setHeader("Cache-Control", "public, max-age=31536000");
+      } else if (filePath.endsWith(".css"))
+        res.setHeader("Cache-Control", "public, max-age=31536000");
+      else if (filePath.match(/\.(jpg|jpeg|png|gif|ico|svg)$/))
+        res.setHeader("Cache-Control", "public, max-age=31536000");
+      if (filePath.endsWith(".ttf")) res.setHeader("Content-Type", "font/ttf");
+    },
+  }),
+);
 
 // ── API Routes ──────────────────────────────────────────────────────────────
 
