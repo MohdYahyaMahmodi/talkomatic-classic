@@ -16,7 +16,7 @@
 
   --background-color: #202020;
   --left-panel-background-color: #616161;
-  --external-links-background-color: #444444;
+  --external-links-background-color: #1b1b1b;
   --hover-external-links-background-color: #1b1b1b;
   --visited-external-links-background-color: #1b1b1b;
   --known-as-section-background-color: #fdf5e6;
@@ -124,7 +124,7 @@
   --enter-button-shadow-color: rgba(0, 0, 0, 0.2);
 
   --focus-creator-link-outline-color: #c7c7c7;
-  
+
   --discord-icon-color: #7289da;
   --community-icon-color: #ff6b35;
   --info-circle-icon-color: #17a2b8;
@@ -163,7 +163,8 @@ html {
   padding: 0; /* Remove default padding */
   height: 100%; /* Ensure body takes up full viewport height */
   overflow: hidden; /* Hide overflow to prevent unwanted scroll bars */
-  font-family: talkoSS, Arial, sans-serif; /* Use custom font, fallback to Arial */
+  font-family:
+    talkoSS, Arial, sans-serif; /* Use custom font, fallback to Arial */
   background-color: var(--background-color); /* Dark background color */
 }
 
@@ -187,7 +188,9 @@ html {
 /* Styles for the left panel that contains menu and form elements */
 .left-panel {
   width: 320px; /* Fixed width for left panel */
-  background-color: var(--left-panel-background-color); /* Dark gray background */
+  background-color: var(
+    --left-panel-background-color
+  ); /* Dark gray background */
   color: var(--left-panel-color); /* White text color */
   transition: transform 0.3s ease-in-out; /* Smooth transition for showing/hiding */
   display: flex;
@@ -294,7 +297,9 @@ html {
 
 /* Known-as section with a light background */
 .known-as-section {
-  background-color: var(--known-as-section-background-color); /* Light beige background for contrast */
+  background-color: var(
+    --known-as-section-background-color
+  ); /* Light beige background for contrast */
   padding: 18px;
 }
 
@@ -337,13 +342,17 @@ html {
   right: 18px;
   width: 100px;
   padding: 12px 16px;
-  background-color: var(--logform-button-background-color); /* Black background */
+  background-color: var(
+    --logform-button-background-color
+  ); /* Black background */
   color: var(--logform-button-color); /* White text */
   border: 1px solid var(--primary); /* Orange border */
   cursor: pointer; /* Pointer cursor on hover */
   font-family: talkoSS, Arial, sans-serif;
   font-weight: light;
-  transition: background-color 0.3s ease, border-color 0.3s ease; /* Smooth hover transition */
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease; /* Smooth hover transition */
   font-size: 12px;
   border-radius: 4px;
   display: flex;
@@ -361,14 +370,18 @@ html {
 
 /* Hover effect for the button */
 #logform button:hover {
-  background-color: var(--hover-logform-button-background-color); /* Light gray background on hover */
+  background-color: var(
+    --hover-logform-button-background-color
+  ); /* Light gray background on hover */
   border-color: var(--primary); /* Keep orange border */
 }
 
 /* Create Room Section */
 /* Section where users can create new rooms */
 .createRoom {
-  background-color: var(--create-room-section-background-color); /* Light background */
+  background-color: var(
+    --create-room-section-background-color
+  ); /* Light background */
   padding: 18px;
   margin-top: 20px;
   display: flex;
@@ -387,7 +400,9 @@ html {
 /* Button to learn more about creating rooms */
 .createRoom .learn-more {
   color: var(--learn-more-section-color); /* White text */
-  background-color: var(--learn-more-section-background-color); /* Dark gray background */
+  background-color: var(
+    --learn-more-section-background-color
+  ); /* Dark gray background */
   padding: 12px 16px;
   text-decoration: none; /* No underline */
   font-size: 16px;
@@ -415,7 +430,9 @@ html {
   padding: 12px;
   margin-bottom: 15px;
   border: 1px solid var(--room-name-input-border-color); /* White border */
-  background-color: var(--room-name-input-background-color); /* White background */
+  background-color: var(
+    --room-name-input-background-color
+  ); /* White background */
   font-size: 16px;
   font-family: talkoSS, Arial, sans-serif;
 }
@@ -468,7 +485,9 @@ html {
 /* Button to join a chat */
 .go-chat-button {
   padding: 12px 16px;
-  background-color: var(--go-chat-button-background-color); /* Black background */
+  background-color: var(
+    --go-chat-button-background-color
+  ); /* Black background */
   color: var(--go-chat-button-color); /* White text */
   border: 1px solid var(--primary); /* Orange border */
   border-radius: 4px; /* Rounded corners */
@@ -480,14 +499,18 @@ html {
 
 /* Hover effect for the chat button */
 .go-chat-button:hover {
-  background-color: var(--hover-go-chat-button-background-color); /* Orange background on hover */
+  background-color: var(
+    --hover-go-chat-button-background-color
+  ); /* Orange background on hover */
 }
 
 /* Right Panel Styles */
 /* Main content area on the right side */
 .right-panel {
   flex-grow: 1; /* Take up remaining space */
-  background-color: var(--right-panel-background-color); /* Match the body background color */
+  background-color: var(
+    --right-panel-background-color
+  ); /* Match the body background color */
   color: var(--right-panel-color); /* White text */
   padding-top: 30px;
   display: flex;
@@ -590,7 +613,9 @@ html {
   position: absolute;
   top: 20px;
   right: 20px;
-  background-color: var(--room-enter-button-background-color); /* Black background */
+  background-color: var(
+    --room-enter-button-background-color
+  ); /* Black background */
   color: var(--room-enter-button-color); /* White text */
   border: 1px solid var(--primary); /* Orange border */
   padding: 8px 16px;
@@ -598,7 +623,9 @@ html {
   cursor: pointer;
   font-family: talkoSS, Arial, sans-serif;
   font-size: 14px;
-  transition: background-color 0.3s ease, color 0.3s ease; /* Smooth transition */
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease; /* Smooth transition */
 }
 
 /* Hover effect for enter button */
@@ -666,11 +693,15 @@ html {
   z-index: 1001; /* Above other elements */
   border-top-right-radius: 5px;
   border-bottom-right-radius: 5px;
-  background-color: var(--toggle-menu-button-background-color); /* Gray background */
+  background-color: var(
+    --toggle-menu-button-background-color
+  ); /* Gray background */
   font-size: 18px;
   padding: 10px 15px 10px 10px;
   opacity: 1;
-  transition: left 0.3s ease-in-out, opacity 0.3s ease-in-out;
+  transition:
+    left 0.3s ease-in-out,
+    opacity 0.3s ease-in-out;
 }
 
 /* Symbol for the toggle button (hamburger menu) */
@@ -694,7 +725,9 @@ html {
 
 /* Hover effect for hide menu button */
 .hide-menu-button:hover {
-  background-color: var(--hover-hide-menu-button-background-color); /* Light gray background */
+  background-color: var(
+    --hover-hide-menu-button-background-color
+  ); /* Light gray background */
   color: var(--hover-hide-menu-button-color); /* Black text */
 }
 
@@ -834,7 +867,9 @@ html {
 }
 
 .creator-link:visited {
-  color: var(--visited-creator-link-color); /* Ensure visited links stay the same color */
+  color: var(
+    --visited-creator-link-color
+  ); /* Ensure visited links stay the same color */
 }
 
 .creator-link:hover {
@@ -1090,7 +1125,11 @@ html {
 #modalTitle {
   margin-top: 0;
   margin-right: 30px; /* Space for the X button */
-  background: linear-gradient(to bottom, var(--modal-title-background-gradient-top-color), var(--modal-title-background-gradient-bottom-color));
+  background: linear-gradient(
+    to bottom,
+    var(--modal-title-background-gradient-top-color),
+    var(--modal-title-background-gradient-bottom-color)
+  );
   color: var(--primary);
   padding: 10px 15px;
   border-radius: 4px 4px 0 0;
@@ -1251,7 +1290,9 @@ html {
 
 .fa-play-circle {
   margin-right: 10px;
-  color: var(--youtube-play-circle-icon-color); /* YouTube red for video/streaming */
+  color: var(
+    --youtube-play-circle-icon-color
+  ); /* YouTube red for video/streaming */
 }
 
 .fa-th-large {
@@ -1261,7 +1302,9 @@ html {
 
 .fa-book {
   margin-right: 10px;
-  color: var(--documentation-icon-color); /* Green for documentation/knowledge */
+  color: var(
+    --documentation-icon-color
+  ); /* Green for documentation/knowledge */
 }
 
 .fa-gift {
@@ -1271,10 +1314,12 @@ html {
 
 .fa-paintbrush {
   margin-right: 10px;
-  background-image: linear-gradient(82deg,
-  var(--themes-icon-gradient-left-color) 0%,
-  var(--themes-icon-gradient-middle-color) 50%,
-  var(--themes-icon-gradient-right-color) 100%);
+  background-image: linear-gradient(
+    82deg,
+    var(--themes-icon-gradient-left-color) 0%,
+    var(--themes-icon-gradient-middle-color) 50%,
+    var(--themes-icon-gradient-right-color) 100%
+  );
   color: transparent;
   background-clip: text;
 }
@@ -1288,7 +1333,9 @@ html {
   border-radius: 5px;
   transition: all 0.3s ease;
   font-size: 14px;
-  transition: background-color 0.3s ease, color 0.3s ease; /* Smooth transition */
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease; /* Smooth transition */
 }
 
 .spectate-button:hover {
@@ -1369,7 +1416,9 @@ html {
 
 /* Disabled input styling for spectators */
 .chat-input:not([contenteditable="true"]) {
-  background-color: var(--spectator-disabled-chat-input-background-color) !important;
+  background-color: var(
+    --spectator-disabled-chat-input-background-color
+  ) !important;
   opacity: 0.6;
   cursor: not-allowed;
 }
