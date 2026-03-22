@@ -38,21 +38,13 @@
 
 **Bot Development**
 
+# Getting Started With Bots [icon:fa:fa-solid fa-plug]
+
+# Example Bots [icon:fa:fa-solid fa-code]
+
+# AI Bot Builder Prompt [icon:fa:fa-solid fa-wand-magic-sparkles]
+
 # Terms and Conditions [icon:fa:fa-solid fa-scale-balanced]
-
-# Getting Started with Bots [icon:fa:fa-solid fa-plug]
-
-# Socket IO Events [icon:fa:fa-solid fa-bolt]
-
-# Authentication [icon:fa:fa-solid fa-fingerprint]
-
-# Message Handling [icon:fa:fa-solid fa-envelope]
-
-# Room Management [icon:fa:fa-solid fa-gears]
-
-# Best Practices [icon:fa:fa-solid fa-check-double]
-
-# Example Bot [icon:fa:fa-solid fa-code]
 
 **Frontend Development**
 
