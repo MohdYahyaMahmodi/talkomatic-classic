@@ -237,6 +237,22 @@ io.use((socket, next) => {
       state.blockedIPs.delete(clientIp);
     }
 
+    // ── DEV MODE CHECK ──────────────────────────────────────────────
+    // Check for devKey in auth. If valid, flag the socket as dev.
+    // This runs before bot/browser checks so it works for both.
+    const devKey = socket.handshake.auth.devKey;
+    if (devKey && CONFIG.DEV.KEY_HASH) {
+      const hash = crypto
+        .createHash("sha256")
+        .update(String(devKey))
+        .digest("hex");
+      if (hash === CONFIG.DEV.KEY_HASH) {
+        socket.isDev = true;
+        console.log(`[DEV] Dev mode activated for IP:${clientIp}`);
+      }
+    }
+    // ── END DEV MODE CHECK ──────────────────────────────────────────
+
     if (CONFIG.FEATURES.ENABLE_STRICT_ANTIBOT && !browser.isBrowser) {
       if (CONFIG.FEATURES.ENABLE_BOT_TOKENS) {
         if (!botToken) return next(new Error("Bot token required"));
@@ -259,6 +275,9 @@ io.use((socket, next) => {
         socket.browserDetection = browser;
 
         socket.use((packet, nextMw) => {
+          // DEV MODE: Dev users bypass all socket rate limits
+          if (socket.isDev) return nextMw();
+
           const evt = packet[0];
           if (
             [
@@ -569,6 +588,7 @@ async function start() {
   Node.js ${process.version}
   Rooms: ${stats.totalRooms}/${stats.currentLimit} | Users: ${stats.totalUsers}
   Antibot: ${CONFIG.FEATURES.ENABLE_STRICT_ANTIBOT ? "ON" : "OFF"} | Bot Tokens: ${CONFIG.FEATURES.ENABLE_BOT_TOKENS ? "ON" : "OFF"}
+  Dev Mode: ${CONFIG.DEV.KEY_HASH ? "CONFIGURED" : "NOT SET"}
 ══════════════════════════════════════════════════════`);
   });
 }

@@ -43,23 +43,17 @@ const CONFIG = {
     IP_ROOM_CREATION_COOLDOWN: 30000, // 30s between room creations per IP
 
     // ── Anti-Spam: Pressure System ────────────────────────────────────
-    // Hard ceiling — no room creation beyond this regardless of health
     HARD_MAX_ROOMS: 50,
 
-    // Pressure tiers: [roomCountThreshold, singleOccupantTTL in ms]
-    // As total room count rises, solo rooms die faster
     PRESSURE_TIERS: [
-      { threshold: 0, ttl: 20 * 60 * 1000 }, // 0-14:  20 minutes
-      { threshold: 15, ttl: 10 * 60 * 1000 }, // 15-29: 10 minutes
-      { threshold: 30, ttl: 3 * 60 * 1000 }, // 30-39: 3 minutes
-      { threshold: 40, ttl: 60 * 1000 }, // 40-49: 1 minute
+      { threshold: 0, ttl: 20 * 60 * 1000 },
+      { threshold: 15, ttl: 10 * 60 * 1000 },
+      { threshold: 30, ttl: 3 * 60 * 1000 },
+      { threshold: 40, ttl: 60 * 1000 },
     ],
 
-    // Rooms with 2+ users OR created within this window count as "healthy"
-    HEALTHY_ROOM_AGE_MS: 5 * 60 * 1000, // 5 minutes
-
-    // How often the pressure cleanup interval runs
-    PRESSURE_CLEANUP_INTERVAL: 30000, // 30 seconds
+    HEALTHY_ROOM_AGE_MS: 5 * 60 * 1000,
+    PRESSURE_CLEANUP_INTERVAL: 30000,
   },
   FEATURES: {
     ENABLE_WORD_FILTER: true,
@@ -84,6 +78,14 @@ const CONFIG = {
   VERSIONS: {
     API: "v1",
     SERVER: "2.0.0",
+  },
+
+  // ── DEV MODE ────────────────────────────────────────────────────────────
+  // SHA-256 hash of the secret dev key. Set in .env as DEV_KEY_HASH.
+  // Generate it:  echo -n "your_secret_key" | sha256sum
+  // Or in Node:   crypto.createHash('sha256').update('your_secret_key').digest('hex')
+  DEV: {
+    KEY_HASH: process.env.DEV_KEY_HASH || "",
   },
 };
 
@@ -126,7 +128,6 @@ try {
 }
 
 // ── Shared Mutable State ────────────────────────────────────────────────────
-// Everything is accessed via `state.xxx` so mutations are visible across modules.
 
 const state = {
   // io reference (set by server.js after creation)
@@ -173,18 +174,18 @@ const state = {
   ipBasedUsers: new Map(),
 
   // ── Anti-Spam: Per-IP room creation tracking ──────────────────────
-  // Maps IP -> timestamp of last room creation (regardless of session)
   ipLastRoomCreation: new Map(),
 
   // ── Anti-Spam: Per-room solo timestamp ────────────────────────────
-  // Maps roomId -> timestamp when the room first became single-occupant.
-  // Deleted when room gets 2+ users or is cleaned up.
   roomSoloSince: new Map(),
 
   // ── Anti-Spam: Per-room last chat activity ────────────────────────
-  // Maps roomId -> timestamp of last chat update in that room.
-  // Used for lobby sorting; updated on every chat update.
   roomLastChatActivity: new Map(),
+
+  // ── DEV MODE: Track which userIds are devs ────────────────────────
+  // Set by socket middleware when a valid devKey is provided.
+  // Maps userId -> true. Used to include isDev in user broadcasts.
+  devUsers: new Set(),
 
   // Caches
   normalizeCache: new Map(),

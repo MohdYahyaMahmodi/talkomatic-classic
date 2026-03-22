@@ -5,7 +5,12 @@
 
 // ── 1. CONSTANTS & STATE ────────────────────────────────────────────────────
 
-const socket = io();
+// DEV MODE: Pass devKey from localStorage in socket auth
+const socket = io({
+  auth: {
+    devKey: localStorage.getItem("talkomatic_devKey") || undefined,
+  },
+});
 
 let currentUsername = "";
 let currentLocation = "";
@@ -16,9 +21,9 @@ let currentRoomName = "";
 let lastSentMessage = "";
 let chatInput = null;
 
-// selfRawText tracks the ACTUAL unfiltered text the user typed.
-// The contenteditable may display filtered text (****) but selfRawText
-// always has the real characters, so diffs sent to the server are correct.
+// DEV MODE: Track if the current user is a dev
+let currentUserIsDev = false;
+
 let selfRawText = "";
 let selfIsFiltered = false;
 
@@ -43,14 +48,6 @@ const ERROR_CODES = {
 };
 
 // ── 2. WORD FILTER ──────────────────────────────────────────────────────────
-//
-// Filter runs CLIENT-SIDE only. Server sends raw text.
-// Each user toggles their own filter. Default: ON.
-//
-// NOTE: Your OWN typing is NOT filtered in real-time because doing so would
-// break the character-by-character diff sync (filtered text → wrong diffs).
-// The filter applies to messages you RECEIVE from other users.
-// ─────────────────────────────────────────────────────────────────────────────
 
 let clientWordFilter = null;
 let wordFilterEnabled = true;
@@ -67,7 +64,6 @@ function toggleWordFilter() {
   localStorage.setItem("wordFilterEnabled", JSON.stringify(wordFilterEnabled));
   updateFilterToggleUI();
 
-  // Re-filter our OWN text display
   if (chatInput && selfRawText) {
     const cursor = getCursorPosition(chatInput);
     const display = wordFilterEnabled
@@ -84,7 +80,6 @@ function toggleWordFilter() {
     selfIsFiltered = wordFilterEnabled && clientWordFilter?.ready;
   }
 
-  // Re-render all other users' messages
   document.querySelectorAll(".chat-row").forEach((row) => {
     if (row.dataset.userId === currentUserId) return;
     const chatDiv = row.querySelector(".chat-input");
@@ -580,10 +575,6 @@ function updateSelectedEmote() {
     });
 }
 
-/**
- * Single unified emote insertion function.
- * Works for autocomplete (keyboard + click) and dropdown.
- */
 function insertEmote(emoteCode, emoteInfo) {
   if (!chatInput) return;
   chatInput.focus();
@@ -609,20 +600,12 @@ function insertEmote(emoteCode, emoteInfo) {
   setTimeout(() => chatInput.focus(), 10);
 }
 
-/**
- * Called on every input event in the current user's chat box.
- * Reconstructs the real (unfiltered) text from the user's edit,
- * sends the diff to the server, then visually filters the display.
- */
 function updateSentMessage() {
   if (!chatInput) return;
   try {
     const currentDisplay = getPlainText(chatInput);
 
-    // Reconstruct the raw text from the user's edit
     if (selfIsFiltered && wordFilterEnabled && clientWordFilter?.ready) {
-      // The user just typed into filtered text. Since the filter does
-      // 1-to-1 char replacement (* for each char), positions map directly.
       const prevDisplay = applyWordFilter(selfRawText);
       selfRawText = reconstructRawText(
         prevDisplay,
@@ -630,35 +613,24 @@ function updateSentMessage() {
         selfRawText,
       );
     } else {
-      // No filtering was active — display IS the raw text
       selfRawText = currentDisplay;
     }
 
-    // Calculate and send diff based on raw (unfiltered) text
     const diff = getDiff(lastSentMessage, selfRawText);
     if (diff) {
       socket.emit("chat update", { diff, index: diff.index });
       lastSentMessage = selfRawText;
     }
 
-    // Apply visual filter to our own display
     applySelfFilter();
   } catch (err) {
     console.error("updateSentMessage error:", err);
   }
 }
 
-/**
- * Given the previous filtered display, the new display (after user edit),
- * and the raw text, reconstruct what the raw text should be now.
- *
- * Because the word filter replaces each offensive char with '*' (same length),
- * text positions in the filtered version map 1:1 to the raw version.
- */
 function reconstructRawText(prevFiltered, currentDisplay, prevRaw) {
-  if (prevFiltered === currentDisplay) return prevRaw; // no change
+  if (prevFiltered === currentDisplay) return prevRaw;
 
-  // Find the first position where they differ (from the start)
   let start = 0;
   while (
     start < prevFiltered.length &&
@@ -668,7 +640,6 @@ function reconstructRawText(prevFiltered, currentDisplay, prevRaw) {
     start++;
   }
 
-  // Find the first position where they differ (from the end)
   let prevEnd = prevFiltered.length - 1;
   let curEnd = currentDisplay.length - 1;
   while (
@@ -680,16 +651,10 @@ function reconstructRawText(prevFiltered, currentDisplay, prevRaw) {
     curEnd--;
   }
 
-  // The region [start..prevEnd] in the old text was replaced by
-  // the region [start..curEnd] in the new text.
   const inserted = currentDisplay.slice(start, curEnd + 1);
   return prevRaw.slice(0, start) + inserted + prevRaw.slice(prevEnd + 1);
 }
 
-/**
- * Visually filter the current user's own chat input if the filter is ON.
- * Preserves cursor position since filter is same-length replacement.
- */
 function applySelfFilter() {
   if (!chatInput) return;
 
@@ -697,7 +662,6 @@ function applySelfFilter() {
     const filtered = applyWordFilter(selfRawText);
     const currentDisplay = getPlainText(chatInput);
 
-    // Only update DOM if the filtered text differs from what's shown
     if (filtered !== currentDisplay) {
       const cursor = getCursorPosition(chatInput);
       chatInput.innerHTML = "";
@@ -983,10 +947,6 @@ function adjustMuteButtonVisibility() {
 
 // ── 9. CHAT PROCESSING ──────────────────────────────────────────────────────
 
-/**
- * Render another user's message with optional word filter.
- * Stores raw text in dataset for re-rendering on filter toggle.
- */
 function renderOtherUserMessage(element, rawMessage) {
   if (!element) return;
   element.dataset.rawText = rawMessage;
@@ -1061,7 +1021,6 @@ function displayChatMessage(data) {
   newText = newText.slice(0, MAX_MESSAGE_LENGTH);
 
   if (data.userId === currentUserId) {
-    // Server echo — update raw text and re-filter display
     selfRawText = newText;
     lastSentMessage = newText;
     const isActive = document.activeElement === chatDiv;
@@ -1083,7 +1042,118 @@ function displayChatMessage(data) {
   }
 }
 
-// ── 10. ROOM UI ─────────────────────────────────────────────────────────────
+// ── 10. DEV MODE: Confetti & Color Picker ───────────────────────────────────
+
+/**
+ * Lightweight confetti burst for dev user join.
+ * Self-contained, does not depend on confetti.js.
+ */
+function triggerDevConfetti() {
+  const container = document.createElement("div");
+  container.style.cssText =
+    "position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:99999;overflow:hidden;";
+  document.body.appendChild(container);
+
+  const colors = [
+    "#ff9800",
+    "#ff4444",
+    "#00ffff",
+    "#ffd700",
+    "#ff69b4",
+    "#44ff44",
+    "#ff44ff",
+    "#4488ff",
+  ];
+  const pieces = [];
+
+  for (let i = 0; i < 80; i++) {
+    const el = document.createElement("div");
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const size = 6 + Math.random() * 10;
+    const startX = Math.random() * window.innerWidth;
+    const startY = -20 - Math.random() * 100;
+    const speed = 2 + Math.random() * 4;
+    const drift = (Math.random() - 0.5) * 3;
+    const rotSpeed = (Math.random() - 0.5) * 12;
+
+    el.style.cssText = `position:absolute;width:${size}px;height:${size * 0.6}px;background:${color};border-radius:2px;left:0;top:0;pointer-events:none;`;
+    container.appendChild(el);
+    pieces.push({ el, x: startX, y: startY, speed, drift, rot: 0, rotSpeed });
+  }
+
+  let frame;
+  function animate() {
+    let alive = false;
+    for (const p of pieces) {
+      p.y += p.speed;
+      p.x += p.drift;
+      p.rot += p.rotSpeed;
+      if (p.y < window.innerHeight + 50) alive = true;
+      const opacity = Math.max(0, 1 - p.y / window.innerHeight);
+      p.el.style.transform = `translate(${p.x}px, ${p.y}px) rotate(${p.rot}deg)`;
+      p.el.style.opacity = opacity;
+    }
+    if (alive) {
+      frame = requestAnimationFrame(animate);
+    } else {
+      cancelAnimationFrame(frame);
+      container.remove();
+    }
+  }
+  frame = requestAnimationFrame(animate);
+
+  // Safety cleanup after 5 seconds
+  setTimeout(() => {
+    cancelAnimationFrame(frame);
+    if (container.parentNode) container.remove();
+  }, 5000);
+}
+
+/**
+ * Create the dev color picker UI in the navbar (only for dev users).
+ */
+function createDevColorPicker() {
+  const navRight = document.querySelector(".navbar-right");
+  if (!navRight || document.getElementById("devColorPicker")) return;
+
+  const wrapper = document.createElement("div");
+  wrapper.id = "devColorPicker";
+  wrapper.style.cssText =
+    "display:flex;align-items:center;gap:6px;margin-right:8px;";
+
+  const label = document.createElement("span");
+  label.textContent = "Color:";
+  label.style.cssText = "color:#ff9800;font-size:12px;";
+
+  const input = document.createElement("input");
+  input.type = "color";
+  input.value = "#ff9800";
+  input.title = "Change your text color (Dev)";
+  input.style.cssText =
+    "width:28px;height:28px;border:1px solid #555;border-radius:4px;cursor:pointer;background:none;padding:0;";
+
+  input.addEventListener("input", (e) => {
+    const color = e.target.value;
+    socket.emit("dev set color", { color });
+    // Also apply locally immediately
+    if (chatInput) {
+      chatInput.style.color = color;
+    }
+  });
+
+  wrapper.appendChild(label);
+  wrapper.appendChild(input);
+
+  // Insert before the leave button
+  const leaveBtn = navRight.querySelector(".leave-room");
+  if (leaveBtn) {
+    navRight.insertBefore(wrapper, leaveBtn);
+  } else {
+    navRight.appendChild(wrapper);
+  }
+}
+
+// ── 11. ROOM UI ─────────────────────────────────────────────────────────────
 
 function createUserRow(user, container) {
   const row = document.createElement("div");
@@ -1091,9 +1161,26 @@ function createUserRow(user, container) {
   if (user.id === currentUserId) row.classList.add("current-user");
   row.dataset.userId = user.id;
 
+  // DEV MODE: Add dev-user class for neon red border
+  if (user.isDev) {
+    row.classList.add("dev-user");
+  }
+
   const info = document.createElement("span");
   info.className = "user-info";
-  info.textContent = `${user.username} / ${user.location}`;
+
+  // DEV MODE: Add crown gif before username
+  if (user.isDev) {
+    const crown = document.createElement("img");
+    crown.src = "images/icons/crown.gif";
+    crown.alt = "Dev";
+    crown.className = "dev-crown";
+    info.appendChild(crown);
+  }
+
+  info.appendChild(
+    document.createTextNode(`${user.username} / ${user.location}`),
+  );
 
   // Mute button
   const muteBtn = document.createElement("button");
@@ -1135,6 +1222,20 @@ function createUserRow(user, container) {
   info.appendChild(muteBtn);
   info.appendChild(voteBtn);
 
+  // DEV MODE: Force-kick button (only visible to dev, not on themselves)
+  if (currentUserIsDev && user.id !== currentUserId) {
+    const kickBtn = document.createElement("button");
+    kickBtn.className = "dev-kick-button";
+    kickBtn.innerHTML = "\u26A1";
+    kickBtn.title = "Force kick (Dev)";
+    kickBtn.addEventListener("click", () => {
+      if (confirm(`Force-kick ${user.username}?`)) {
+        socket.emit("dev force kick", { targetUserId: user.id });
+      }
+    });
+    info.appendChild(kickBtn);
+  }
+
   // Chat input wrapper + contenteditable
   const wrapper = document.createElement("div");
   wrapper.className = "chat-input-wrapper";
@@ -1142,10 +1243,26 @@ function createUserRow(user, container) {
 
   const div = document.createElement("div");
   div.className = "chat-input";
+
+  // DEV MODE: Add fire text class for dev users
+  if (user.isDev) {
+    div.classList.add("dev-fire-text");
+  }
+
+  // DEV MODE: Apply custom dev color if set
+  if (user.devColor) {
+    div.style.color = user.devColor;
+  }
+
   div.contentEditable = user.id === currentUserId;
   div.style.cssText =
     "width:100%;height:100%;background:black;color:orange;overflow-x:hidden;overflow-y:auto;padding:6px 8px;box-sizing:border-box;outline:none;white-space:pre-wrap;word-break:break-word;position:absolute;top:0;left:0;z-index:2";
   div.spellcheck = false;
+
+  // DEV MODE: Override color for dev users with custom color
+  if (user.devColor) {
+    div.style.color = user.devColor;
+  }
 
   if (user.id === currentUserId) {
     chatInput = div;
@@ -1219,7 +1336,7 @@ function updateRoomInfo(data) {
   if (!document.getElementById("emotesButton")) createEmotesDropdown();
 }
 
-// ── 11. LAYOUT ──────────────────────────────────────────────────────────────
+// ── 12. LAYOUT ──────────────────────────────────────────────────────────────
 
 let _stylesInjected = false;
 function injectStyles() {
@@ -1320,7 +1437,7 @@ function handleViewportChange() {
   adjustLayout();
 }
 
-// ── 12. INVITE LINKS & DATE/TIME ────────────────────────────────────────────
+// ── 13. INVITE LINKS & DATE/TIME ────────────────────────────────────────────
 
 function generateInviteLink() {
   const url = new URL(window.location.href);
@@ -1357,7 +1474,7 @@ function updateDateTime() {
   );
 }
 
-// ── 13. SOCKET EVENT HANDLERS ───────────────────────────────────────────────
+// ── 14. SOCKET EVENT HANDLERS ───────────────────────────────────────────────
 
 socket.on("chat update", displayChatMessage);
 
@@ -1388,12 +1505,24 @@ socket.on("room joined", (data) => {
   currentLocation = data.location;
   currentRoomLayout = data.layout || currentRoomLayout;
   currentRoomName = data.roomName;
+
+  // DEV MODE: Track if this user is a dev
+  currentUserIsDev = !!data.isDev;
+
   updateRoomInfo(data);
   updateRoomUI(data);
   if (data.votes) updateVotesUI(data.votes);
   if (data.currentMessages) updateCurrentMessages(data.currentMessages);
   updateInviteLink();
   createEmotesDropdown();
+
+  // DEV MODE: Create color picker if dev
+  if (currentUserIsDev) {
+    createDevColorPicker();
+    // Trigger confetti on own join
+    triggerDevConfetti();
+  }
+
   setTimeout(() => {
     if (chatInput) {
       chatInput.focus();
@@ -1419,6 +1548,11 @@ socket.on("user joined", (data) => {
       adjustLayout();
       updateRoomInfo(data);
       playJoinSound();
+
+      // DEV MODE: Trigger confetti when a dev user joins
+      if (data.isDev) {
+        triggerDevConfetti();
+      }
     }
     if (chatInput) setTimeout(() => chatInput.focus(), 10);
   }
@@ -1443,16 +1577,13 @@ socket.on("room update", (roomData) => {
   const saved = new Map();
   let savedCursor = 0;
 
-  // Save RAW text, not filtered display text
   document.querySelectorAll(".chat-row").forEach((row) => {
     const uid = row.dataset.userId;
     const ci = row.querySelector(".chat-input");
     if (ci) {
       if (uid === currentUserId) {
-        // Use selfRawText which always has the real unfiltered text
         saved.set(uid, selfRawText);
       } else {
-        // Use stored raw text, fall back to display text if not available
         saved.set(
           uid,
           ci.dataset.rawText !== undefined
@@ -1479,6 +1610,37 @@ socket.on("room update", (roomData) => {
     if (!current.has(r.dataset.userId) && r.dataset.userId !== currentUserId)
       r.remove();
   });
+
+  // DEV MODE: Update dev-user class and devColor on existing rows
+  if (roomData.users) {
+    roomData.users.forEach((u) => {
+      const row = document.querySelector(`.chat-row[data-user-id="${u.id}"]`);
+      if (!row) return;
+
+      if (u.isDev) {
+        row.classList.add("dev-user");
+        const ci = row.querySelector(".chat-input");
+        if (ci) {
+          ci.classList.add("dev-fire-text");
+          if (u.devColor) ci.style.color = u.devColor;
+        }
+        // Add crown if missing
+        const infoEl = row.querySelector(".user-info");
+        if (infoEl && !infoEl.querySelector(".dev-crown")) {
+          const crown = document.createElement("img");
+          crown.src = "images/icons/crown.gif";
+          crown.alt = "Dev";
+          crown.className = "dev-crown";
+          infoEl.insertBefore(crown, infoEl.firstChild);
+        }
+      } else {
+        row.classList.remove("dev-user");
+        const ci = row.querySelector(".chat-input");
+        if (ci) ci.classList.remove("dev-fire-text");
+      }
+    });
+  }
+
   saved.forEach((rawVal, uid) => {
     const ci = document.querySelector(
       `.chat-row[data-user-id="${uid}"] .chat-input`,
@@ -1503,7 +1665,6 @@ socket.on("room update", (roomData) => {
         }
       }
     } else {
-      // Pass raw text so dataset.rawText stays correct
       renderOtherUserMessage(ci, rawVal);
     }
   });
@@ -1549,21 +1710,23 @@ socket.on("error", (error) => {
   );
 });
 
-// ── 14. INITIALIZATION ──────────────────────────────────────────────────────
+// DEV MODE: Force-kick confirmation
+socket.on("dev kick success", (data) => {
+  console.log(`[DEV] Kicked "${data.targetUsername}" from "${data.roomName}"`);
+});
+
+// ── 15. INITIALIZATION ──────────────────────────────────────────────────────
 
 function joinRoom(roomId, accessCode = null) {
   socket.emit("join room", { roomId, accessCode });
 }
 
 async function initRoom() {
-  // Load emotes and word filter in parallel (filter has retry for 429s)
   const filter = new ClientWordFilter();
   await Promise.all([loadEmotes(), filter.init()]);
   if (filter.ready) clientWordFilter = filter;
-  else
-    console.warn("[WordFilter] Not available — messages will not be filtered.");
+  else console.warn("[WordFilter] Not available.");
 
-  // Restore filter preference (default ON)
   const saved = localStorage.getItem("wordFilterEnabled");
   wordFilterEnabled = saved !== "false";
   updateFilterToggleUI();

@@ -8,6 +8,11 @@
 // ║  • Per-IP room creation limits and rate limiting                        ║
 // ║  • AFK resets only on actual typing (chat update), not any event        ║
 // ║  • Lobby broadcasts include activity metadata for client-side sorting   ║
+// ║                                                                         ║
+// ║  Dev mode:                                                              ║
+// ║  • isDev flag included in all user broadcasts                           ║
+// ║  • Dev users bypass AFK timers                                          ║
+// ║  • Dev force-kick: remove any user from any room                        ║
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
 const path = require("path");
@@ -71,13 +76,8 @@ function getUserCurrentRoom(userId) {
 
 // ── Anti-Spam: Per-IP Room Counting ─────────────────────────────────────────
 
-/**
- * Count how many rooms currently have at least one user connected from
- * the given IP address. Uses the live socket set for accuracy.
- */
 function getRoomCountByIP(clientIp) {
   if (!io() || !clientIp) return 0;
-  // Collect all roomIds that have a socket from this IP
   const roomIds = new Set();
   for (const [, s] of io().sockets.sockets) {
     if (s.clientIp === clientIp && s.roomId) {
@@ -89,36 +89,21 @@ function getRoomCountByIP(clientIp) {
 
 // ── Anti-Spam: Pressure System ──────────────────────────────────────────────
 
-/**
- * Get the current TTL for single-occupant rooms based on total room count.
- * Higher room counts → shorter TTLs → faster cleanup of solo rooms.
- */
 function getSoloRoomTTL() {
   const totalRooms = state.rooms.size;
   const tiers = CONFIG.LIMITS.PRESSURE_TIERS;
-  // Walk tiers in reverse to find the highest matching threshold
   for (let i = tiers.length - 1; i >= 0; i--) {
     if (totalRooms >= tiers[i].threshold) return tiers[i].ttl;
   }
-  // Fallback to the most lenient tier
   return tiers[0].ttl;
 }
 
-/**
- * Returns true if a room is "healthy" — meaning it should count toward the
- * base creation limit. A room is healthy if it has 2+ users, OR it was
- * created within the HEALTHY_ROOM_AGE_MS window (grace period for new rooms).
- */
 function isHealthyRoom(room) {
   if (room.users && room.users.length >= 2) return true;
   const age = Date.now() - (room.createdAt || room.lastActiveTime || 0);
   return age < CONFIG.LIMITS.HEALTHY_ROOM_AGE_MS;
 }
 
-/**
- * Count rooms that are "healthy" — these are what count against the base
- * room creation limit. Bot-occupied solo rooms don't block real users.
- */
 function getHealthyRoomCount() {
   let count = 0;
   for (const [, room] of state.rooms) {
@@ -127,29 +112,20 @@ function getHealthyRoomCount() {
   return count;
 }
 
-/**
- * Run the pressure cleanup pass. Deletes single-occupant rooms that have
- * exceeded the current pressure-adjusted TTL. Multi-user rooms are NEVER
- * touched by this system.
- */
 async function pressureCleanup() {
   const now = Date.now();
   const ttl = getSoloRoomTTL();
   const toDelete = [];
 
   for (const [roomId, room] of state.rooms) {
-    // Never touch rooms with 2+ users
     if (room.users && room.users.length >= 2) continue;
 
     if (room.users && room.users.length === 1) {
-      // Room has exactly 1 user — check solo timestamp
       const soloSince = state.roomSoloSince.get(roomId);
       if (soloSince && now - soloSince >= ttl) {
         toDelete.push(roomId);
       }
     } else if (!room.users || room.users.length === 0) {
-      // Empty room — let the existing deletion timer handle it, but
-      // if it somehow survived, clean it up if it's old
       if (now - room.lastActiveTime > CONFIG.TIMING.ROOM_DELETION_TIMEOUT) {
         toDelete.push(roomId);
       }
@@ -162,7 +138,6 @@ async function pressureCleanup() {
     const room = state.rooms.get(roomId);
     if (!room) continue;
 
-    // Kick the solo user if present
     if (room.users && room.users.length === 1) {
       const soloUser = room.users[0];
       const soloSocket = findSocketByUserId(soloUser.id, roomId);
@@ -177,7 +152,6 @@ async function pressureCleanup() {
       }
     }
 
-    // Delete the room
     state.rooms.delete(roomId);
     state.roomSoloSince.delete(roomId);
     state.roomLastChatActivity.delete(roomId);
@@ -196,10 +170,6 @@ async function pressureCleanup() {
   );
 }
 
-/**
- * Update the solo-since timestamp for a room. Call this whenever room
- * occupancy changes.
- */
 function updateRoomSoloTracking(roomId) {
   const room = state.rooms.get(roomId);
   if (!room) {
@@ -207,19 +177,14 @@ function updateRoomSoloTracking(roomId) {
     return;
   }
   if (room.users && room.users.length === 1) {
-    // Just became solo — set timestamp if not already tracked
     if (!state.roomSoloSince.has(roomId)) {
       state.roomSoloSince.set(roomId, Date.now());
     }
   } else {
-    // Not solo (0 or 2+ users) — clear tracking
     state.roomSoloSince.delete(roomId);
   }
 }
 
-/**
- * Find a connected socket by userId and optionally roomId.
- */
 function findSocketByUserId(userId, roomId) {
   if (!io()) return null;
   for (const [, s] of io().sockets.sockets) {
@@ -235,11 +200,6 @@ function findSocketByUserId(userId, roomId) {
 
 // ── Room Utilities ──────────────────────────────────────────────────────────
 
-/**
- * Calculate the effective room creation limit. Uses healthy room count
- * against the base limit, with dynamic scaling if enabled. The hard cap
- * is always enforced on total room count regardless.
- */
 function calculateCurrentRoomLimit() {
   if (!CONFIG.FEATURES.ENABLE_DYNAMIC_SCALING)
     return CONFIG.LIMITS.BASE_MAX_ROOMS;
@@ -317,13 +277,28 @@ function getCurrentMessages(usersInRoom) {
   return msgs;
 }
 
+// ── DEV MODE: Helper to format user objects with isDev flag ─────────────────
+
+/**
+ * Format a user object for client broadcast. Always includes isDev.
+ * Used everywhere we send user data to clients.
+ */
+function formatUser(u) {
+  return {
+    id: u.id,
+    username: u.username,
+    location: u.location,
+    isDev: !!u.isDev,
+    devColor: u.devColor || null,
+  };
+}
+
 // ── Room Save / Load ────────────────────────────────────────────────────────
 
 async function saveRooms() {
   const now = Date.now();
   if (now - state.lastSaveTimestamp < state.SAVE_INTERVAL_MIN) return;
   try {
-    // Serialize Sets as arrays for proper JSON round-trip
     const data = Array.from(state.rooms.entries()).map(([id, room]) => {
       return [
         id,
@@ -378,7 +353,6 @@ async function loadRooms() {
     state.rooms = new Map(
       arr.map((item) => {
         if (item[1]) {
-          // Clear stale users from previous server process
           if (item[1].users && item[1].users.length > 0) {
             console.log(
               `Clearing ${item[1].users.length} stale user(s) from room: ${item[1].name || item[0]}`,
@@ -386,7 +360,6 @@ async function loadRooms() {
           }
           item[1].users = [];
           item[1].lastActiveTime = Date.now();
-          // Restore bannedUserIds as Set
           item[1].bannedUserIds = new Set(
             Array.isArray(item[1].bannedUserIds)
               ? item[1].bannedUserIds
@@ -399,7 +372,6 @@ async function loadRooms() {
       }),
     );
     console.log(`Loaded ${state.rooms.size} rooms from disk (users cleared).`);
-    // Start deletion timers for all loaded empty rooms
     for (const [roomId] of state.rooms) {
       startRoomDeletionTimer(roomId);
     }
@@ -446,14 +418,10 @@ function updateLobby() {
         type: r.type,
         isFull: r.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
         userCount: r.users.length,
-        // Anti-spam: include activity metadata for client-side sorting
         lastChatActivity: state.roomLastChatActivity.get(r.id) || 0,
         createdAt: r.createdAt || r.lastActiveTime || 0,
-        users: (r.users || []).map((u) => ({
-          id: u.id,
-          username: u.username,
-          location: u.location,
-        })),
+        // DEV MODE: include isDev flag in user objects
+        users: (r.users || []).map(formatUser),
       }));
     io().to("lobby").emit("lobby update", publicRooms);
   } catch (err) {
@@ -472,7 +440,8 @@ function updateRoom(roomId) {
         name: room.name,
         type: room.type,
         layout: room.layout,
-        users: room.users || [],
+        // DEV MODE: include isDev flag in user objects
+        users: (room.users || []).map(formatUser),
         votes: room.votes || {},
       });
   }
@@ -494,6 +463,10 @@ function clearAFKTimers(userId) {
 function setupAFKTimers(socket, userId) {
   clearAFKTimers(userId);
   if (!socket || !socket.roomId) return;
+
+  // ── DEV MODE: Dev users never go AFK ──────────────────────────────
+  if (socket.isDev) return;
+
   state.afkWarningTimers.set(
     userId,
     setTimeout(() => {
@@ -593,7 +566,6 @@ async function processPendingChatUpdates(userId, socket) {
       }
     }
 
-    // Strip RTL override and carriage returns
     msg = [...msg]
       .filter((c) => c.codePointAt(0) !== 8238)
       .join("")
@@ -601,7 +573,6 @@ async function processPendingChatUpdates(userId, socket) {
     msg = enforceCharacterLimit(msg);
     state.userMessageBuffers.set(userId, msg);
 
-    // ── Anti-spam: track room-level chat activity ──
     if (socket.roomId) {
       state.roomLastChatActivity.set(socket.roomId, Date.now());
     }
@@ -612,7 +583,6 @@ async function processPendingChatUpdates(userId, socket) {
       diff: { type: "full-replace", text: msg },
     });
 
-    // AFK reset happens here — this is the ONLY place AFK resets from user action
     setupAFKTimers(socket, userId);
 
     if (pending.diffs.length > 0) {
@@ -655,7 +625,6 @@ async function leaveRoom(socket, userId) {
       io().to(roomId).emit("user left", userId);
       updateRoom(roomId);
 
-      // ── Anti-spam: update solo tracking on occupancy change ──
       updateRoomSoloTracking(roomId);
 
       if (room.users.length === 0) startRoomDeletionTimer(roomId);
@@ -669,6 +638,10 @@ async function leaveRoom(socket, userId) {
       );
     }
     state.userMessageBuffers.delete(userId);
+
+    // DEV MODE: clean up dev tracking on leave
+    state.devUsers.delete(userId);
+
     socket.roomId = null;
     socket.join("lobby");
     updateLobby();
@@ -772,12 +745,24 @@ function joinRoom(socket, roomId, userId) {
     clearAFKTimers(userId);
     room.users = room.users.filter((u) => u.id !== userId);
     socket.join(roomId);
-    room.users.push({ id: userId, username, location });
+
+    // DEV MODE: include isDev flag on the user object stored in the room
+    room.users.push({
+      id: userId,
+      username,
+      location,
+      isDev: !!socket.isDev,
+    });
+
+    // DEV MODE: track dev userId in global state
+    if (socket.isDev) {
+      state.devUsers.add(userId);
+    }
+
     room.lastActiveTime = Date.now();
     socket.roomId = roomId;
     setupAFKTimers(socket, userId);
 
-    // ── Anti-spam: update solo tracking on occupancy change ──
     updateRoomSoloTracking(roomId);
 
     if (socket.handshake.session) {
@@ -810,10 +795,12 @@ function joinRoom(socket, roomId, userId) {
 }
 
 function emitJoinSuccess(socket, room, userId, username, location) {
+  // DEV MODE: include isDev in user joined broadcast
   io().to(room.id).emit("user joined", {
     id: userId,
     username,
     location,
+    isDev: !!socket.isDev,
     roomName: room.name,
     roomType: room.type,
   });
@@ -824,9 +811,11 @@ function emitJoinSuccess(socket, room, userId, username, location) {
     userId,
     username,
     location,
+    isDev: !!socket.isDev,
     roomName: room.name,
     roomType: room.type,
-    users: room.users,
+    // DEV MODE: include isDev flag in user list
+    users: (room.users || []).map(formatUser),
     layout: room.layout,
     votes: room.votes,
     currentMessages: getCurrentMessages(room.users),
@@ -840,7 +829,6 @@ function emitJoinSuccess(socket, room, userId, username, location) {
 
 function handleTyping(socket, userId, username, isTyping) {
   if (!socket.roomId) return;
-  // Note: typing does NOT reset AFK — only chat update does
   if (state.typingTimeouts.has(userId))
     clearTimeout(state.typingTimeouts.get(userId));
   if (isTyping) {
@@ -891,11 +879,6 @@ function registerSocketHandlers() {
       };
     }
 
-    // ── IMPORTANT: onAny no longer resets AFK ──
-    // Previously, any event (including "get rooms") would reset AFK timers,
-    // making it trivial for bots to stay alive. Now AFK only resets inside
-    // processPendingChatUpdates (actual typing). This is intentional.
-
     socket.on(
       "check signin status",
       safe(async () => {
@@ -924,6 +907,11 @@ function registerSocketHandlers() {
           }
         }
         if (username && location && userId) {
+          // DEV MODE: track dev userId when checking signin status
+          if (socket.isDev) {
+            state.devUsers.add(userId);
+          }
+
           socket.emit("signin status", {
             isSignedIn: true,
             username,
@@ -931,6 +919,7 @@ function registerSocketHandlers() {
             userId,
             isIPBased: !!isIPBased,
             isBot: !!socket.isBot,
+            isDev: !!socket.isDev,
           });
           socket.join("lobby");
           state.users.set(userId, {
@@ -944,6 +933,7 @@ function registerSocketHandlers() {
           socket.emit("signin status", {
             isSignedIn: false,
             isBot: !!socket.isBot,
+            isDev: !!socket.isDev,
           });
         }
       }),
@@ -1002,6 +992,12 @@ function registerSocketHandlers() {
         });
         await promisifySessionSave(socket.handshake.session);
         state.users.set(userId, { id: userId, username, location });
+
+        // DEV MODE: track dev userId on lobby join
+        if (socket.isDev) {
+          state.devUsers.add(userId);
+        }
+
         socket.join("lobby");
         updateLobby();
         socket.emit("signin status", {
@@ -1011,6 +1007,7 @@ function registerSocketHandlers() {
           userId,
           isIPBased: false,
           isBot: !!socket.isBot,
+          isDev: !!socket.isDev,
         });
       }),
     );
@@ -1054,7 +1051,6 @@ function registerSocketHandlers() {
             ),
           );
 
-        // ── Hard cap: absolute ceiling on total rooms ──
         if (state.rooms.size >= CONFIG.LIMITS.HARD_MAX_ROOMS) {
           return socket.emit(
             "error",
@@ -1065,7 +1061,6 @@ function registerSocketHandlers() {
           );
         }
 
-        // ── Smart limit: only healthy rooms count toward creation cap ──
         const healthyCount = getHealthyRoomCount();
         const limit = calculateCurrentRoomLimit();
         if (healthyCount >= limit) {
@@ -1078,7 +1073,6 @@ function registerSocketHandlers() {
           );
         }
 
-        // ── Per-user limits (existing) ──
         if (
           getUsernameLocationRoomsCount(username, location) >=
           CONFIG.LIMITS.MAX_ROOMS_PER_USER
@@ -1093,7 +1087,6 @@ function registerSocketHandlers() {
             createErrorResponse(ERROR_CODES.FORBIDDEN, "Already in a room."),
           );
 
-        // ── Per-user creation cooldown (existing) ──
         const now = Date.now();
         if (
           now - (state.lastRoomCreationTimes.get(userId) || 0) <
@@ -1107,7 +1100,6 @@ function registerSocketHandlers() {
             ),
           );
 
-        // ── Anti-spam: Per-IP room count limit ──
         const ipRoomCount = getRoomCountByIP(clientIp);
         if (ipRoomCount >= CONFIG.LIMITS.MAX_ROOMS_PER_IP) {
           return socket.emit(
@@ -1119,7 +1111,6 @@ function registerSocketHandlers() {
           );
         }
 
-        // ── Anti-spam: Per-IP creation rate limit ──
         const lastIpCreation = state.ipLastRoomCreation.get(clientIp) || 0;
         if (now - lastIpCreation < CONFIG.LIMITS.IP_ROOM_CREATION_COOLDOWN) {
           const waitSec = Math.ceil(
@@ -1156,7 +1147,6 @@ function registerSocketHandlers() {
             ),
           );
 
-        // ── All checks passed — create the room ──
         state.lastRoomCreationTimes.set(userId, now);
         state.ipLastRoomCreation.set(clientIp, now);
 
@@ -1401,7 +1391,6 @@ function registerSocketHandlers() {
             ),
           );
 
-        // AFK reset is inside processPendingChatUpdates, not here
         if (!state.pendingChatUpdates.has(userId))
           state.pendingChatUpdates.set(userId, { diffs: [] });
         state.pendingChatUpdates.get(userId).diffs.push(diff);
@@ -1423,7 +1412,6 @@ function registerSocketHandlers() {
         if (!socket.roomId || !socket.handshake.session?.userId) return;
         const userId = socket.handshake.session.userId;
         const username = socket.handshake.session.username || "Anonymous";
-        // Note: typing does NOT reset AFK timers
         if (data?.isTyping === false) {
           handleTyping(socket, userId, username, false);
           return;
@@ -1453,11 +1441,8 @@ function registerSocketHandlers() {
               userCount: r.users.length,
               lastChatActivity: state.roomLastChatActivity.get(r.id) || 0,
               createdAt: r.createdAt || r.lastActiveTime || 0,
-              users: (r.users || []).map((u) => ({
-                id: u.id,
-                username: u.username,
-                location: u.location,
-              })),
+              // DEV MODE: include isDev flag in user objects
+              users: (r.users || []).map(formatUser),
             }));
           state.apiCache.set(key, { timestamp: Date.now(), data });
         }
@@ -1484,11 +1469,119 @@ function registerSocketHandlers() {
           name: room.name,
           type: room.type,
           layout: room.layout,
-          users: room.users,
+          // DEV MODE: include isDev flag in user objects
+          users: (room.users || []).map(formatUser),
           votes: room.votes,
           currentMessages: getCurrentMessages(room.users),
           isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
         });
+      }),
+    );
+
+    // ── DEV MODE: Force-kick any user from any room ─────────────────────
+    socket.on(
+      "dev force kick",
+      safe(async (data) => {
+        // Only dev users can use this
+        if (!socket.isDev) {
+          return socket.emit(
+            "error",
+            createErrorResponse(ERROR_CODES.FORBIDDEN, "Access denied."),
+          );
+        }
+
+        if (!data?.targetUserId || typeof data.targetUserId !== "string") {
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.BAD_REQUEST,
+              "targetUserId required.",
+            ),
+          );
+        }
+
+        const targetUserId = data.targetUserId;
+
+        // Find which room the target user is in
+        let targetRoomId = null;
+        let targetRoom = null;
+        for (const [roomId, room] of state.rooms) {
+          if (room.users && room.users.some((u) => u.id === targetUserId)) {
+            targetRoomId = roomId;
+            targetRoom = room;
+            break;
+          }
+        }
+
+        if (!targetRoom) {
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.NOT_FOUND,
+              "User not found in any room.",
+            ),
+          );
+        }
+
+        // Find the target user's socket
+        const targetSocket = findSocketByUserId(targetUserId, targetRoomId);
+        if (!targetSocket) {
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.NOT_FOUND,
+              "User socket not found.",
+            ),
+          );
+        }
+
+        // Get target info for logging
+        const targetUser = targetRoom.users.find((u) => u.id === targetUserId);
+        const targetName = targetUser?.username || "Unknown";
+        const roomName = targetRoom.name || targetRoomId;
+
+        // Kick them
+        targetSocket.emit("kicked");
+        await leaveRoom(targetSocket, targetUserId);
+
+        console.log(
+          `[DEV] Force-kicked "${targetName}" from "${roomName}" by dev user`,
+        );
+
+        // Confirm to the dev
+        socket.emit("dev kick success", {
+          targetUserId,
+          targetUsername: targetName,
+          roomId: targetRoomId,
+          roomName,
+        });
+      }),
+    );
+
+    // ── DEV MODE: Set username color ────────────────────────────────────
+    socket.on(
+      "dev set color",
+      safe(async (data) => {
+        if (!socket.isDev) return;
+        if (!data?.color || typeof data.color !== "string") return;
+
+        // Validate hex color format
+        if (!/^#[0-9a-fA-F]{6}$/.test(data.color)) return;
+
+        const userId = socket.handshake.session?.userId;
+        if (!userId || !socket.roomId) return;
+
+        const room = state.rooms.get(socket.roomId);
+        if (!room) return;
+
+        // Store color on the user object in the room
+        const user = room.users.find((u) => u.id === userId);
+        if (user) {
+          user.devColor = data.color;
+        }
+
+        // Broadcast room update so all clients see the new color
+        updateRoom(socket.roomId);
       }),
     );
 
@@ -1502,6 +1595,8 @@ function registerSocketHandlers() {
           clearAFKTimers(userId);
           await leaveRoom(socket, userId);
           state.userMessageBuffers.delete(userId);
+          // DEV MODE: clean up dev tracking on disconnect
+          state.devUsers.delete(userId);
           if (state.typingTimeouts.has(userId)) {
             clearTimeout(state.typingTimeouts.get(userId));
             state.typingTimeouts.delete(userId);
@@ -1519,7 +1614,7 @@ function registerSocketHandlers() {
           else state.ipConnections.delete(socket.clientIp);
         }
         console.log(
-          `Disconnected: "${username}" from "${location}" (${reason}) IP:${socket.clientIp}${socket.isBot ? " [BOT]" : ""}`,
+          `Disconnected: "${username}" from "${location}" (${reason}) IP:${socket.clientIp}${socket.isBot ? " [BOT]" : ""}${socket.isDev ? " [DEV]" : ""}`,
         );
       }),
     );
@@ -1537,7 +1632,7 @@ function registerSocketHandlers() {
 // ── Cleanup Intervals ───────────────────────────────────────────────────────
 
 function startCleanupIntervals() {
-  // ── Anti-spam: Pressure cleanup (configurable, default 30s) ──
+  // Pressure cleanup (30s)
   setInterval(async () => {
     try {
       await pressureCleanup();
@@ -1640,11 +1735,9 @@ function startCleanupIntervals() {
     for (const [k, v] of state.apiCache.entries()) {
       if (now - v.timestamp > state.API_CACHE_TTL) state.apiCache.delete(k);
     }
-    // Clean stale IP creation timestamps (older than 5 min)
     for (const [ip, ts] of state.ipLastRoomCreation.entries()) {
       if (now - ts > 300000) state.ipLastRoomCreation.delete(ip);
     }
-    // Clean stale solo tracking for rooms that no longer exist
     for (const roomId of state.roomSoloSince.keys()) {
       if (!state.rooms.has(roomId)) state.roomSoloSince.delete(roomId);
     }
@@ -1697,6 +1790,7 @@ function startCleanupIntervals() {
           console.log(`Ghost removed: "${u.username}" from "${room.name}"`);
           state.userMessageBuffers.delete(u.id);
           clearAFKTimers(u.id);
+          state.devUsers.delete(u.id);
           if (state.typingTimeouts.has(u.id)) {
             clearTimeout(state.typingTimeouts.get(u.id));
             state.typingTimeouts.delete(u.id);
@@ -1742,7 +1836,8 @@ function startCleanupIntervals() {
         `Healthy:${stats.healthyRooms}/${stats.currentLimit} ` +
         `Solo:${stats.soloRooms} TTL:${stats.currentSoloTTL}s ` +
         `Users:${stats.totalUsers} Heap:${heapMB}MB ` +
-        `Tokens:${state.botTokens.size}`,
+        `Tokens:${state.botTokens.size} ` +
+        `Devs:${state.devUsers.size}`,
     );
     if (heapMB > 400) {
       console.warn(`MEMORY WARNING: ${heapMB}MB heap`);
@@ -1772,6 +1867,7 @@ function purgeAllGhostUsers() {
       room.users.forEach((u) => {
         state.userMessageBuffers.delete(u.id);
         clearAFKTimers(u.id);
+        state.devUsers.delete(u.id);
       });
       room.users = [];
       room.votes = {};

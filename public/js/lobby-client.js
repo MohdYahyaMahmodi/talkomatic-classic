@@ -413,12 +413,16 @@ function updateConnectionStatus() {
 }
 
 // Socket.io initialization with robust connection settings
+
 const socket = io({
   reconnectionAttempts: 5,
   reconnectionDelay: 1000,
   timeout: 20000,
   autoConnect: true,
   withCredentials: true,
+  auth: {
+    devKey: localStorage.getItem("talkomatic_devKey") || undefined,
+  },
 });
 
 // DOM elements
