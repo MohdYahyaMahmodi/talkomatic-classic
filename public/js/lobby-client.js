@@ -522,11 +522,6 @@ socket.on("reconnect", (attemptNumber) => {
 
 socket.on("dev lobby context", (codes) => {
   devLobbyCodes = codes || {};
-  // Re-render lobby if we already have rooms displayed
-  const existing = document.querySelectorAll(".room");
-  if (existing.length > 0) {
-    socket.emit("get rooms");
-  }
 });
 
 // Show/hide access code field
