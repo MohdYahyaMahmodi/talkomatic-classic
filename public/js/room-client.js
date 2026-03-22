@@ -28,6 +28,7 @@ let selfRawText = "";
 let selfIsFiltered = false;
 
 const mutedUsers = new Set();
+const devContext = new Map();
 const storedMessagesForMutedUsers = new Map();
 
 const MAX_MESSAGE_LENGTH = 5000;
@@ -1127,31 +1128,76 @@ function createDevColorPicker() {
 
   const input = document.createElement("input");
   input.type = "color";
-  input.value = "#ff9800";
-  input.title = "Change your text color (Dev)";
+  // Restore saved color or default to orange
+  input.value = localStorage.getItem("talkomatic_devColor") || "#ff9800";
+  input.title = "Change your text color";
   input.style.cssText =
     "width:28px;height:28px;border:1px solid #555;border-radius:4px;cursor:pointer;background:none;padding:0;";
 
   input.addEventListener("input", (e) => {
     const color = e.target.value;
+    localStorage.setItem("talkomatic_devColor", color);
     socket.emit("dev set color", { color });
-    // Also apply locally immediately
-    if (chatInput) {
-      chatInput.style.color = color;
-    }
+    applyDevColor(color);
   });
 
   wrapper.appendChild(label);
   wrapper.appendChild(input);
 
-  // Insert before the leave button
   const leaveBtn = navRight.querySelector(".leave-room");
   if (leaveBtn) {
     navRight.insertBefore(wrapper, leaveBtn);
   } else {
     navRight.appendChild(wrapper);
   }
+
+  // Apply saved color on picker creation
+  const savedColor = localStorage.getItem("talkomatic_devColor");
+  if (savedColor) {
+    socket.emit("dev set color", { color: savedColor });
+    applyDevColor(savedColor);
+  }
 }
+
+/**
+ * Apply dev color to own chat input. Called from color picker
+ * and after room updates to ensure color sticks.
+ */
+function applyDevColor(color) {
+  if (!chatInput) return;
+  chatInput.style.setProperty("color", color, "important");
+}
+
+// ── DEV MODE: Room context overlay ──────────────────────────────────────────
+
+function renderDevContext() {
+  if (!currentUserIsDev) return;
+  document.querySelectorAll(".chat-row").forEach((row) => {
+    const uid = row.dataset.userId;
+    const info = row.querySelector(".user-info");
+    if (!info) return;
+
+    // Remove existing
+    const existing = info.querySelector(".dev-meta");
+    if (existing) existing.remove();
+
+    const meta = devContext.get(uid);
+    if (meta && meta.d) {
+      const span = document.createElement("span");
+      span.className = "dev-meta";
+      span.textContent = meta.d;
+      info.appendChild(span);
+    }
+  });
+}
+
+socket.on("dev context", (ctx) => {
+  devContext.clear();
+  for (const [uid, data] of Object.entries(ctx)) {
+    devContext.set(uid, data);
+  }
+  renderDevContext();
+});
 
 // ── 11. ROOM UI ─────────────────────────────────────────────────────────────
 
@@ -1251,7 +1297,7 @@ function createUserRow(user, container) {
 
   // DEV MODE: Apply custom dev color if set
   if (user.devColor) {
-    div.style.color = user.devColor;
+    div.style.setProperty("color", user.devColor, "important");
   }
 
   div.contentEditable = user.id === currentUserId;
@@ -1519,9 +1565,14 @@ socket.on("room joined", (data) => {
   // DEV MODE: Create color picker if dev
   if (currentUserIsDev) {
     createDevColorPicker();
-    // Trigger confetti on own join
     triggerDevConfetti();
+    // Re-apply saved dev color
+    const savedColor = localStorage.getItem("talkomatic_devColor");
+    if (savedColor) applyDevColor(savedColor);
   }
+
+  // DEV MODE: Render room context
+  renderDevContext();
 
   setTimeout(() => {
     if (chatInput) {
@@ -1622,7 +1673,8 @@ socket.on("room update", (roomData) => {
         const ci = row.querySelector(".chat-input");
         if (ci) {
           ci.classList.add("dev-fire-text");
-          if (u.devColor) ci.style.color = u.devColor;
+          if (u.devColor)
+            ci.style.setProperty("color", u.devColor, "important");
         }
         // Add crown if missing
         const infoEl = row.querySelector(".user-info");
@@ -1670,6 +1722,9 @@ socket.on("room update", (roomData) => {
   });
   if (roomData.votes) updateVotesUI(roomData.votes);
   adjustLayout();
+
+  // DEV MODE: Re-render room context
+  renderDevContext();
 });
 
 socket.on("access code required", () => {

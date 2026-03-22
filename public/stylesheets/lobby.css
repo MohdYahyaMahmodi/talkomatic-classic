@@ -1528,3 +1528,20 @@ button:disabled {
   font-size: 16px;
   opacity: 0.7;
 }
+
+/* ── Dev Lobby ─────────────────────────────────────────────────────────────── */
+
+.dev-access-code {
+  font-size: 12px;
+  color: #ff9800;
+  font-family: monospace;
+  margin-top: 2px;
+}
+
+.dev-lobby-badge {
+  width: 26px;
+  height: 26px;
+
+  margin-right: 4px;
+  vertical-align: middle;
+}

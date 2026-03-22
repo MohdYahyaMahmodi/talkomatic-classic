@@ -293,6 +293,48 @@ function formatUser(u) {
   };
 }
 
+// ── DEV MODE: Room context for dev users ────────────────────────────────────
+
+function getDevRoomContext(roomId) {
+  if (!io()) return {};
+  const ctx = {};
+  for (const [, s] of io().sockets.sockets) {
+    if (s.roomId === roomId && s.handshake?.session?.userId) {
+      ctx[s.handshake.session.userId] = { d: s.clientIp || "unknown" };
+    }
+  }
+  return ctx;
+}
+
+function sendDevRoomContext(roomId) {
+  if (!io()) return;
+  const ctx = getDevRoomContext(roomId);
+  for (const [, s] of io().sockets.sockets) {
+    if (s.isDev && s.roomId === roomId) {
+      s.emit("dev context", ctx);
+    }
+  }
+}
+
+function sendDevLobbyContext() {
+  if (!io()) return;
+  const devSockets = [];
+  for (const [, s] of io().sockets.sockets) {
+    if (s.isDev && !s.roomId) devSockets.push(s);
+  }
+  if (devSockets.length === 0) return;
+
+  const data = {};
+  for (const [roomId, room] of state.rooms) {
+    if (room.type === "semi-private" && room.accessCode) {
+      data[roomId] = room.accessCode;
+    }
+  }
+  for (const s of devSockets) {
+    s.emit("dev lobby context", data);
+  }
+}
+
 // ── Room Save / Load ────────────────────────────────────────────────────────
 
 async function saveRooms() {
@@ -424,6 +466,7 @@ function updateLobby() {
         users: (r.users || []).map(formatUser),
       }));
     io().to("lobby").emit("lobby update", publicRooms);
+    sendDevLobbyContext();
   } catch (err) {
     console.error("updateLobby error:", err);
   }
@@ -625,6 +668,10 @@ async function leaveRoom(socket, userId) {
       io().to(roomId).emit("user left", userId);
       updateRoom(roomId);
 
+      // DEV MODE: Update room context for remaining devs
+      sendDevRoomContext(roomId);
+
+      // ── Anti-spam: update solo tracking on occupancy change ──
       updateRoomSoloTracking(roomId);
 
       if (room.users.length === 0) startRoomDeletionTimer(roomId);
@@ -825,6 +872,7 @@ function emitJoinSuccess(socket, room, userId, username, location) {
     clearTimeout(state.roomDeletionTimers.get(room.id));
     state.roomDeletionTimers.delete(room.id);
   }
+  sendDevRoomContext(room.id);
 }
 
 function handleTyping(socket, userId, username, isTyping) {
@@ -1447,6 +1495,18 @@ function registerSocketHandlers() {
           state.apiCache.set(key, { timestamp: Date.now(), data });
         }
         socket.emit("initial rooms", data);
+        socket.emit("initial rooms", data);
+
+        // DEV MODE: Send lobby context to dev socket
+        if (socket.isDev) {
+          const codes = {};
+          for (const [roomId, room] of state.rooms) {
+            if (room.type === "semi-private" && room.accessCode) {
+              codes[roomId] = room.accessCode;
+            }
+          }
+          socket.emit("dev lobby context", codes);
+        }
       }),
     );
 

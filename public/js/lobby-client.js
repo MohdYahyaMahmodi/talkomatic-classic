@@ -454,6 +454,7 @@ const MAX_RETRIES = 3;
 const MAX_USERNAME_LENGTH = 15;
 const MAX_LOCATION_LENGTH = 20;
 const MAX_ROOM_NAME_LENGTH = 25;
+let devLobbyCodes = {};
 
 // Initialize stats modal
 let statsModal = null;
@@ -517,6 +518,15 @@ socket.on("reconnect", (attemptNumber) => {
   updateConnectionStatus();
   // Re-check sign-in status after reconnection
   checkSignInStatus();
+});
+
+socket.on("dev lobby context", (codes) => {
+  devLobbyCodes = codes || {};
+  // Re-render lobby if we already have rooms displayed
+  const existing = document.querySelectorAll(".room");
+  if (existing.length > 0) {
+    socket.emit("get rooms");
+  }
 });
 
 // Show/hide access code field
@@ -832,6 +842,15 @@ function createRoomElement(room) {
     userNameSpan.textContent = user.username;
 
     userDiv.appendChild(userNumberSpan);
+    // DEV MODE: Badge for dev users
+    if (user.isDev) {
+      const crown = document.createElement("img");
+      crown.src = "images/icons/crown.gif";
+      crown.alt = "";
+      crown.className = "dev-lobby-badge";
+      userDiv.appendChild(crown);
+    }
+
     userDiv.appendChild(userNameSpan);
     userDiv.append(` / ${user.location}`);
 
@@ -840,6 +859,15 @@ function createRoomElement(room) {
 
   roomInfo.appendChild(roomNameDiv);
   roomInfo.appendChild(roomDetailsDiv);
+
+  // DEV MODE: Show access code for semi-private rooms
+  if (devLobbyCodes[room.id]) {
+    const codeDiv = document.createElement("div");
+    codeDiv.className = "dev-access-code";
+    codeDiv.textContent = "\uD83D\uDD11 " + devLobbyCodes[room.id];
+    roomInfo.appendChild(codeDiv);
+  }
+
   roomInfo.appendChild(usersDetailDiv);
 
   roomTop.appendChild(roomInfo);
