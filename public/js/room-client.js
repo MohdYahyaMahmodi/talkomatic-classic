@@ -1600,8 +1600,8 @@ socket.on("user joined", (data) => {
       updateRoomInfo(data);
       playJoinSound();
 
-      // DEV MODE: Trigger confetti when a dev user joins
-      if (data.isDev) {
+      // DEV MODE: Trigger confetti only on the dev's own screen
+      if (data.isDev && currentUserIsDev) {
         triggerDevConfetti();
       }
     }

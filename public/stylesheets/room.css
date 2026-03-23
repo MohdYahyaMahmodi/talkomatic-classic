@@ -740,63 +740,9 @@ html {
 
 .dev-fire-text {
   text-shadow:
-    0 0 30px currentColor,
-    0 -4px 10px rgba(255, 100, 0, 0.9),
-    0 -8px 20px rgba(255, 60, 0, 0.6),
-    0 -14px 30px rgba(255, 30, 0, 0.35),
-    0 -20px 40px rgba(200, 0, 0, 0.15);
-  animation: dev-fire-flicker 0.3s ease-in-out infinite alternate;
-}
-
-@keyframes dev-fire-flicker {
-  0% {
-    text-shadow:
-      0 0 30px currentColor,
-      0 -4px 10px rgba(255, 100, 0, 0.9),
-      0 -8px 20px rgba(255, 60, 0, 0.6),
-      0 -14px 30px rgba(255, 30, 0, 0.35),
-      0 -20px 40px rgba(200, 0, 0, 0.15);
-  }
-  20% {
-    text-shadow:
-      0 0 30px currentColor,
-      0 -6px 14px rgba(255, 80, 0, 1),
-      0 -12px 24px rgba(255, 40, 0, 0.55),
-      0 -18px 36px rgba(255, 20, 0, 0.3),
-      0 -24px 48px rgba(200, 0, 0, 0.12);
-  }
-  40% {
-    text-shadow:
-      0 0 30px currentColor,
-      0 -4px 9px rgba(255, 120, 0, 0.8),
-      0 -7px 18px rgba(255, 60, 0, 0.6),
-      0 -12px 28px rgba(255, 30, 0, 0.35),
-      0 -18px 38px rgba(200, 0, 0, 0.15);
-  }
-  60% {
-    text-shadow:
-      0 0 35px currentColor,
-      0 -7px 14px rgba(255, 90, 0, 0.95),
-      0 -14px 26px rgba(255, 50, 0, 0.55),
-      0 -20px 38px rgba(255, 25, 0, 0.3),
-      0 -26px 50px rgba(200, 0, 0, 0.13);
-  }
-  80% {
-    text-shadow:
-      0 0 30px currentColor,
-      0 -4px 10px rgba(255, 110, 0, 0.75),
-      0 -8px 20px rgba(255, 70, 0, 0.6),
-      0 -14px 30px rgba(255, 30, 0, 0.35),
-      0 -20px 40px rgba(200, 0, 0, 0.15);
-  }
-  100% {
-    text-shadow:
-      0 0 32px currentColor,
-      0 -6px 12px rgba(255, 85, 0, 0.95),
-      0 -10px 22px rgba(255, 45, 0, 0.55),
-      0 -16px 34px rgba(255, 25, 0, 0.32),
-      0 -22px 44px rgba(200, 0, 0, 0.14);
-  }
+    0 0 10px currentColor,
+    0 -2px 6px rgba(255, 100, 0, 0.45),
+    0 -5px 12px rgba(255, 60, 0, 0.25);
 }
 
 /* ── Force-Kick Button (Dev Only) ──────────────────────────────────────────── */
