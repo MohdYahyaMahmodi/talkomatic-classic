@@ -423,7 +423,9 @@ app.get(`${API}/rooms`, apiAuth, (req, res) => {
             username: u.username,
             location: u.location,
           })),
-        isFull: (r.users || []).filter((u) => !u.isDev || !u.isVanished).length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
+        isFull:
+          (r.users || []).filter((u) => !u.isDev || !u.isVanished).length >=
+          CONFIG.LIMITS.MAX_ROOM_CAPACITY,
       }));
     state.apiCache.set("public_rooms", { timestamp: Date.now(), data });
     res.json(data);
@@ -447,7 +449,9 @@ app.get(`${API}/rooms/:id`, apiAuth, (req, res) => {
         username: u.username,
         location: u.location,
       })),
-    isFull: (room.users || []).filter((u) => !u.isDev || !u.isVanished).length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
+    isFull:
+      (room.users || []).filter((u) => !u.isDev || !u.isVanished).length >=
+      CONFIG.LIMITS.MAX_ROOM_CAPACITY,
   });
 });
 
@@ -526,7 +530,7 @@ app.post(`${API}/rooms`, apiAuth, async (req, res) => {
     if (req.session && data.type === "semi-private" && data.accessCode) {
       if (!req.session.validatedRooms) req.session.validatedRooms = {};
       req.session.validatedRooms[roomId] = data.accessCode;
-      await promisifySessionSave(req.session).catch(() => { });
+      await promisifySessionSave(req.session).catch(() => {});
     }
     state.apiCache.delete("public_rooms");
     rooms.updateLobby();
@@ -546,7 +550,10 @@ app.post(`${API}/rooms/:id/join`, apiAuth, async (req, res) => {
   const room = state.rooms.get(req.params.id);
   if (!room)
     return sendErrorResponse(res, ERROR_CODES.NOT_FOUND, "Room not found", 404);
-  if ((room.users || []).filter((u) => !u.isDev || !u.isVanished).length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY)
+  if (
+    (room.users || []).filter((u) => !u.isDev || !u.isVanished).length >=
+    CONFIG.LIMITS.MAX_ROOM_CAPACITY
+  )
     return sendErrorResponse(res, ERROR_CODES.ROOM_FULL, "Full", 400);
   if (room.type === "semi-private") {
     const validated = req.session?.validatedRooms?.[req.params.id];
@@ -563,7 +570,7 @@ app.post(`${API}/rooms/:id/join`, apiAuth, async (req, res) => {
       if (req.session) {
         if (!req.session.validatedRooms) req.session.validatedRooms = {};
         req.session.validatedRooms[req.params.id] = req.body.accessCode;
-        await promisifySessionSave(req.session).catch(() => { });
+        await promisifySessionSave(req.session).catch(() => {});
       }
     }
   }

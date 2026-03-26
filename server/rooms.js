@@ -13,6 +13,8 @@
 // ║  • isDev flag included in all user broadcasts                           ║
 // ║  • Dev users bypass AFK timers                                          ║
 // ║  • Dev force-kick: remove any user from any room                        ║
+// ║  • Vanish: dev is invisible to non-dev users (not in user list)         ║
+// ║  • Hide: dev flair (crown, glow, color) stripped, appears as normal     ║
 // ║                                                                         ║
 // ║  Talkoboard v2:                                                         ║
 // ║  • Stroke lifecycle protocol (start/move/end)                           ║
@@ -72,7 +74,6 @@ function finalizeBoardUserStroke(roomId, userId) {
   const active = bs.active.get(userId);
   if (active && active.points && active.points.length > 0) {
     bs.strokes.push(active);
-    // Cap total completed strokes
     if (bs.strokes.length > MAX_BOARD_STROKES) {
       bs.strokes = bs.strokes.slice(-MAX_BOARD_STROKES);
     }
@@ -155,7 +156,6 @@ async function pressureCleanup() {
 
   for (const [roomId, room] of state.rooms) {
     if (room.users && room.users.length >= 2) continue;
-
     if (room.users && room.users.length === 1) {
       const soloSince = state.roomSoloSince.get(roomId);
       if (soloSince && now - soloSince >= ttl) {
@@ -278,12 +278,11 @@ function getRoomStatistics() {
 
   for (const [, room] of state.rooms) {
     if (types[room.type] !== undefined) types[room.type]++;
-
+    // Count only visible users for public stats
     const visibleUsers = (room.users || []).filter(
-      (user) => !user.isDev || !user.isVanished,
+      (u) => !(u.isDev && u.isVanished),
     );
     totalUsers += visibleUsers.length;
-
     if (visibleUsers.length > 0) roomsWithUsers++;
     if (visibleUsers.length === 1) soloRooms++;
   }
@@ -322,28 +321,48 @@ function getCurrentMessages(usersInRoom) {
   return msgs;
 }
 
-// ── DEV MODE: Helpers for user visibility and serialization ───────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// DEV MODE: Visibility helpers for vanish / hide
+// ═════════════════════════════════════════════════════════════════════════════
 
+/**
+ * Count users that occupy a "real" slot (non-vanished).
+ * Vanished devs don't count toward room capacity.
+ */
 function getJoinableUserCount(room) {
-  return (room?.users || []).filter((u) => !u.isDev || !u.isVanished).length;
+  return (room?.users || []).filter((u) => !(u.isDev && u.isVanished)).length;
 }
 
 function getRecipientUserId(socket) {
   return socket?.handshake?.session?.userId || null;
 }
 
+/**
+ * Can the recipient socket see a given user?
+ * - Non-dev users are always visible.
+ * - Vanished devs are only visible to themselves and other devs.
+ * - Hidden devs are visible to everyone but without flair.
+ */
 function canRecipientSeeDevUser(recipientSocket, user) {
   if (!user) return false;
   if (!user.isDev) return true;
-
+  if (!user.isVanished) return true;
+  // User is a vanished dev — only visible to self or other devs
   const recipientUserId = getRecipientUserId(recipientSocket);
   if (recipientUserId && recipientUserId === user.id) return true;
   if (recipientSocket?.isDev) return true;
-  return !user.isVanished;
+  return false;
 }
 
+/**
+ * Format a single user object for a specific recipient socket.
+ * Returns null if the recipient cannot see this user.
+ * If user.isHidden, strips all dev flair.
+ */
 function formatUserForSocket(user, recipientSocket) {
   if (!user) return null;
+
+  if (!canRecipientSeeDevUser(recipientSocket, user)) return null;
 
   const formatted = {
     id: user.id,
@@ -351,16 +370,12 @@ function formatUserForSocket(user, recipientSocket) {
     location: user.location,
   };
 
-  const recipientUserId = getRecipientUserId(recipientSocket);
-  const isSelf = recipientUserId && recipientUserId === user.id;
-  const isRecipientDev = !!recipientSocket?.isDev;
-
-  if (!canRecipientSeeDevUser(recipientSocket, user)) return null;
-
+  // If hidden, return as a plain user (no dev flair at all)
   if (user.isHidden) {
     return formatted;
   }
 
+  // Otherwise include dev metadata
   if (user.isDev) {
     formatted.isDev = true;
     if (user.devColor) formatted.devColor = user.devColor;
@@ -370,12 +385,18 @@ function formatUserForSocket(user, recipientSocket) {
   return formatted;
 }
 
+/**
+ * Filter + format a user array for a specific recipient socket.
+ */
 function filterUsersForSocket(users, recipientSocket) {
   return (users || [])
     .map((user) => formatUserForSocket(user, recipientSocket))
     .filter(Boolean);
 }
 
+/**
+ * Filter votes so vanished dev voters/targets are invisible to non-devs.
+ */
 function filterVotesForSocket(room, recipientSocket) {
   const votes = room?.votes || {};
   const roomUsers = room?.users || [];
@@ -390,10 +411,12 @@ function filterVotesForSocket(room, recipientSocket) {
     if (!canRecipientSeeDevUser(recipientSocket, target)) continue;
     filtered[voterId] = targetId;
   }
-
   return filtered;
 }
 
+/**
+ * Filter current messages so vanished dev messages are invisible to non-devs.
+ */
 function filterCurrentMessagesForSocket(room, recipientSocket) {
   const messages = {};
   for (const user of room?.users || []) {
@@ -403,6 +426,9 @@ function filterCurrentMessagesForSocket(room, recipientSocket) {
   return messages;
 }
 
+/**
+ * Format a room for lobby display, tailored to a specific recipient socket.
+ */
 function formatRoomForSocket(room, recipientSocket) {
   const users = filterUsersForSocket(room.users || [], recipientSocket);
   const joinableCount = getJoinableUserCount(room);
@@ -420,10 +446,12 @@ function formatRoomForSocket(room, recipientSocket) {
   };
 }
 
+/**
+ * Format full room state for in-room display, tailored to a specific recipient.
+ */
 function formatRoomStateForSocket(room, recipientSocket) {
   const users = filterUsersForSocket(room.users || [], recipientSocket);
   const joinableCount = getJoinableUserCount(room);
-function formatUser(u) {
   return {
     id: room.id,
     name: room.name,
@@ -438,11 +466,14 @@ function formatUser(u) {
   };
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// PER-SOCKET EMISSION HELPERS (visibility-aware)
+// ═════════════════════════════════════════════════════════════════════════════
+
 function emitRoomSnapshot(roomId) {
   if (!io()) return;
   const room = state.rooms.get(roomId);
   if (!room) return;
-
   for (const [, socket] of io().sockets.sockets) {
     if (!socket.connected || socket.roomId !== roomId) continue;
     socket.emit("room update", formatRoomStateForSocket(room, socket));
@@ -454,19 +485,9 @@ function emitLobbySnapshot() {
   const rooms = Array.from(state.rooms.values()).filter(
     (r) => r.type !== "private",
   );
-
   for (const [, socket] of io().sockets.sockets) {
     if (!socket.connected || !socket.rooms?.has("lobby")) continue;
-    const key = socket.isDev ? "dev" : "normal";
-    const cacheKey = `socket_rooms_${key}`;
-    const cached = state.apiCache.get(cacheKey);
-    let data;
-    if (cached && Date.now() - cached.timestamp < state.API_CACHE_TTL) {
-      data = cached.data;
-    } else {
-      data = rooms.map((room) => formatRoomForSocket(room, socket));
-      state.apiCache.set(cacheKey, { timestamp: Date.now(), data });
-    }
+    const data = rooms.map((room) => formatRoomForSocket(room, socket));
     socket.emit("lobby update", data);
   }
 }
@@ -494,6 +515,9 @@ function emitRoomUserJoined(room, joinedUser) {
   if (!io()) return;
   for (const [, recipient] of io().sockets.sockets) {
     if (!recipient.connected || recipient.roomId !== room.id) continue;
+    // Don't re-send to the user who just joined (they get "room joined")
+    const recipientUserId = getRecipientUserId(recipient);
+    if (recipientUserId === joinedUser.id) continue;
     if (!canRecipientSeeDevUser(recipient, joinedUser)) continue;
     const visibleUser = formatUserForSocket(joinedUser, recipient);
     if (!visibleUser) continue;
@@ -598,7 +622,7 @@ async function saveRooms() {
           ...room,
           users: (room.users || []).map((u) => {
             const clean = { ...u };
-            delete clean.isVanished;
+            delete clean.isVanished; // ephemeral, never persisted
             return clean;
           }),
           bannedUserIds: Array.from(room.bannedUserIds || []),
@@ -713,20 +737,6 @@ function updateLobby() {
     state.apiCache.delete("socket_rooms_dev");
     state.apiCache.delete("socket_rooms_normal");
     emitLobbySnapshot();
-    const now = Date.now();
-    const publicRooms = Array.from(state.rooms.values())
-      .filter((r) => r.type !== "private")
-      .map((r) => ({
-        id: r.id,
-        name: r.name,
-        type: r.type,
-        isFull: r.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
-        userCount: r.users.length,
-        lastChatActivity: state.roomLastChatActivity.get(r.id) || 0,
-        createdAt: r.createdAt || r.lastActiveTime || 0,
-        users: (r.users || []).map(formatUser),
-      }));
-    io().to("lobby").emit("lobby update", publicRooms);
     sendDevLobbyContext();
   } catch (err) {
     console.error("updateLobby error:", err);
@@ -738,16 +748,6 @@ function updateRoom(roomId) {
   const room = state.rooms.get(roomId);
   if (room) {
     emitRoomSnapshot(roomId);
-    io()
-      .to(roomId)
-      .emit("room update", {
-        id: room.id,
-        name: room.name,
-        type: room.type,
-        layout: room.layout,
-        users: (room.users || []).map(formatUser),
-        votes: room.votes || {},
-      });
   }
 }
 
@@ -767,7 +767,6 @@ function clearAFKTimers(userId) {
 function setupAFKTimers(socket, userId) {
   clearAFKTimers(userId);
   if (!socket || !socket.roomId) return;
-
   if (socket.isDev) return;
   if (socket.boardOpen) return;
 
@@ -915,7 +914,6 @@ async function leaveRoom(socket, userId) {
     if (!roomId) return;
     clearAFKTimers(userId);
 
-    // Finalize any active board stroke for this user
     finalizeBoardUserStroke(roomId, userId);
 
     const room = state.rooms.get(roomId);
@@ -923,6 +921,7 @@ async function leaveRoom(socket, userId) {
       const leftUser = room.users.find((u) => u.id === userId);
       room.users = room.users.filter((u) => u.id !== userId);
       room.lastActiveTime = Date.now();
+
       if (room.votes) {
         delete room.votes[userId];
         for (const vid in room.votes) {
@@ -930,15 +929,16 @@ async function leaveRoom(socket, userId) {
         }
         emitRoomVoteUpdates(roomId);
       }
+
       socket.leave(roomId);
       emitRoomUserLeft(roomId, userId, leftUser);
       updateRoom(roomId);
-
       sendDevRoomContext(roomId);
       updateRoomSoloTracking(roomId);
 
       if (room.users.length === 0) startRoomDeletionTimer(roomId);
     }
+
     if (socket.handshake.session) {
       if (socket.handshake.session.validatedRooms?.[roomId])
         delete socket.handshake.session.validatedRooms[roomId];
@@ -948,7 +948,6 @@ async function leaveRoom(socket, userId) {
       );
     }
     state.userMessageBuffers.delete(userId);
-
     state.devUsers.delete(userId);
 
     socket.roomId = null;
@@ -1045,6 +1044,8 @@ function joinRoom(socket, roomId, userId) {
 
     if (!room.users) room.users = [];
     if (!room.votes) room.votes = {};
+
+    // Devs bypass room capacity; normal users check visible count
     const joinableUserCount = getJoinableUserCount(room);
     if (!socket.isDev && joinableUserCount >= CONFIG.LIMITS.MAX_ROOM_CAPACITY)
       return socket.emit(
@@ -1072,7 +1073,6 @@ function joinRoom(socket, roomId, userId) {
     room.lastActiveTime = Date.now();
     socket.roomId = roomId;
     setupAFKTimers(socket, userId);
-
     updateRoomSoloTracking(roomId);
 
     if (socket.handshake.session) {
@@ -1106,7 +1106,6 @@ function joinRoom(socket, roomId, userId) {
 
 function emitJoinSuccess(socket, room, userId, username, location) {
   const joinedUser = room.users?.find((u) => u.id === userId) || {
-  io().to(room.id).emit("user joined", {
     id: userId,
     username,
     location,
@@ -1115,6 +1114,7 @@ function emitJoinSuccess(socket, room, userId, username, location) {
     isVanished: !!socket.isVanished,
   };
 
+  // Send full room state to the joining user (they always see themselves)
   socket.emit("room joined", {
     roomId: room.id,
     userId,
@@ -1126,15 +1126,18 @@ function emitJoinSuccess(socket, room, userId, username, location) {
     roomName: room.name,
     roomType: room.type,
     users: filterUsersForSocket(room.users || [], socket),
-    users: (room.users || []).map(formatUser),
     layout: room.layout,
     votes: filterVotesForSocket(room, socket),
     currentMessages: filterCurrentMessagesForSocket(room, socket),
   });
+
   socket.leave("lobby");
+
+  // Notify others in the room (visibility-aware)
   emitRoomUserJoined(room, joinedUser);
   updateRoom(room.id);
   updateLobby();
+
   if (state.roomDeletionTimers.has(room.id)) {
     clearTimeout(state.roomDeletionTimers.get(room.id));
     state.roomDeletionTimers.delete(room.id);
@@ -1146,6 +1149,7 @@ function handleTyping(socket, userId, username, isTyping) {
   if (!socket.roomId) return;
   if (state.typingTimeouts.has(userId))
     clearTimeout(state.typingTimeouts.get(userId));
+
   if (isTyping) {
     emitRoomTyping(socket, userId, username, true);
     state.typingTimeouts.set(
@@ -1323,7 +1327,7 @@ function registerSocketHandlers() {
     );
 
     // ═════════════════════════════════════════════════════════════════════
-    // TALKOBOARD v2 — Stroke lifecycle + state sync (top-level handlers)
+    // TALKOBOARD v2 — Stroke lifecycle + state sync
     // ═════════════════════════════════════════════════════════════════════
 
     socket.on(
@@ -1333,7 +1337,6 @@ function registerSocketHandlers() {
         socket.boardOpen = true;
         clearAFKTimers(socket.handshake.session.userId);
 
-        // Send existing board state to this user
         const bs = getBoardState(socket.roomId);
         const activeObj = {};
         for (const [uid, stroke] of bs.active) {
@@ -1378,7 +1381,6 @@ function registerSocketHandlers() {
         };
 
         const bs = getBoardState(socket.roomId);
-        // Finalize any previous active stroke from this user
         finalizeBoardUserStroke(socket.roomId, userId);
         bs.active.set(userId, stroke);
 
@@ -1399,13 +1401,12 @@ function registerSocketHandlers() {
         const userId = socket.handshake.session.userId;
 
         if (!data?.points || !Array.isArray(data.points)) return;
-        if (data.points.length > 200) return; // sanity cap per batch
+        if (data.points.length > 200) return;
 
         const bs = getBoardState(socket.roomId);
         const active = bs.active.get(userId);
-        if (!active) return; // no active stroke, ignore
+        if (!active) return;
 
-        // Validate and append points
         const validPoints = [];
         for (const p of data.points) {
           if (typeof p.x === "number" && typeof p.y === "number") {
@@ -1416,7 +1417,6 @@ function registerSocketHandlers() {
 
         active.points.push(...validPoints);
 
-        // Cap points per stroke to prevent abuse
         if (active.points.length > MAX_POINTS_PER_STROKE) {
           active.points = active.points.slice(-MAX_POINTS_PER_STROKE);
         }
@@ -1433,9 +1433,7 @@ function registerSocketHandlers() {
       safe(async () => {
         if (!socket.roomId || !socket.handshake.session?.userId) return;
         const userId = socket.handshake.session.userId;
-
         finalizeBoardUserStroke(socket.roomId, userId);
-
         socket.to(socket.roomId).emit("board stroke end", { userId });
       }),
     );
@@ -1446,10 +1444,7 @@ function registerSocketHandlers() {
         if (!socket.roomId || !socket.handshake.session?.userId) return;
         const userId = socket.handshake.session.userId;
         socket.boardOpen = false;
-
-        // Finalize any active stroke
         finalizeBoardUserStroke(socket.roomId, userId);
-
         setupAFKTimers(socket, userId);
         socket.to(socket.roomId).emit("board user status", {
           userId,
@@ -1493,7 +1488,6 @@ function registerSocketHandlers() {
       "board clear",
       safe(async () => {
         if (!socket.roomId || !socket.handshake.session?.userId) return;
-        // Clear server-side board state
         const bs = boardState.get(socket.roomId);
         if (bs) {
           bs.strokes = [];
@@ -1920,27 +1914,10 @@ function registerSocketHandlers() {
     socket.on(
       "get rooms",
       safe(async () => {
-        const key = socket.isDev ? "socket_rooms_dev" : "socket_rooms_normal";
-        let data;
-        const cached = state.apiCache.get(key);
-        if (cached && Date.now() - cached.timestamp < state.API_CACHE_TTL) {
-          data = cached.data;
-        } else {
-          data = Array.from(state.rooms.values())
-            .filter((r) => r.type !== "private")
-            .map((r) => formatRoomForSocket(r, socket));
-            .map((r) => ({
-              id: r.id,
-              name: r.name,
-              type: r.type,
-              isFull: r.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
-              userCount: r.users.length,
-              lastChatActivity: state.roomLastChatActivity.get(r.id) || 0,
-              createdAt: r.createdAt || r.lastActiveTime || 0,
-              users: (r.users || []).map(formatUser),
-            }));
-          state.apiCache.set(key, { timestamp: Date.now(), data });
-        }
+        const data = Array.from(state.rooms.values())
+          .filter((r) => r.type !== "private")
+          .map((r) => formatRoomForSocket(r, socket));
+
         socket.emit("initial rooms", data);
 
         if (socket.isDev) {
@@ -1970,16 +1947,6 @@ function registerSocketHandlers() {
             createErrorResponse(ERROR_CODES.NOT_FOUND, "Room not found."),
           );
         socket.emit("room state", formatRoomStateForSocket(room, socket));
-        socket.emit("room state", {
-          id: room.id,
-          name: room.name,
-          type: room.type,
-          layout: room.layout,
-          users: (room.users || []).map(formatUser),
-          votes: room.votes,
-          currentMessages: getCurrentMessages(room.users),
-          isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
-        });
       }),
     );
 
@@ -2005,7 +1972,6 @@ function registerSocketHandlers() {
         }
 
         const targetUserId = data.targetUserId;
-
         let targetRoomId = null;
         let targetRoom = null;
         for (const [roomId, room] of state.rooms) {
@@ -2080,16 +2046,7 @@ function registerSocketHandlers() {
       }),
     );
 
-    // ── AFK Response ────────────────────────────────────────────────────
-    socket.on(
-      "afk response",
-      safe(async () => {
-        const userId = socket.handshake.session?.userId;
-        if (userId && socket.roomId) setupAFKTimers(socket, userId);
-      }),
-    );
-
-    // ── Disconnect ──────────────────────────────────────────────────────
+    // ── DEV MODE: Vanish (invisible to non-devs) ───────────────────────
     socket.on(
       "dev set vanish",
       safe(async (data) => {
@@ -2098,6 +2055,7 @@ function registerSocketHandlers() {
           typeof data?.isVanished === "boolean"
             ? data.isVanished
             : !socket.isVanished;
+
         socket.isVanished = desired;
 
         const userId = socket.handshake.session?.userId;
@@ -2109,11 +2067,11 @@ function registerSocketHandlers() {
           updateLobby();
           sendDevRoomContext(socket.roomId);
         }
-
         socket.emit("dev vanish status", { isVanished: desired });
       }),
     );
 
+    // ── DEV MODE: Hide flair (appear as normal user) ────────────────────
     socket.on(
       "dev set hide",
       safe(async (data) => {
@@ -2122,6 +2080,7 @@ function registerSocketHandlers() {
           typeof data?.isHidden === "boolean"
             ? data.isHidden
             : !socket.isHidden;
+
         socket.isHidden = desired;
 
         if (socket.handshake?.session) {
@@ -2138,11 +2097,20 @@ function registerSocketHandlers() {
           updateLobby();
           sendDevRoomContext(socket.roomId);
         }
-
         socket.emit("dev hide status", { isHidden: desired });
       }),
     );
 
+    // ── AFK Response ────────────────────────────────────────────────────
+    socket.on(
+      "afk response",
+      safe(async () => {
+        const userId = socket.handshake.session?.userId;
+        if (userId && socket.roomId) setupAFKTimers(socket, userId);
+      }),
+    );
+
+    // ── Disconnect ──────────────────────────────────────────────────────
     socket.on(
       "disconnect",
       safe(async (reason) => {
@@ -2293,7 +2261,6 @@ function startCleanupIntervals() {
     for (const roomId of state.roomLastChatActivity.keys()) {
       if (!state.rooms.has(roomId)) state.roomLastChatActivity.delete(roomId);
     }
-    // Clean up board state for deleted rooms
     for (const roomId of boardState.keys()) {
       if (!state.rooms.has(roomId)) boardState.delete(roomId);
     }
