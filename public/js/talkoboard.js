@@ -1,5 +1,9 @@
 // ╔═══════════════════════════════════════════════════════════════════════════╗
-// ║  talkoboard.js v2 — Collaborative Infinite Whiteboard for Talkomatic    ║
+// ║  talkoboard.js v2.1 — Collaborative Infinite Whiteboard for Talkomatic  ║
+// ║                                                                         ║
+// ║  v2.1 changes:                                                          ║
+// ║  • Removed "Clear board" button                                         ║
+// ║  • Chat rate limiting: 1 message per second, 10 per 30s burst window    ║
 // ║                                                                         ║
 // ║  v2 improvements:                                                       ║
 // ║  • Stroke lifecycle protocol (start/move/end) — no gaps between batches ║
@@ -7,7 +11,6 @@
 // ║  • Quadratic bezier smoothing on full redraws                           ║
 // ║  • Incremental rendering for live strokes (no full-canvas redraws)      ║
 // ║  • Distance-based point filtering to reduce network traffic             ║
-// ║  • Clear board button                                                   ║
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
 class Talkoboard {
@@ -63,6 +66,13 @@ class Talkoboard {
     this.chatMessages = [];
     this.MAX_CHAT_MESSAGES = 50;
 
+    // ── Chat rate limiting ──────────────────────────────────────────
+    this.chatTimestamps = [];
+    this.CHAT_MIN_INTERVAL = 1000; // 1 message per second
+    this.CHAT_BURST_WINDOW = 30000; // 30 second window
+    this.CHAT_BURST_MAX = 10; // max 10 messages per window
+    this.chatCooldownActive = false;
+
     // ── Saved chat text ─────────────────────────────────────────────
     this.savedChatText = "";
 
@@ -75,6 +85,61 @@ class Talkoboard {
     this.modal = null;
     this.buildModal();
     this.setupSocketListeners();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHAT RATE LIMITING
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  canSendChat() {
+    const now = Date.now();
+
+    // Clean old timestamps outside the burst window
+    this.chatTimestamps = this.chatTimestamps.filter(
+      (t) => now - t < this.CHAT_BURST_WINDOW,
+    );
+
+    // Check burst limit (10 messages per 30s)
+    if (this.chatTimestamps.length >= this.CHAT_BURST_MAX) {
+      const oldest = this.chatTimestamps[0];
+      const waitSec = Math.ceil(
+        (this.CHAT_BURST_WINDOW - (now - oldest)) / 1000,
+      );
+      this.showChatRateWarning(`Slow down! Try again in ${waitSec}s`);
+      return false;
+    }
+
+    // Check per-message interval (1 per second)
+    if (this.chatTimestamps.length > 0) {
+      const last = this.chatTimestamps[this.chatTimestamps.length - 1];
+      if (now - last < this.CHAT_MIN_INTERVAL) {
+        this.showChatRateWarning("Sending too fast");
+        return false;
+      }
+    }
+
+    this.chatTimestamps.push(now);
+    return true;
+  }
+
+  showChatRateWarning(text) {
+    if (this.chatCooldownActive) return;
+    this.chatCooldownActive = true;
+
+    const msg = document.createElement("div");
+    msg.className = "tb-chat-msg tb-chat-system";
+    const span = document.createElement("span");
+    span.className = "tb-chat-text";
+    span.style.color = "#ff6b6b";
+    span.style.fontStyle = "italic";
+    span.textContent = text;
+    msg.appendChild(span);
+    this.chatLog.appendChild(msg);
+    this.chatLog.scrollTop = this.chatLog.scrollHeight;
+
+    setTimeout(() => {
+      this.chatCooldownActive = false;
+    }, 1000);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -156,21 +221,6 @@ class Talkoboard {
       this.updateCursor();
     });
 
-    // Clear button
-    this.clearBtn = document.createElement("button");
-    this.clearBtn.className = "tb-tool-btn";
-    this.clearBtn.textContent = "Clear";
-    this.clearBtn.title = "Clear entire board";
-    this.clearBtn.addEventListener("click", () => {
-      if (confirm("Clear the entire board for everyone?")) {
-        this.strokes = [];
-        this.currentStroke = null;
-        this.remoteActiveStrokes.clear();
-        this.socket.emit("board clear");
-        this.redraw();
-      }
-    });
-
     // Zoom controls
     const zoomWrap = document.createElement("div");
     zoomWrap.className = "tb-zoom-wrap";
@@ -202,7 +252,6 @@ class Talkoboard {
     tools.appendChild(colorWrap);
     tools.appendChild(sizeWrap);
     tools.appendChild(this.eraserBtn);
-    tools.appendChild(this.clearBtn);
     tools.appendChild(zoomWrap);
 
     // Close button
@@ -994,6 +1043,7 @@ class Talkoboard {
   // ═══════════════════════════════════════════════════════════════════════════
 
   sendChat(text) {
+    if (!this.canSendChat()) return;
     this.socket.emit("board chat", { text });
   }
 
