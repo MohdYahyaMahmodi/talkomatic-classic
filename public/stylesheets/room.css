@@ -780,3 +780,398 @@ html {
   user-select: all;
   white-space: nowrap;
 }
+
+/* =============================================================================
+   TALKOBOARD v2 — Collaborative Infinite Whiteboard
+   =============================================================================*/
+
+/* ── Overlay ───────────────────────────────────────────────────────────────── */
+
+.tb-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50000;
+  background: rgba(0, 0, 0, 0.9);
+  align-items: center;
+  justify-content: center;
+}
+
+.tb-overlay.show {
+  display: flex;
+}
+
+/* ── Container ─────────────────────────────────────────────────────────────── */
+
+.tb-container {
+  width: 96vw;
+  height: 94vh;
+  max-width: 1600px;
+  background: #fafafa;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Header / Toolbar ──────────────────────────────────────────────────────── */
+
+.tb-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 14px;
+  background: #fff;
+  border-bottom: 1px solid #e0e0e0;
+  gap: 12px;
+  flex-shrink: 0;
+  min-height: 48px;
+}
+
+.tb-title {
+  font-weight: 700;
+  font-size: 15px;
+  color: #333;
+  white-space: nowrap;
+  letter-spacing: -0.3px;
+}
+
+.tb-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+/* Color picker */
+.tb-color-wrap {
+  position: relative;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.tb-color-wrap input[type="color"] {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tb-color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #ccc;
+  display: block;
+  transition: border-color 0.15s;
+  cursor: pointer;
+}
+
+.tb-color-wrap:hover .tb-color-swatch {
+  border-color: #666;
+}
+
+/* Size slider */
+.tb-size-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tb-size-icon {
+  font-size: 10px;
+  color: #999;
+}
+
+.tb-size-wrap input[type="range"] {
+  width: 80px;
+  accent-color: #333;
+  cursor: pointer;
+}
+
+.tb-size-label {
+  color: #666;
+  font-size: 12px;
+  min-width: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tool buttons */
+.tb-tool-btn {
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  color: #444;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.tb-tool-btn:hover {
+  background: #e4e4e4;
+  border-color: #bbb;
+}
+
+.tb-tool-btn.active {
+  background: #333;
+  color: #fff;
+  border-color: #333;
+}
+
+/* Zoom controls */
+.tb-zoom-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.tb-zoom-btn {
+  width: 30px;
+  text-align: center;
+  padding: 5px 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.tb-zoom-label {
+  color: #666;
+  font-size: 12px;
+  min-width: 40px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Close button */
+.tb-close {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 26px;
+  cursor: pointer;
+  padding: 0 6px;
+  line-height: 1;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+
+.tb-close:hover {
+  color: #333;
+}
+
+/* ── Canvas Area ───────────────────────────────────────────────────────────── */
+
+.tb-canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.tb-canvas-wrap canvas {
+  display: block;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/* ── Cursor Layer ──────────────────────────────────────────────────────────── */
+
+.tb-cursor-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.tb-remote-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  will-change: transform;
+  z-index: 10;
+}
+
+.tb-cursor-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff9800;
+  border: 1.5px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.tb-cursor-label {
+  position: absolute;
+  top: 12px;
+  left: 8px;
+  background: #333;
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight: 500;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* ── Chat Panel ────────────────────────────────────────────────────────────── */
+
+.tb-chat {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  width: 260px;
+  max-height: 300px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  z-index: 20;
+  overflow: hidden;
+  backdrop-filter: blur(8px);
+}
+
+.tb-chat-header {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  border-bottom: 1px solid #eee;
+  background: rgba(245, 245, 245, 0.9);
+}
+
+.tb-chat-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 10px;
+  max-height: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tb-chat-msg {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.tb-chat-name {
+  font-weight: 600;
+  color: #333;
+  flex-shrink: 0;
+}
+
+.tb-chat-name::after {
+  content: ":";
+}
+
+.tb-chat-self .tb-chat-name {
+  color: #ff9800;
+}
+
+.tb-chat-text {
+  color: #555;
+}
+
+.tb-chat-input-wrap {
+  padding: 6px 8px;
+  border-top: 1px solid #eee;
+  background: rgba(250, 250, 250, 0.9);
+}
+
+.tb-chat-input {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  outline: none;
+  background: #fff;
+  color: #333;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.tb-chat-input:focus {
+  border-color: #aaa;
+}
+
+.tb-chat-input::placeholder {
+  color: #bbb;
+}
+
+/* ── Mobile ────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .tb-container {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+  }
+
+  .tb-header {
+    padding: 6px 10px;
+    gap: 8px;
+  }
+
+  .tb-tools {
+    gap: 6px;
+  }
+
+  .tb-size-wrap input[type="range"] {
+    width: 50px;
+  }
+
+  .tb-zoom-wrap {
+    display: none;
+  }
+
+  .tb-chat {
+    width: 200px;
+    max-height: 200px;
+    bottom: 6px;
+    right: 6px;
+  }
+
+  .tb-tool-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .tb-title {
+    font-size: 13px;
+  }
+
+  .tb-color-swatch {
+    width: 24px;
+    height: 24px;
+  }
+
+  .tb-chat {
+    width: 160px;
+    max-height: 160px;
+  }
+
+  .tb-chat-log {
+    max-height: 100px;
+  }
+}
