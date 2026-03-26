@@ -220,6 +220,8 @@ const io = socketIo(server, {
 // Store io reference in shared state
 state.io = io;
 
+io.use(sharedsession(sessionMiddleware, { autoSave: true }));
+
 // Socket.IO security middleware
 io.use((socket, next) => {
   try {
@@ -317,8 +319,6 @@ io.use((socket, next) => {
     next(new Error("Connection setup failed"));
   }
 });
-
-io.use(sharedsession(sessionMiddleware, { autoSave: true }));
 
 // ── Static Files (AFTER session so HTML pages get session cookies) ───────────
 
@@ -423,7 +423,7 @@ app.get(`${API}/rooms`, apiAuth, (req, res) => {
             username: u.username,
             location: u.location,
           })),
-        isFull: (r.users?.length || 0) >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
+        isFull: (r.users || []).filter((u) => !u.isDev || !u.isVanished).length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
       }));
     state.apiCache.set("public_rooms", { timestamp: Date.now(), data });
     res.json(data);
@@ -447,7 +447,7 @@ app.get(`${API}/rooms/:id`, apiAuth, (req, res) => {
         username: u.username,
         location: u.location,
       })),
-    isFull: (room.users?.length || 0) >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
+    isFull: (room.users || []).filter((u) => !u.isDev || !u.isVanished).length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
   });
 });
 

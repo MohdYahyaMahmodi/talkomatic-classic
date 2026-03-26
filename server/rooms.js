@@ -443,9 +443,8 @@ function emitRoomVoteUpdates(roomId) {
   }
 }
 
-function emitRoomUserLeft(roomId, userId, room) {
+function emitRoomUserLeft(roomId, userId, leftUser) {
   if (!io()) return;
-  const leftUser = room?.users?.find((u) => u.id === userId);
   for (const [, recipient] of io().sockets.sockets) {
     if (!recipient.connected || recipient.roomId !== roomId) continue;
     if (!canRecipientSeeDevUser(recipient, leftUser)) continue;
@@ -854,6 +853,7 @@ async function leaveRoom(socket, userId) {
     clearAFKTimers(userId);
     const room = state.rooms.get(roomId);
     if (room) {
+      const leftUser = room.users.find((u) => u.id === userId);
       room.users = room.users.filter((u) => u.id !== userId);
       room.lastActiveTime = Date.now();
       if (room.votes) {
@@ -864,7 +864,7 @@ async function leaveRoom(socket, userId) {
         emitRoomVoteUpdates(roomId);
       }
       socket.leave(roomId);
-      emitRoomUserLeft(roomId, userId, room);
+      emitRoomUserLeft(roomId, userId, leftUser);
       updateRoom(roomId);
 
       // DEV MODE: Update room context for remaining devs
@@ -1053,9 +1053,6 @@ function emitJoinSuccess(socket, room, userId, username, location) {
     isVanished: !!socket.isVanished,
   };
 
-  emitRoomUserJoined(room, joinedUser);
-  updateRoom(room.id);
-  updateLobby();
   socket.emit("room joined", {
     roomId: room.id,
     userId,
@@ -1072,6 +1069,9 @@ function emitJoinSuccess(socket, room, userId, username, location) {
     currentMessages: filterCurrentMessagesForSocket(room, socket),
   });
   socket.leave("lobby");
+  emitRoomUserJoined(room, joinedUser);
+  updateRoom(room.id);
+  updateLobby();
   if (state.roomDeletionTimers.has(room.id)) {
     clearTimeout(state.roomDeletionTimers.get(room.id));
     state.roomDeletionTimers.delete(room.id);
