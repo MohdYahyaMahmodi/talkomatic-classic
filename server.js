@@ -546,7 +546,7 @@ app.post(`${API}/rooms/:id/join`, apiAuth, async (req, res) => {
   const room = state.rooms.get(req.params.id);
   if (!room)
     return sendErrorResponse(res, ERROR_CODES.NOT_FOUND, "Room not found", 404);
-  if (room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY)
+  if ((room.users || []).filter((u) => !u.isDev || !u.isVanished).length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY)
     return sendErrorResponse(res, ERROR_CODES.ROOM_FULL, "Full", 400);
   if (room.type === "semi-private") {
     const validated = req.session?.validatedRooms?.[req.params.id];

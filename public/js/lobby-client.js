@@ -446,10 +446,10 @@ function checkSignInStatus() {
 }
 
 function setSignedInButtonState() {
-  signInButton.textContent = "Change ";
   while (signInButton.firstChild) {
     signInButton.removeChild(signInButton.firstChild);
   }
+  signInButton.appendChild(document.createTextNode("Change "));
 
   const img = document.createElement("img");
   img.src = "images/icons/pencil.png";

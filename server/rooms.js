@@ -288,7 +288,7 @@ function getCurrentMessages(usersInRoom) {
 // ── DEV MODE: Helpers for user visibility and serialization ───────────────
 
 function getJoinableUserCount(room) {
-  return (room?.users || []).filter((u) => !u.isDev).length;
+  return (room?.users || []).filter((u) => !u.isDev || !u.isVanished).length;
 }
 
 function getRecipientUserId(socket) {
