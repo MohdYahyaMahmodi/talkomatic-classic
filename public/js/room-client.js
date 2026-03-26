@@ -23,6 +23,10 @@ let chatInput = null;
 
 // DEV MODE: Track if the current user is a dev
 let currentUserIsDev = false;
+// DEV MODE: Track whether the current dev is vanished
+let currentUserIsVanished = false;
+// DEV MODE: Track whether the current dev is hidden
+let currentUserIsHidden = false;
 
 let selfRawText = "";
 let selfIsFiltered = false;
@@ -1159,13 +1163,129 @@ function createDevColorPicker() {
   }
 }
 
+function getCurrentUserRow() {
+  return document.querySelector(
+    `.chat-row[data-user-id="${currentUserId}"]`,
+  );
+}
+
+function applyDevAppearanceToRow(row, user) {
+  if (!row || !user) return;
+
+  const info = row.querySelector(".user-info");
+  const ci = row.querySelector(".chat-input");
+  if (!info || !ci) return;
+
+  const crown = info.querySelector(".dev-crown");
+  const showDevFlair = !!user.isDev && !user.isHidden;
+
+  if (showDevFlair) {
+    row.classList.add("dev-user");
+    ci.classList.add("dev-fire-text");
+
+    if (user.devColor) {
+      ci.style.setProperty("color", user.devColor, "important");
+    }
+
+    if (!crown) {
+      const crownImg = document.createElement("img");
+      crownImg.src = "images/icons/crown.gif";
+      crownImg.alt = "Dev";
+      crownImg.className = "dev-crown";
+      info.insertBefore(crownImg, info.firstChild);
+    }
+  } else {
+    row.classList.remove("dev-user");
+    ci.classList.remove("dev-fire-text");
+    ci.style.removeProperty("color");
+    if (crown) crown.remove();
+  }
+}
+
+function refreshCurrentUserAppearance() {
+  const row = getCurrentUserRow();
+  if (!row) return;
+
+  const user = {
+    id: currentUserId,
+    isDev: currentUserIsDev,
+    isHidden: currentUserIsHidden,
+    devColor:
+      currentUserIsDev && !currentUserIsHidden
+        ? localStorage.getItem("talkomatic_devColor") || null
+        : null,
+  };
+
+  applyDevAppearanceToRow(row, user);
+}
+
+function applyDevColor(color) {
+  refreshCurrentUserAppearance();
+}
+
 /**
  * Apply dev color to own chat input. Called from color picker
  * and after room updates to ensure color sticks.
  */
-function applyDevColor(color) {
-  if (!chatInput) return;
-  chatInput.style.setProperty("color", color, "important");
+
+function updateDevVanishButton(button) {
+  if (!button) return;
+  button.textContent = currentUserIsVanished ? "Vanish: ON" : "Vanish: OFF";
+  button.title = currentUserIsVanished
+    ? "You are vanished. Click to appear public."
+    : "You are public. Click to vanish from normal users.";
+}
+
+function createDevVanishToggle() {
+  const navRight = document.querySelector(".navbar-right");
+  if (!navRight || document.getElementById("devVanishToggle")) return;
+
+  const button = document.createElement("button");
+  button.id = "devVanishToggle";
+  button.type = "button";
+  button.style.cssText =
+    "display:flex;align-items:center;gap:6px;margin-right:8px;padding:6px 10px;border:1px solid #555;border-radius:4px;background:#111;color:#ff9800;cursor:pointer;font-size:12px;";
+
+  updateDevVanishButton(button);
+
+  button.addEventListener("click", () => {
+    if (!socket.connected) return;
+    socket.emit("dev set vanish", { isVanished: !currentUserIsVanished });
+  });
+
+  const leaveBtn = navRight.querySelector(".leave-room");
+  if (leaveBtn) navRight.insertBefore(button, leaveBtn);
+  else navRight.appendChild(button);
+}
+
+function updateDevHideButton(button) {
+  if (!button) return;
+  button.textContent = currentUserIsHidden ? "Hide: ON" : "Hide: OFF";
+  button.title = currentUserIsHidden
+    ? "Your dev flair is hidden from everyone. Click to show it again."
+    : "Your dev flair is visible. Click to hide crown, color, and glow.";
+}
+
+function createDevHideToggle() {
+  const navRight = document.querySelector(".navbar-right");
+  if (!navRight || document.getElementById("devHideToggle")) return;
+
+  const button = document.createElement("button");
+  button.id = "devHideToggle";
+  button.type = "button";
+  button.style.cssText =
+    "display:flex;align-items:center;gap:6px;margin-right:8px;padding:6px 10px;border:1px solid #555;border-radius:4px;background:#111;color:#ff9800;cursor:pointer;font-size:12px;";
+
+  updateDevHideButton(button);
+
+  button.addEventListener("click", () => {
+    if (!socket.connected) return;
+    socket.emit("dev set hide", { isHidden: !currentUserIsHidden });
+  });
+
+  const leaveBtn = navRight.querySelector(".leave-room");
+  if (leaveBtn) navRight.insertBefore(button, leaveBtn);
+  else navRight.appendChild(button);
 }
 
 // ── DEV MODE: Room context overlay ──────────────────────────────────────────
@@ -1199,6 +1319,20 @@ socket.on("dev context", (ctx) => {
   renderDevContext();
 });
 
+socket.on("dev vanish status", (data) => {
+  currentUserIsVanished = !!data?.isVanished;
+  const button = document.getElementById("devVanishToggle");
+  updateDevVanishButton(button);
+});
+
+socket.on("dev hide status", (data) => {
+  currentUserIsHidden = !!data?.isHidden;
+  const button = document.getElementById("devHideToggle");
+  updateDevHideButton(button);
+  refreshCurrentUserAppearance();
+  renderDevContext();
+});
+
 // ── 11. ROOM UI ─────────────────────────────────────────────────────────────
 
 function createUserRow(user, container) {
@@ -1208,7 +1342,7 @@ function createUserRow(user, container) {
   row.dataset.userId = user.id;
 
   // DEV MODE: Add dev-user class for neon red border
-  if (user.isDev) {
+  if (user.isDev && !user.isHidden) {
     row.classList.add("dev-user");
   }
 
@@ -1216,7 +1350,7 @@ function createUserRow(user, container) {
   info.className = "user-info";
 
   // DEV MODE: Add crown gif before username
-  if (user.isDev) {
+  if (user.isDev && !user.isHidden) {
     const crown = document.createElement("img");
     crown.src = "images/icons/crown.gif";
     crown.alt = "Dev";
@@ -1291,12 +1425,12 @@ function createUserRow(user, container) {
   div.className = "chat-input";
 
   // DEV MODE: Add fire text class for dev users
-  if (user.isDev) {
+  if (user.isDev && !user.isHidden) {
     div.classList.add("dev-fire-text");
   }
 
   // DEV MODE: Apply custom dev color if set
-  if (user.devColor) {
+  if (user.devColor && user.isDev && !user.isHidden) {
     div.style.setProperty("color", user.devColor, "important");
   }
 
@@ -1306,7 +1440,7 @@ function createUserRow(user, container) {
   div.spellcheck = false;
 
   // DEV MODE: Override color for dev users with custom color
-  if (user.devColor) {
+  if (user.devColor && user.isDev && !user.isHidden) {
     div.style.color = user.devColor;
   }
 
@@ -1554,6 +1688,8 @@ socket.on("room joined", (data) => {
 
   // DEV MODE: Track if this user is a dev
   currentUserIsDev = !!data.isDev;
+  currentUserIsHidden = !!data.isHidden;
+  currentUserIsVanished = !!data.isVanished;
 
   updateRoomInfo(data);
   updateRoomUI(data);
@@ -1565,7 +1701,10 @@ socket.on("room joined", (data) => {
   // DEV MODE: Create color picker if dev
   if (currentUserIsDev) {
     createDevColorPicker();
-    triggerDevConfetti();
+    createDevHideToggle();
+    createDevVanishToggle();
+    updateDevHideButton(document.getElementById("devHideToggle"));
+    if (!currentUserIsHidden) triggerDevConfetti();
     // Re-apply saved dev color
     const savedColor = localStorage.getItem("talkomatic_devColor");
     if (savedColor) applyDevColor(savedColor);
@@ -1573,6 +1712,7 @@ socket.on("room joined", (data) => {
 
   // DEV MODE: Render room context
   renderDevContext();
+  updateDevHideButton(document.getElementById("devHideToggle"));
 
   setTimeout(() => {
     if (chatInput) {
@@ -1601,7 +1741,7 @@ socket.on("user joined", (data) => {
       playJoinSound();
 
       // DEV MODE: Trigger confetti only on the dev's own screen
-      if (data.isDev && currentUserIsDev) {
+      if (data.isDev && !data.isHidden && currentUserIsDev) {
         triggerDevConfetti();
       }
     }
@@ -1667,31 +1807,11 @@ socket.on("room update", (roomData) => {
     roomData.users.forEach((u) => {
       const row = document.querySelector(`.chat-row[data-user-id="${u.id}"]`);
       if (!row) return;
-
-      if (u.isDev) {
-        row.classList.add("dev-user");
-        const ci = row.querySelector(".chat-input");
-        if (ci) {
-          ci.classList.add("dev-fire-text");
-          if (u.devColor)
-            ci.style.setProperty("color", u.devColor, "important");
-        }
-        // Add crown if missing
-        const infoEl = row.querySelector(".user-info");
-        if (infoEl && !infoEl.querySelector(".dev-crown")) {
-          const crown = document.createElement("img");
-          crown.src = "images/icons/crown.gif";
-          crown.alt = "Dev";
-          crown.className = "dev-crown";
-          infoEl.insertBefore(crown, infoEl.firstChild);
-        }
-      } else {
-        row.classList.remove("dev-user");
-        const ci = row.querySelector(".chat-input");
-        if (ci) ci.classList.remove("dev-fire-text");
-      }
+      applyDevAppearanceToRow(row, u);
     });
   }
+
+  if (currentUserIsDev) refreshCurrentUserAppearance();
 
   saved.forEach((rawVal, uid) => {
     const ci = document.querySelector(

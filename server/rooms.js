@@ -232,17 +232,25 @@ function roomNameExists(name) {
 
 function getRoomStatistics() {
   const totalRooms = state.rooms.size;
-  const totalUsers = getTotalUserCount();
   const currentLimit = calculateCurrentRoomLimit();
   const healthyRooms = getHealthyRoomCount();
   const types = { public: 0, "semi-private": 0, private: 0 };
   let roomsWithUsers = 0;
   let soloRooms = 0;
+  let totalUsers = 0;
+
   for (const [, room] of state.rooms) {
     if (types[room.type] !== undefined) types[room.type]++;
-    if (room.users && room.users.length > 0) roomsWithUsers++;
-    if (room.users && room.users.length === 1) soloRooms++;
+
+    const visibleUsers = (room.users || []).filter(
+      (user) => !user.isDev || !user.isVanished,
+    );
+    totalUsers += visibleUsers.length;
+
+    if (visibleUsers.length > 0) roomsWithUsers++;
+    if (visibleUsers.length === 1) soloRooms++;
   }
+
   return {
     totalRooms,
     totalUsers,
@@ -277,20 +285,221 @@ function getCurrentMessages(usersInRoom) {
   return msgs;
 }
 
-// ── DEV MODE: Helper to format user objects with isDev flag ─────────────────
+// ── DEV MODE: Helpers for user visibility and serialization ───────────────
 
-/**
- * Format a user object for client broadcast. Always includes isDev.
- * Used everywhere we send user data to clients.
- */
-function formatUser(u) {
-  return {
-    id: u.id,
-    username: u.username,
-    location: u.location,
-    isDev: !!u.isDev,
-    devColor: u.devColor || null,
+function getJoinableUserCount(room) {
+  return (room?.users || []).filter((u) => !u.isDev).length;
+}
+
+function getRecipientUserId(socket) {
+  return socket?.handshake?.session?.userId || null;
+}
+
+function canRecipientSeeDevUser(recipientSocket, user) {
+  if (!user) return false;
+  if (!user.isDev) return true;
+
+  const recipientUserId = getRecipientUserId(recipientSocket);
+  if (recipientUserId && recipientUserId === user.id) return true;
+  if (recipientSocket?.isDev) return true;
+  return !user.isVanished;
+}
+
+function formatUserForSocket(user, recipientSocket) {
+  if (!user) return null;
+
+  const formatted = {
+    id: user.id,
+    username: user.username,
+    location: user.location,
   };
+
+  const recipientUserId = getRecipientUserId(recipientSocket);
+  const isSelf = recipientUserId && recipientUserId === user.id;
+  const isRecipientDev = !!recipientSocket?.isDev;
+
+  if (!canRecipientSeeDevUser(recipientSocket, user)) return null;
+
+  if (user.isHidden) {
+    return formatted;
+  }
+
+  if (user.isDev) {
+    formatted.isDev = true;
+    if (user.devColor) formatted.devColor = user.devColor;
+    if (user.isVanished) formatted.isVanished = true;
+  }
+
+  return formatted;
+}
+
+function filterUsersForSocket(users, recipientSocket) {
+  return (users || [])
+    .map((user) => formatUserForSocket(user, recipientSocket))
+    .filter(Boolean);
+}
+
+function filterVotesForSocket(room, recipientSocket) {
+  const votes = room?.votes || {};
+  const roomUsers = room?.users || [];
+  const byId = new Map(roomUsers.map((u) => [u.id, u]));
+  const filtered = {};
+
+  for (const [voterId, targetId] of Object.entries(votes)) {
+    const voter = byId.get(voterId);
+    const target = byId.get(targetId);
+    if (!voter || !target) continue;
+    if (!canRecipientSeeDevUser(recipientSocket, voter)) continue;
+    if (!canRecipientSeeDevUser(recipientSocket, target)) continue;
+    filtered[voterId] = targetId;
+  }
+
+  return filtered;
+}
+
+function filterCurrentMessagesForSocket(room, recipientSocket) {
+  const messages = {};
+  for (const user of room?.users || []) {
+    if (!canRecipientSeeDevUser(recipientSocket, user)) continue;
+    messages[user.id] = state.userMessageBuffers.get(user.id) || "";
+  }
+  return messages;
+}
+
+function formatRoomForSocket(room, recipientSocket) {
+  const users = filterUsersForSocket(room.users || [], recipientSocket);
+  const joinableCount = getJoinableUserCount(room);
+  return {
+    id: room.id,
+    name: room.name,
+    type: room.type,
+    layout: room.layout,
+    isFull: joinableCount >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
+    userCount: joinableCount,
+    visibleUserCount: users.length,
+    lastChatActivity: state.roomLastChatActivity.get(room.id) || 0,
+    createdAt: room.createdAt || room.lastActiveTime || 0,
+    users,
+  };
+}
+
+function formatRoomStateForSocket(room, recipientSocket) {
+  const users = filterUsersForSocket(room.users || [], recipientSocket);
+  const joinableCount = getJoinableUserCount(room);
+  return {
+    id: room.id,
+    name: room.name,
+    type: room.type,
+    layout: room.layout,
+    users,
+    votes: filterVotesForSocket(room, recipientSocket),
+    currentMessages: filterCurrentMessagesForSocket(room, recipientSocket),
+    isFull: joinableCount >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
+    userCount: joinableCount,
+    visibleUserCount: users.length,
+  };
+}
+
+function emitRoomSnapshot(roomId) {
+  if (!io()) return;
+  const room = state.rooms.get(roomId);
+  if (!room) return;
+
+  for (const [, socket] of io().sockets.sockets) {
+    if (!socket.connected || socket.roomId !== roomId) continue;
+    socket.emit("room update", formatRoomStateForSocket(room, socket));
+  }
+}
+
+function emitLobbySnapshot() {
+  if (!io()) return;
+  const rooms = Array.from(state.rooms.values()).filter(
+    (r) => r.type !== "private",
+  );
+
+  for (const [, socket] of io().sockets.sockets) {
+    if (!socket.connected || !socket.rooms?.has("lobby")) continue;
+    const key = socket.isDev ? "dev" : "normal";
+    const cacheKey = `socket_rooms_${key}`;
+    const cached = state.apiCache.get(cacheKey);
+    let data;
+    if (cached && Date.now() - cached.timestamp < state.API_CACHE_TTL) {
+      data = cached.data;
+    } else {
+      data = rooms.map((room) => formatRoomForSocket(room, socket));
+      state.apiCache.set(cacheKey, { timestamp: Date.now(), data });
+    }
+    socket.emit("lobby update", data);
+  }
+}
+
+function emitRoomVoteUpdates(roomId) {
+  if (!io()) return;
+  const room = state.rooms.get(roomId);
+  if (!room) return;
+  for (const [, recipient] of io().sockets.sockets) {
+    if (!recipient.connected || recipient.roomId !== roomId) continue;
+    recipient.emit("update votes", filterVotesForSocket(room, recipient));
+  }
+}
+
+function emitRoomUserLeft(roomId, userId, room) {
+  if (!io()) return;
+  const leftUser = room?.users?.find((u) => u.id === userId);
+  for (const [, recipient] of io().sockets.sockets) {
+    if (!recipient.connected || recipient.roomId !== roomId) continue;
+    if (!canRecipientSeeDevUser(recipient, leftUser)) continue;
+    recipient.emit("user left", userId);
+  }
+}
+
+function emitRoomUserJoined(room, joinedUser) {
+  if (!io()) return;
+  for (const [, recipient] of io().sockets.sockets) {
+    if (!recipient.connected || recipient.roomId !== room.id) continue;
+    if (!canRecipientSeeDevUser(recipient, joinedUser)) continue;
+    const visibleUser = formatUserForSocket(joinedUser, recipient);
+    if (!visibleUser) continue;
+    recipient.emit("user joined", {
+      ...visibleUser,
+      roomName: room.name,
+      roomType: room.type,
+    });
+  }
+}
+
+function emitRoomTyping(socket, userId, username, isTyping) {
+  if (!socket.roomId || !io()) return;
+  const room = state.rooms.get(socket.roomId);
+  if (!room) return;
+  const senderUser = room.users?.find((u) => u.id === userId);
+  for (const [, recipient] of io().sockets.sockets) {
+    if (
+      !recipient.connected ||
+      recipient.roomId !== socket.roomId ||
+      recipient.id === socket.id
+    )
+      continue;
+    if (!canRecipientSeeDevUser(recipient, senderUser)) continue;
+    recipient.emit("user typing", { userId, username, isTyping });
+  }
+}
+
+function emitRoomChatUpdate(socket, payload) {
+  if (!socket.roomId || !io()) return;
+  const room = state.rooms.get(socket.roomId);
+  if (!room) return;
+  const senderUser = room.users?.find((u) => u.id === payload.userId);
+  for (const [, recipient] of io().sockets.sockets) {
+    if (
+      !recipient.connected ||
+      recipient.roomId !== socket.roomId ||
+      recipient.id === socket.id
+    )
+      continue;
+    if (!canRecipientSeeDevUser(recipient, senderUser)) continue;
+    recipient.emit("chat update", payload);
+  }
 }
 
 // ── DEV MODE: Room context for dev users ────────────────────────────────────
@@ -298,10 +507,14 @@ function formatUser(u) {
 function getDevRoomContext(roomId) {
   if (!io()) return {};
   const ctx = {};
+  const room = state.rooms.get(roomId);
+  const roomUsers = new Map((room?.users || []).map((u) => [u.id, u]));
   for (const [, s] of io().sockets.sockets) {
-    if (s.roomId === roomId && s.handshake?.session?.userId) {
-      ctx[s.handshake.session.userId] = { d: s.clientIp || "unknown" };
-    }
+    if (s.roomId !== roomId || !s.handshake?.session?.userId) continue;
+    const userId = s.handshake.session.userId;
+    const roomUser = roomUsers.get(userId);
+    if (roomUser?.isHidden) continue;
+    ctx[userId] = { d: s.clientIp || "unknown" };
   }
   return ctx;
 }
@@ -344,7 +557,15 @@ async function saveRooms() {
     const data = Array.from(state.rooms.entries()).map(([id, room]) => {
       return [
         id,
-        { ...room, bannedUserIds: Array.from(room.bannedUserIds || []) },
+        {
+          ...room,
+          users: (room.users || []).map((u) => {
+            const clean = { ...u };
+            delete clean.isVanished;
+            return clean;
+          }),
+          bannedUserIds: Array.from(room.bannedUserIds || []),
+        },
       ];
     });
     const tmp = path.join(__dirname, "..", "rooms.json.tmp");
@@ -451,21 +672,9 @@ function startRoomDeletionTimer(roomId) {
 function updateLobby() {
   if (!io()) return;
   try {
-    const now = Date.now();
-    const publicRooms = Array.from(state.rooms.values())
-      .filter((r) => r.type !== "private")
-      .map((r) => ({
-        id: r.id,
-        name: r.name,
-        type: r.type,
-        isFull: r.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
-        userCount: r.users.length,
-        lastChatActivity: state.roomLastChatActivity.get(r.id) || 0,
-        createdAt: r.createdAt || r.lastActiveTime || 0,
-        // DEV MODE: include isDev flag in user objects
-        users: (r.users || []).map(formatUser),
-      }));
-    io().to("lobby").emit("lobby update", publicRooms);
+    state.apiCache.delete("socket_rooms_dev");
+    state.apiCache.delete("socket_rooms_normal");
+    emitLobbySnapshot();
     sendDevLobbyContext();
   } catch (err) {
     console.error("updateLobby error:", err);
@@ -476,17 +685,7 @@ function updateRoom(roomId) {
   if (!io()) return;
   const room = state.rooms.get(roomId);
   if (room) {
-    io()
-      .to(roomId)
-      .emit("room update", {
-        id: room.id,
-        name: room.name,
-        type: room.type,
-        layout: room.layout,
-        // DEV MODE: include isDev flag in user objects
-        users: (room.users || []).map(formatUser),
-        votes: room.votes || {},
-      });
+    emitRoomSnapshot(roomId);
   }
 }
 
@@ -620,7 +819,7 @@ async function processPendingChatUpdates(userId, socket) {
       state.roomLastChatActivity.set(socket.roomId, Date.now());
     }
 
-    socket.to(socket.roomId).emit("chat update", {
+    emitRoomChatUpdate(socket, {
       userId,
       username,
       diff: { type: "full-replace", text: msg },
@@ -662,10 +861,10 @@ async function leaveRoom(socket, userId) {
         for (const vid in room.votes) {
           if (room.votes[vid] === userId) delete room.votes[vid];
         }
-        io().to(roomId).emit("update votes", room.votes);
+        emitRoomVoteUpdates(roomId);
       }
       socket.leave(roomId);
-      io().to(roomId).emit("user left", userId);
+      emitRoomUserLeft(roomId, userId, room);
       updateRoom(roomId);
 
       // DEV MODE: Update room context for remaining devs
@@ -783,7 +982,8 @@ function joinRoom(socket, roomId, userId) {
 
     if (!room.users) room.users = [];
     if (!room.votes) room.votes = {};
-    if (room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY)
+    const joinableUserCount = getJoinableUserCount(room);
+    if (!socket.isDev && joinableUserCount >= CONFIG.LIMITS.MAX_ROOM_CAPACITY)
       return socket.emit(
         "room full",
         createErrorResponse(ERROR_CODES.ROOM_FULL, "Room is full."),
@@ -799,6 +999,8 @@ function joinRoom(socket, roomId, userId) {
       username,
       location,
       isDev: !!socket.isDev,
+      isHidden: !!socket.isHidden,
+      isVanished: !!socket.isVanished,
     });
 
     // DEV MODE: track dev userId in global state
@@ -842,15 +1044,16 @@ function joinRoom(socket, roomId, userId) {
 }
 
 function emitJoinSuccess(socket, room, userId, username, location) {
-  // DEV MODE: include isDev in user joined broadcast
-  io().to(room.id).emit("user joined", {
+  const joinedUser = room.users?.find((u) => u.id === userId) || {
     id: userId,
     username,
     location,
     isDev: !!socket.isDev,
-    roomName: room.name,
-    roomType: room.type,
-  });
+    isHidden: !!socket.isHidden,
+    isVanished: !!socket.isVanished,
+  };
+
+  emitRoomUserJoined(room, joinedUser);
   updateRoom(room.id);
   updateLobby();
   socket.emit("room joined", {
@@ -859,13 +1062,14 @@ function emitJoinSuccess(socket, room, userId, username, location) {
     username,
     location,
     isDev: !!socket.isDev,
+    isHidden: !!socket.isHidden,
+    isVanished: !!socket.isVanished,
     roomName: room.name,
     roomType: room.type,
-    // DEV MODE: include isDev flag in user list
-    users: (room.users || []).map(formatUser),
+    users: filterUsersForSocket(room.users || [], socket),
     layout: room.layout,
-    votes: room.votes,
-    currentMessages: getCurrentMessages(room.users),
+    votes: filterVotesForSocket(room, socket),
+    currentMessages: filterCurrentMessagesForSocket(room, socket),
   });
   socket.leave("lobby");
   if (state.roomDeletionTimers.has(room.id)) {
@@ -880,22 +1084,16 @@ function handleTyping(socket, userId, username, isTyping) {
   if (state.typingTimeouts.has(userId))
     clearTimeout(state.typingTimeouts.get(userId));
   if (isTyping) {
-    socket
-      .to(socket.roomId)
-      .emit("user typing", { userId, username, isTyping: true });
+    emitRoomTyping(socket, userId, username, true);
     state.typingTimeouts.set(
       userId,
       setTimeout(() => {
-        socket
-          .to(socket.roomId)
-          .emit("user typing", { userId, username, isTyping: false });
+        emitRoomTyping(socket, userId, username, false);
         state.typingTimeouts.delete(userId);
       }, CONFIG.TIMING.TYPING_TIMEOUT),
     );
   } else {
-    socket
-      .to(socket.roomId)
-      .emit("user typing", { userId, username, isTyping: false });
+    emitRoomTyping(socket, userId, username, false);
     state.typingTimeouts.delete(userId);
   }
 }
@@ -968,6 +1166,7 @@ function registerSocketHandlers() {
             isIPBased: !!isIPBased,
             isBot: !!socket.isBot,
             isDev: !!socket.isDev,
+            isHidden: !!socket.isHidden,
           });
           socket.join("lobby");
           state.users.set(userId, {
@@ -1351,7 +1550,7 @@ function registerSocketHandlers() {
         if (!room.votes) room.votes = {};
         if (room.votes[userId] === data.targetUserId) delete room.votes[userId];
         else room.votes[userId] = data.targetUserId;
-        io().to(roomId).emit("update votes", room.votes);
+        emitRoomVoteUpdates(roomId);
         const votesAgainst = Object.values(room.votes).filter(
           (v) => v === data.targetUserId,
         ).length;
@@ -1473,7 +1672,7 @@ function registerSocketHandlers() {
     socket.on(
       "get rooms",
       safe(async () => {
-        const key = "socket_rooms";
+        const key = socket.isDev ? "socket_rooms_dev" : "socket_rooms_normal";
         let data;
         const cached = state.apiCache.get(key);
         if (cached && Date.now() - cached.timestamp < state.API_CACHE_TTL) {
@@ -1481,20 +1680,9 @@ function registerSocketHandlers() {
         } else {
           data = Array.from(state.rooms.values())
             .filter((r) => r.type !== "private")
-            .map((r) => ({
-              id: r.id,
-              name: r.name,
-              type: r.type,
-              isFull: r.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
-              userCount: r.users.length,
-              lastChatActivity: state.roomLastChatActivity.get(r.id) || 0,
-              createdAt: r.createdAt || r.lastActiveTime || 0,
-              // DEV MODE: include isDev flag in user objects
-              users: (r.users || []).map(formatUser),
-            }));
+            .map((r) => formatRoomForSocket(r, socket));
           state.apiCache.set(key, { timestamp: Date.now(), data });
         }
-        socket.emit("initial rooms", data);
         socket.emit("initial rooms", data);
 
         // DEV MODE: Send lobby context to dev socket
@@ -1524,17 +1712,7 @@ function registerSocketHandlers() {
             "error",
             createErrorResponse(ERROR_CODES.NOT_FOUND, "Room not found."),
           );
-        socket.emit("room state", {
-          id: room.id,
-          name: room.name,
-          type: room.type,
-          layout: room.layout,
-          // DEV MODE: include isDev flag in user objects
-          users: (room.users || []).map(formatUser),
-          votes: room.votes,
-          currentMessages: getCurrentMessages(room.users),
-          isFull: room.users.length >= CONFIG.LIMITS.MAX_ROOM_CAPACITY,
-        });
+        socket.emit("room state", formatRoomStateForSocket(room, socket));
       }),
     );
 
@@ -1642,6 +1820,59 @@ function registerSocketHandlers() {
 
         // Broadcast room update so all clients see the new color
         updateRoom(socket.roomId);
+      }),
+    );
+
+    socket.on(
+      "dev set vanish",
+      safe(async (data) => {
+        if (!socket.isDev) return;
+        const desired =
+          typeof data?.isVanished === "boolean"
+            ? data.isVanished
+            : !socket.isVanished;
+        socket.isVanished = desired;
+
+        const userId = socket.handshake.session?.userId;
+        if (userId && socket.roomId) {
+          const room = state.rooms.get(socket.roomId);
+          const user = room?.users?.find((u) => u.id === userId);
+          if (user) user.isVanished = desired;
+          updateRoom(socket.roomId);
+          updateLobby();
+          sendDevRoomContext(socket.roomId);
+        }
+
+        socket.emit("dev vanish status", { isVanished: desired });
+      }),
+    );
+
+    socket.on(
+      "dev set hide",
+      safe(async (data) => {
+        if (!socket.isDev) return;
+        const desired =
+          typeof data?.isHidden === "boolean"
+            ? data.isHidden
+            : !socket.isHidden;
+        socket.isHidden = desired;
+
+        if (socket.handshake?.session) {
+          socket.handshake.session.isDevHidden = desired;
+          await promisifySessionSave(socket.handshake.session).catch(() => {});
+        }
+
+        const userId = socket.handshake.session?.userId;
+        if (userId && socket.roomId) {
+          const room = state.rooms.get(socket.roomId);
+          const user = room?.users?.find((u) => u.id === userId);
+          if (user) user.isHidden = desired;
+          updateRoom(socket.roomId);
+          updateLobby();
+          sendDevRoomContext(socket.roomId);
+        }
+
+        socket.emit("dev hide status", { isHidden: desired });
       }),
     );
 

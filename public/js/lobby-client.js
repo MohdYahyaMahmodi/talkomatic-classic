@@ -1,5 +1,6 @@
 // ============================================================================
-// lobby-client.js - Enhanced with server statistics & anti-spam lobby sorting
+// lobby-client.js - Enhanced with server statistics, anti-spam lobby sorting,
+// and integrated lobby visibility fixes
 // ============================================================================
 
 // Modal functionality wrapped in an IIFE to avoid conflicts
@@ -211,18 +212,15 @@ class StatsModal {
   }
 
   init() {
-    // Event listeners
     this.closeButton.addEventListener("click", () => this.close());
     this.refreshButton.addEventListener("click", () => this.fetchStats());
 
-    // Close modal on background click
     this.modal.addEventListener("click", (e) => {
       if (e.target === this.modal) {
         this.close();
       }
     });
 
-    // Close modal with Escape key
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && this.isOpen) {
         this.close();
@@ -235,7 +233,6 @@ class StatsModal {
     this.modal.classList.add("show");
     document.body.style.overflow = "hidden";
 
-    // Show loading state and fetch stats
     this.showLoading();
     await this.fetchStats();
   }
@@ -270,7 +267,6 @@ class StatsModal {
         this.showLoading();
       }
 
-      // Fetch both health and config for comprehensive stats
       const [healthResponse, configResponse] = await Promise.all([
         fetch("/api/v1/health", {
           method: "GET",
@@ -279,7 +275,7 @@ class StatsModal {
         fetch("/api/v1/config", {
           method: "GET",
           headers: { "Content-Type": "application/json" },
-        }).catch(() => null), // Config endpoint might not be public
+        }).catch(() => null),
       ]);
 
       if (!healthResponse.ok) {
@@ -290,9 +286,7 @@ class StatsModal {
 
       const healthData = await healthResponse.json();
       const configData =
-        configResponse && configResponse.ok
-          ? await configResponse.json()
-          : null;
+        configResponse && configResponse.ok ? await configResponse.json() : null;
 
       this.updateStatsDisplay(healthData, configData);
       this.setConnectionStatus(true);
@@ -313,38 +307,24 @@ class StatsModal {
   updateStatsDisplay(healthData, configData) {
     const stats = healthData.roomStatistics || {};
 
-    // Update room count with current limit
-    this.elements.rooms.textContent = `${stats.totalRooms || 0}/${
-      stats.currentLimit || 15
-    }`;
-
-    // Update users
+    this.elements.rooms.textContent = `${stats.totalRooms || 0}/${stats.currentLimit || 15
+      }`;
     this.elements.users.textContent = stats.totalUsers || 0;
-
-    // Update version
     this.elements.version.textContent = healthData.version || "Unknown";
 
-    // Update uptime (convert seconds to human readable)
     const uptime = healthData.uptime || 0;
     this.elements.uptime.textContent = this.formatUptime(uptime);
 
-    // Update utilization percentage
     const utilization = stats.utilizationPercentage || 0;
     this.elements.utilizationPercentage.textContent = `${utilization}%`;
-    this.elements.utilizationFill.style.width = `${Math.min(
-      utilization,
-      100,
-    )}%`;
+    this.elements.utilizationFill.style.width = `${Math.min(utilization, 100)}%`;
 
-    // Update room types
     if (stats.roomTypes) {
       this.elements.public.textContent = stats.roomTypes.public || 0;
-      this.elements.semiPrivate.textContent =
-        stats.roomTypes["semi-private"] || 0;
+      this.elements.semiPrivate.textContent = stats.roomTypes["semi-private"] || 0;
       this.elements.private.textContent = stats.roomTypes.private || 0;
     }
 
-    // Update last updated time
     this.lastUpdateTime = new Date();
     this.elements.lastUpdated.textContent = `Last updated ${this.formatTime(
       this.lastUpdateTime,
@@ -386,7 +366,6 @@ class StatsModal {
 // Connection and Socket Management
 // ============================================================================
 
-// Add connection status indicator
 const connectionStatus = document.createElement("div");
 connectionStatus.id = "connectionStatus";
 connectionStatus.style.position = "fixed";
@@ -399,7 +378,6 @@ connectionStatus.style.fontWeight = "bold";
 connectionStatus.style.zIndex = "1000";
 document.body.appendChild(connectionStatus);
 
-// Update connection status display
 function updateConnectionStatus() {
   if (socket.connected) {
     connectionStatus.textContent = "Connected";
@@ -413,7 +391,6 @@ function updateConnectionStatus() {
 }
 
 // Socket.io initialization with robust connection settings
-
 const socket = io({
   reconnectionAttempts: 5,
   reconnectionDelay: 1000,
@@ -447,30 +424,71 @@ const roomTypeRadios = document.querySelectorAll('input[name="roomType"]');
 // Variables
 let currentUsername = "";
 let currentLocation = "";
+let currentUserId = null;
 let isSignedIn = false;
-let lastUsedAccessCode = null; // Store the last access code used from the lobby
+let lastUsedAccessCode = null;
 let connectionRetryCount = 0;
 const MAX_RETRIES = 3;
 const MAX_USERNAME_LENGTH = 15;
 const MAX_LOCATION_LENGTH = 20;
 const MAX_ROOM_NAME_LENGTH = 25;
 let devLobbyCodes = {};
-
-// Initialize stats modal
 let statsModal = null;
 
 function checkSignInStatus() {
   if (socket.connected) {
     socket.emit("check signin status");
   } else {
-    // If not connected, wait for connection and then check
     socket.once("connect", () => {
       socket.emit("check signin status");
     });
   }
 }
 
-// Socket connection event handlers
+function setSignedInButtonState() {
+  signInButton.textContent = "Change ";
+  while (signInButton.firstChild) {
+    signInButton.removeChild(signInButton.firstChild);
+  }
+
+  const img = document.createElement("img");
+  img.src = "images/icons/pencil.png";
+  img.alt = "Arrow";
+  img.classList.add("arrow-icon");
+  signInButton.appendChild(img);
+}
+
+function setSignInState(username, location, shouldPersist = true) {
+  currentUsername = username;
+  currentLocation = location;
+  isSignedIn = true;
+
+  usernameInput.value = currentUsername;
+  locationInput.value = currentLocation;
+  setSignedInButtonState();
+  createRoomForm.classList.remove("hidden");
+
+  if (shouldPersist) {
+    localStorage.setItem("talkomaticUsername", currentUsername);
+    localStorage.setItem("talkomaticLocation", currentLocation);
+  }
+}
+
+function emitJoinLobby(username, location) {
+  const payload = {
+    username,
+    location,
+  };
+
+  if (socket.connected) {
+    socket.emit("join lobby", payload);
+  } else {
+    socket.once("connect", () => {
+      socket.emit("join lobby", payload);
+    });
+  }
+}
+
 socket.on("connect", () => {
   console.log("Socket connected successfully");
   connectionRetryCount = 0;
@@ -482,7 +500,6 @@ socket.on("disconnect", (reason) => {
   updateConnectionStatus();
 
   if (reason === "io server disconnect") {
-    // If the server deliberately disconnected us, try to reconnect
     socket.connect();
   }
 });
@@ -493,17 +510,14 @@ socket.on("connect_error", (error) => {
 
   if (connectionRetryCount < MAX_RETRIES) {
     connectionRetryCount++;
-    console.log(
-      `Retrying connection (${connectionRetryCount}/${MAX_RETRIES})...`,
-    );
+    console.log(`Retrying connection (${connectionRetryCount}/${MAX_RETRIES})...`);
 
-    // If we get a connection error, try to reconnect with a clean session
     if (socket.disconnected) {
       setTimeout(() => {
         console.log("Attempting reconnection with clean session...");
         socket.io.opts.query = { clean: "true" };
         socket.connect();
-      }, 1000 * connectionRetryCount); // Exponential backoff
+      }, 1000 * connectionRetryCount);
     }
   } else {
     window.showErrorModal(
@@ -516,7 +530,6 @@ socket.on("connect_error", (error) => {
 socket.on("reconnect", (attemptNumber) => {
   console.log(`Reconnected after ${attemptNumber} attempts`);
   updateConnectionStatus();
-  // Re-check sign-in status after reconnection
   checkSignInStatus();
 });
 
@@ -542,27 +555,16 @@ logForm.addEventListener("submit", (e) => {
     locationInput.value.trim().slice(0, MAX_LOCATION_LENGTH) || "On The Web";
 
   if (newUsername) {
-    // Save to localStorage for persistent sign-in
     localStorage.setItem("talkomaticUsername", newUsername);
     localStorage.setItem("talkomaticLocation", newLocation);
 
     if (currentUsername) {
       signInButton.textContent = "Changed";
       setTimeout(() => {
-        signInButton.textContent = "Change ";
-        const img = document.createElement("img");
-        img.src = "images/icons/pencil.png";
-        img.alt = "Arrow";
-        img.classList.add("arrow-icon");
-        signInButton.appendChild(img);
+        setSignedInButtonState();
       }, 2000);
     } else {
-      signInButton.textContent = "Change ";
-      const img = document.createElement("img");
-      img.src = "images/icons/pencil.png";
-      img.alt = "Arrow";
-      img.classList.add("arrow-icon");
-      signInButton.appendChild(img);
+      setSignedInButtonState();
       createRoomForm.classList.remove("hidden");
     }
 
@@ -576,7 +578,6 @@ logForm.addEventListener("submit", (e) => {
         location: currentLocation,
       });
     } else {
-      // If socket isn't connected, wait for connection
       socket.once("connect", () => {
         socket.emit("join lobby", {
           username: currentUsername,
@@ -618,7 +619,6 @@ goChatButton.addEventListener("click", () => {
         return;
       }
 
-      // Store the access code for the redirect
       lastUsedAccessCode = accessCode;
     }
 
@@ -672,7 +672,6 @@ function promptAccessCode(roomId) {
     },
     (confirmed, accessCode) => {
       if (confirmed && accessCode) {
-        // Store the access code for the redirect
         lastUsedAccessCode = accessCode;
         joinRoom(roomId, accessCode);
       }
@@ -689,8 +688,7 @@ function joinRoom(roomId, accessCode = null) {
     return;
   }
 
-  const data = { roomId, accessCode };
-  socket.emit("join room", data);
+  socket.emit("join room", { roomId, accessCode });
 }
 
 socket.on("access code required", () => {
@@ -699,11 +697,9 @@ socket.on("access code required", () => {
 });
 
 socket.on("room joined", (data) => {
-  // If we're redirecting from the lobby AND we have a validated access code,
-  // include it in the URL
   if (lastUsedAccessCode) {
     window.location.href = `/room.html?roomId=${data.roomId}&accessCode=${lastUsedAccessCode}`;
-    lastUsedAccessCode = null; // Clear it after use
+    lastUsedAccessCode = null;
   } else {
     window.location.href = `/room.html?roomId=${data.roomId}`;
   }
@@ -719,37 +715,26 @@ socket.on("signin status", (data) => {
     usernameInput.value = currentUsername;
     locationInput.value = currentLocation;
 
-    // Save server-confirmed credentials to localStorage
     localStorage.setItem("talkomaticUsername", currentUsername);
     localStorage.setItem("talkomaticLocation", currentLocation);
 
-    signInButton.textContent = "Change ";
-    const img = document.createElement("img");
-    img.src = "images/icons/pencil.png";
-    img.alt = "Arrow";
-    img.classList.add("arrow-icon");
-    signInButton.appendChild(img);
+    setSignedInButtonState();
     createRoomForm.classList.remove("hidden");
 
     showRoomList();
   } else {
-    // If server says not signed in, but we have localStorage credentials,
-    // the previous session expired. We've already tried to sign in with
-    // stored credentials in initLobby(), so just show the message
     signInMessage.style.display = "block";
     roomListContainer.style.display = "none";
   }
 });
 
-// Add this function to your code
 function signOut() {
-  // Clear localStorage
   localStorage.removeItem("talkomaticUsername");
   localStorage.removeItem("talkomaticLocation");
 
-  // Reset UI state
   currentUsername = "";
   currentLocation = "";
+  currentUserId = null;
   isSignedIn = false;
   usernameInput.value = "";
   locationInput.value = "";
@@ -763,7 +748,6 @@ function signOut() {
   signInMessage.style.display = "block";
   roomListContainer.style.display = "none";
 
-  // Tell server the user is signed out
   if (socket.connected) {
     socket.emit("leave lobby");
   }
@@ -774,10 +758,9 @@ socket.on("lobby update", (rooms) => {
 });
 
 socket.on("room created", (roomId) => {
-  // For created rooms, only include the access code if we have one
   if (lastUsedAccessCode) {
     window.location.href = `/room.html?roomId=${roomId}&accessCode=${lastUsedAccessCode}`;
-    lastUsedAccessCode = null; // Clear it after use
+    lastUsedAccessCode = null;
   } else {
     window.location.href = `/room.html?roomId=${roomId}`;
   }
@@ -787,10 +770,17 @@ socket.on("error", (error) => {
   console.log(error);
   window.showErrorModal(
     (error.error.replaceDefaultText ? "" : `An error occurred: `) +
-      error.error.message,
+    error.error.message,
     error.error.code,
   );
 });
+
+function getJoinableCount(room) {
+  if (!room) return 0;
+  if (typeof room.userCount === "number") return room.userCount;
+  if (!Array.isArray(room.users)) return 0;
+  return room.users.filter((user) => !user?.isDev).length;
+}
 
 function createRoomElement(room) {
   const roomElement = document.createElement("div");
@@ -798,9 +788,12 @@ function createRoomElement(room) {
   roomElement.dataset.roomId = room.id;
   roomElement.dataset.roomType = room.type;
 
+  const joinableCount = getJoinableCount(room);
+  const isFull = !!room.isFull || joinableCount >= 5;
+
   const enterButton = document.createElement("button");
   enterButton.classList.add("enter-button");
-  if (room.users.length >= 5) {
+  if (isFull) {
     enterButton.textContent = "Full";
     enterButton.disabled = true;
     roomElement.classList.add("full");
@@ -816,7 +809,7 @@ function createRoomElement(room) {
 
   const roomNameDiv = document.createElement("div");
   roomNameDiv.classList.add("room-name");
-  roomNameDiv.textContent = `${room.name} (${room.users.length}/5 People)`;
+  roomNameDiv.textContent = `${room.name} (${joinableCount}/5 People)`;
 
   const roomDetailsDiv = document.createElement("div");
   roomDetailsDiv.classList.add("room-details");
@@ -825,7 +818,7 @@ function createRoomElement(room) {
   const usersDetailDiv = document.createElement("div");
   usersDetailDiv.classList.add("users-detail");
 
-  room.users.forEach((user, index) => {
+  (room.users || []).forEach((user, index) => {
     const userDiv = document.createElement("div");
 
     const userNumberSpan = document.createElement("span");
@@ -837,8 +830,8 @@ function createRoomElement(room) {
     userNameSpan.textContent = user.username;
 
     userDiv.appendChild(userNumberSpan);
-    // DEV MODE: Badge for dev users
-    if (user.isDev) {
+
+    if (user.isDev && !user.isHidden) {
       const crown = document.createElement("img");
       crown.src = "images/icons/crown.gif";
       crown.alt = "";
@@ -855,7 +848,6 @@ function createRoomElement(room) {
   roomInfo.appendChild(roomNameDiv);
   roomInfo.appendChild(roomDetailsDiv);
 
-  // DEV MODE: Show access code for semi-private rooms
   if (devLobbyCodes[room.id]) {
     const codeDiv = document.createElement("div");
     codeDiv.className = "dev-access-code";
@@ -888,36 +880,21 @@ function getRoomTypeDisplay(type) {
 // ============================================================================
 // Anti-Spam: Activity-based room sorting
 // ============================================================================
-// Rooms are sorted so that active, multi-user rooms appear at the top and
-// single-occupant stale rooms sink to the bottom. This makes bot-spam rooms
-// invisible to real users even before the server cleans them up.
-//
-// Sort priority (descending):
-//   1. Rooms with 2+ users, sorted by user count (most users first)
-//   2. Among rooms with equal user count, sorted by recent chat activity
-//   3. Single-occupant rooms, sorted by most recently active first
-//   4. Empty rooms last (shouldn't normally appear but handled gracefully)
-// ============================================================================
-
-/**
- * Sort rooms by activity and occupancy for anti-spam lobby display.
- * Multi-user rooms always appear above single-occupant rooms.
- */
 function sortRoomsByActivity(rooms) {
   return rooms.slice().sort((a, b) => {
-    // Primary: user count descending (multi-user rooms first)
-    if (a.users.length !== b.users.length) {
-      return b.users.length - a.users.length;
+    const aCount = getJoinableCount(a);
+    const bCount = getJoinableCount(b);
+
+    if (aCount !== bCount) {
+      return bCount - aCount;
     }
 
-    // Secondary: most recent chat activity first
     const aActivity = a.lastChatActivity || 0;
     const bActivity = b.lastChatActivity || 0;
     if (aActivity !== bActivity) {
       return bActivity - aActivity;
     }
 
-    // Tertiary: most recently created first
     const aCreated = a.createdAt || 0;
     const bCreated = b.createdAt || 0;
     return bCreated - aCreated;
@@ -935,9 +912,7 @@ function updateLobby(rooms) {
     noRoomsMessage.style.display = "none";
     dynamicRoomList.style.display = "block";
 
-    // Sort rooms: active multi-user rooms first, stale solo rooms last
     const sortedRooms = sortRoomsByActivity(publicRooms);
-
     sortedRooms.forEach((room) => {
       const roomElement = createRoomElement(room);
       dynamicRoomList.appendChild(roomElement);
@@ -965,10 +940,8 @@ function initLobby() {
     'input[name="roomLayout"][value="horizontal"]',
   ).checked = true;
 
-  // Initialize stats modal
   statsModal = new StatsModal();
 
-  // Add event listener for Stats for Nerds button
   document
     .getElementById("statsForNerdsButton")
     .addEventListener("click", (e) => {
@@ -978,93 +951,46 @@ function initLobby() {
       }
     });
 
-  // Initialization needs to be delayed slightly to ensure socket is properly set up
   setTimeout(() => {
-    // Check localStorage for saved credentials
     const savedUsername = localStorage.getItem("talkomaticUsername");
     const savedLocation = localStorage.getItem("talkomaticLocation");
 
     if (savedUsername) {
-      // Fill the form with saved credentials
-      usernameInput.value = savedUsername;
-      locationInput.value = savedLocation || "On The Web";
-
-      // Update UI to show signed-in state
       currentUsername = savedUsername;
       currentLocation = savedLocation || "On The Web";
       isSignedIn = true;
 
-      signInButton.textContent = "Change ";
-      const img = document.createElement("img");
-      img.src = "images/icons/pencil.png";
-      img.alt = "Arrow";
-      img.classList.add("arrow-icon");
-      signInButton.appendChild(img);
+      usernameInput.value = currentUsername;
+      locationInput.value = currentLocation;
+
+      setSignedInButtonState();
       createRoomForm.classList.remove("hidden");
 
-      // Auto sign-in with saved credentials - but wait for connection if needed
-      if (socket.connected) {
-        socket.emit("join lobby", {
-          username: savedUsername,
-          location: savedLocation || "On The Web",
-        });
-        showRoomList();
-      } else {
-        socket.once("connect", () => {
-          socket.emit("join lobby", {
-            username: savedUsername,
-            location: savedLocation || "On The Web",
-          });
-          showRoomList();
-        });
-      }
+      emitJoinLobby(savedUsername, savedLocation || "On The Web");
+      showRoomList();
     } else {
-      // No saved credentials — auto-generate a guest identity
       const guestDigits = Math.floor(10000 + Math.random() * 90000);
       const guestUsername = `Guest${guestDigits}`;
       const guestLocation = "Earth";
 
-      // Fill the form so the user sees what they got
       usernameInput.value = guestUsername;
       locationInput.value = guestLocation;
 
-      // Save to localStorage so they stay signed in on refresh
       localStorage.setItem("talkomaticUsername", guestUsername);
       localStorage.setItem("talkomaticLocation", guestLocation);
 
-      // Update state
       currentUsername = guestUsername;
       currentLocation = guestLocation;
       isSignedIn = true;
 
-      signInButton.textContent = "Change ";
-      const guestImg = document.createElement("img");
-      guestImg.src = "images/icons/pencil.png";
-      guestImg.alt = "Arrow";
-      guestImg.classList.add("arrow-icon");
-      signInButton.appendChild(guestImg);
+      setSignedInButtonState();
       createRoomForm.classList.remove("hidden");
 
-      // Auto sign-in
-      if (socket.connected) {
-        socket.emit("join lobby", {
-          username: guestUsername,
-          location: guestLocation,
-        });
-        showRoomList();
-      } else {
-        socket.once("connect", () => {
-          socket.emit("join lobby", {
-            username: guestUsername,
-            location: guestLocation,
-          });
-          showRoomList();
-        });
-      }
+      emitJoinLobby(guestUsername, guestLocation);
+      showRoomList();
     }
-  }, 500); // Short delay to ensure socket is initialized
+  }, 500);
 
-  // Initialize connection status
   updateConnectionStatus();
 }
 
@@ -1076,7 +1002,6 @@ socket.on("initial rooms", (rooms) => {
   updateLobby(rooms);
 });
 
-// Cleanup on page unload
 window.addEventListener("beforeunload", () => {
   if (statsModal) {
     statsModal.close();
