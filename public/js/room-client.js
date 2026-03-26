@@ -20,6 +20,7 @@ let currentRoomLayout = "horizontal";
 let currentRoomName = "";
 let lastSentMessage = "";
 let chatInput = null;
+let talkoboardInstance = null;
 
 // DEV MODE: Track if the current user is a dev
 let currentUserIsDev = false;
@@ -756,13 +757,14 @@ const APPS_DATA = {
     openInNewTab: true,
   },
   infiniteboard: {
-    name: "InfiniteBoard",
-    description: "Collaborative whiteboard drawing",
+    name: "Talkoboard",
+    description: "Draw together in real-time",
     icon: "\uD83C\uDFA8",
     iconClass: "placeholder",
-    status: "coming-soon",
+    status: "available",
     url: null,
     openInNewTab: false,
+    action: "talkoboard",
   },
   minigames: {
     name: "Mini Games",
@@ -831,9 +833,13 @@ function createAppDirectoryDropdown() {
         e.preventDefault();
         e.stopPropagation();
         hideAppDirectory();
-        if (app.openInNewTab)
+        if (app.action === "talkoboard") {
+          openTalkoboard();
+        } else if (app.openInNewTab) {
           window.open(app.url, "_blank", "noopener,noreferrer");
-        else window.location.href = app.url;
+        } else {
+          window.location.href = app.url;
+        }
       });
     }
     grid.appendChild(item);
@@ -894,6 +900,18 @@ function initializeAppDirectory() {
   });
 }
 
+// ── TALKOBOARD INTEGRATION ──────────────────────────────────────────────────
+
+function openTalkoboard() {
+  if (!currentRoomId || !currentUserId) {
+    showErrorModal("You must be in a room to use Talkoboard.");
+    return;
+  }
+  if (!talkoboardInstance) {
+    talkoboardInstance = new Talkoboard(socket, currentUserId, currentUsername);
+  }
+  talkoboardInstance.open();
+}
 // ── 8. VOTING ───────────────────────────────────────────────────────────────
 
 function updateVotesUI(votes) {

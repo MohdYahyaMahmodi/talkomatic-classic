@@ -13,6 +13,11 @@
 // ║  • isDev flag included in all user broadcasts                           ║
 // ║  • Dev users bypass AFK timers                                          ║
 // ║  • Dev force-kick: remove any user from any room                        ║
+// ║                                                                         ║
+// ║  Talkoboard v2:                                                         ║
+// ║  • Stroke lifecycle protocol (start/move/end)                           ║
+// ║  • Server-side stroke storage per room (ephemeral, not saved to disk)   ║
+// ║  • Full board state sync on open                                        ║
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
 const path = require("path");
@@ -42,6 +47,37 @@ const {
 // Helper to get io — always access through state so it's available after init
 function io() {
   return state.io;
+}
+
+// ── Talkoboard: Server-Side Stroke Storage (ephemeral) ──────────────────────
+
+const boardState = new Map(); // roomId → { strokes: [], active: Map<userId, stroke> }
+const MAX_BOARD_STROKES = 500;
+const MAX_POINTS_PER_STROKE = 10000;
+
+function getBoardState(roomId) {
+  if (!boardState.has(roomId)) {
+    boardState.set(roomId, { strokes: [], active: new Map() });
+  }
+  return boardState.get(roomId);
+}
+
+function cleanupBoardState(roomId) {
+  boardState.delete(roomId);
+}
+
+function finalizeBoardUserStroke(roomId, userId) {
+  const bs = boardState.get(roomId);
+  if (!bs) return;
+  const active = bs.active.get(userId);
+  if (active && active.points && active.points.length > 0) {
+    bs.strokes.push(active);
+    // Cap total completed strokes
+    if (bs.strokes.length > MAX_BOARD_STROKES) {
+      bs.strokes = bs.strokes.slice(-MAX_BOARD_STROKES);
+    }
+  }
+  bs.active.delete(userId);
 }
 
 // ── User Counting ───────────────────────────────────────────────────────────
@@ -155,6 +191,7 @@ async function pressureCleanup() {
     state.rooms.delete(roomId);
     state.roomSoloSince.delete(roomId);
     state.roomLastChatActivity.delete(roomId);
+    cleanupBoardState(roomId);
     if (state.roomDeletionTimers.has(roomId)) {
       clearTimeout(state.roomDeletionTimers.get(roomId));
       state.roomDeletionTimers.delete(roomId);
@@ -279,10 +316,6 @@ function getCurrentMessages(usersInRoom) {
 
 // ── DEV MODE: Helper to format user objects with isDev flag ─────────────────
 
-/**
- * Format a user object for client broadcast. Always includes isDev.
- * Used everywhere we send user data to clients.
- */
 function formatUser(u) {
   return {
     id: u.id,
@@ -438,6 +471,7 @@ function startRoomDeletionTimer(roomId) {
       state.roomDeletionTimers.delete(roomId);
       state.roomSoloSince.delete(roomId);
       state.roomLastChatActivity.delete(roomId);
+      cleanupBoardState(roomId);
       updateLobby();
       await debouncedSaveRooms();
       console.log(`Room ${roomId} deleted (empty timeout).`);
@@ -462,7 +496,6 @@ function updateLobby() {
         userCount: r.users.length,
         lastChatActivity: state.roomLastChatActivity.get(r.id) || 0,
         createdAt: r.createdAt || r.lastActiveTime || 0,
-        // DEV MODE: include isDev flag in user objects
         users: (r.users || []).map(formatUser),
       }));
     io().to("lobby").emit("lobby update", publicRooms);
@@ -483,7 +516,6 @@ function updateRoom(roomId) {
         name: room.name,
         type: room.type,
         layout: room.layout,
-        // DEV MODE: include isDev flag in user objects
         users: (room.users || []).map(formatUser),
         votes: room.votes || {},
       });
@@ -507,8 +539,8 @@ function setupAFKTimers(socket, userId) {
   clearAFKTimers(userId);
   if (!socket || !socket.roomId) return;
 
-  // ── DEV MODE: Dev users never go AFK ──────────────────────────────
   if (socket.isDev) return;
+  if (socket.boardOpen) return;
 
   state.afkWarningTimers.set(
     userId,
@@ -653,6 +685,10 @@ async function leaveRoom(socket, userId) {
     const roomId = socket.roomId;
     if (!roomId) return;
     clearAFKTimers(userId);
+
+    // Finalize any active board stroke for this user
+    finalizeBoardUserStroke(roomId, userId);
+
     const room = state.rooms.get(roomId);
     if (room) {
       room.users = room.users.filter((u) => u.id !== userId);
@@ -668,10 +704,7 @@ async function leaveRoom(socket, userId) {
       io().to(roomId).emit("user left", userId);
       updateRoom(roomId);
 
-      // DEV MODE: Update room context for remaining devs
       sendDevRoomContext(roomId);
-
-      // ── Anti-spam: update solo tracking on occupancy change ──
       updateRoomSoloTracking(roomId);
 
       if (room.users.length === 0) startRoomDeletionTimer(roomId);
@@ -686,7 +719,6 @@ async function leaveRoom(socket, userId) {
     }
     state.userMessageBuffers.delete(userId);
 
-    // DEV MODE: clean up dev tracking on leave
     state.devUsers.delete(userId);
 
     socket.roomId = null;
@@ -793,7 +825,6 @@ function joinRoom(socket, roomId, userId) {
     room.users = room.users.filter((u) => u.id !== userId);
     socket.join(roomId);
 
-    // DEV MODE: include isDev flag on the user object stored in the room
     room.users.push({
       id: userId,
       username,
@@ -801,7 +832,6 @@ function joinRoom(socket, roomId, userId) {
       isDev: !!socket.isDev,
     });
 
-    // DEV MODE: track dev userId in global state
     if (socket.isDev) {
       state.devUsers.add(userId);
     }
@@ -842,7 +872,6 @@ function joinRoom(socket, roomId, userId) {
 }
 
 function emitJoinSuccess(socket, room, userId, username, location) {
-  // DEV MODE: include isDev in user joined broadcast
   io().to(room.id).emit("user joined", {
     id: userId,
     username,
@@ -861,7 +890,6 @@ function emitJoinSuccess(socket, room, userId, username, location) {
     isDev: !!socket.isDev,
     roomName: room.name,
     roomType: room.type,
-    // DEV MODE: include isDev flag in user list
     users: (room.users || []).map(formatUser),
     layout: room.layout,
     votes: room.votes,
@@ -927,6 +955,7 @@ function registerSocketHandlers() {
       };
     }
 
+    // ── Check Sign-In Status ────────────────────────────────────────────
     socket.on(
       "check signin status",
       safe(async () => {
@@ -955,7 +984,6 @@ function registerSocketHandlers() {
           }
         }
         if (username && location && userId) {
-          // DEV MODE: track dev userId when checking signin status
           if (socket.isDev) {
             state.devUsers.add(userId);
           }
@@ -987,6 +1015,7 @@ function registerSocketHandlers() {
       }),
     );
 
+    // ── Join Lobby ──────────────────────────────────────────────────────
     socket.on(
       "join lobby",
       safe(async (data) => {
@@ -1041,7 +1070,6 @@ function registerSocketHandlers() {
         await promisifySessionSave(socket.handshake.session);
         state.users.set(userId, { id: userId, username, location });
 
-        // DEV MODE: track dev userId on lobby join
         if (socket.isDev) {
           state.devUsers.add(userId);
         }
@@ -1059,6 +1087,191 @@ function registerSocketHandlers() {
         });
       }),
     );
+
+    // ═════════════════════════════════════════════════════════════════════
+    // TALKOBOARD v2 — Stroke lifecycle + state sync (top-level handlers)
+    // ═════════════════════════════════════════════════════════════════════
+
+    socket.on(
+      "board open",
+      safe(async () => {
+        if (!socket.roomId || !socket.handshake.session?.userId) return;
+        socket.boardOpen = true;
+        clearAFKTimers(socket.handshake.session.userId);
+
+        // Send existing board state to this user
+        const bs = getBoardState(socket.roomId);
+        const activeObj = {};
+        for (const [uid, stroke] of bs.active) {
+          activeObj[uid] = stroke;
+        }
+        socket.emit("board state", {
+          strokes: bs.strokes,
+          active: activeObj,
+        });
+
+        socket.to(socket.roomId).emit("board user status", {
+          userId: socket.handshake.session.userId,
+          open: true,
+        });
+      }),
+    );
+
+    socket.on(
+      "board stroke start",
+      safe(async (data) => {
+        if (!socket.roomId || !socket.handshake.session?.userId) return;
+        const userId = socket.handshake.session.userId;
+
+        if (
+          !data ||
+          typeof data.color !== "string" ||
+          typeof data.size !== "number"
+        )
+          return;
+        if (
+          !data.point ||
+          typeof data.point.x !== "number" ||
+          typeof data.point.y !== "number"
+        )
+          return;
+
+        const stroke = {
+          points: [{ x: data.point.x, y: data.point.y }],
+          color: data.color.slice(0, 7),
+          size: Math.min(Math.max(data.size, 1), 50),
+          eraser: !!data.eraser,
+        };
+
+        const bs = getBoardState(socket.roomId);
+        // Finalize any previous active stroke from this user
+        finalizeBoardUserStroke(socket.roomId, userId);
+        bs.active.set(userId, stroke);
+
+        socket.to(socket.roomId).emit("board stroke start", {
+          userId,
+          color: stroke.color,
+          size: stroke.size,
+          eraser: stroke.eraser,
+          point: stroke.points[0],
+        });
+      }),
+    );
+
+    socket.on(
+      "board stroke move",
+      safe(async (data) => {
+        if (!socket.roomId || !socket.handshake.session?.userId) return;
+        const userId = socket.handshake.session.userId;
+
+        if (!data?.points || !Array.isArray(data.points)) return;
+        if (data.points.length > 200) return; // sanity cap per batch
+
+        const bs = getBoardState(socket.roomId);
+        const active = bs.active.get(userId);
+        if (!active) return; // no active stroke, ignore
+
+        // Validate and append points
+        const validPoints = [];
+        for (const p of data.points) {
+          if (typeof p.x === "number" && typeof p.y === "number") {
+            validPoints.push({ x: p.x, y: p.y });
+          }
+        }
+        if (validPoints.length === 0) return;
+
+        active.points.push(...validPoints);
+
+        // Cap points per stroke to prevent abuse
+        if (active.points.length > MAX_POINTS_PER_STROKE) {
+          active.points = active.points.slice(-MAX_POINTS_PER_STROKE);
+        }
+
+        socket.to(socket.roomId).emit("board stroke move", {
+          userId,
+          points: validPoints,
+        });
+      }),
+    );
+
+    socket.on(
+      "board stroke end",
+      safe(async () => {
+        if (!socket.roomId || !socket.handshake.session?.userId) return;
+        const userId = socket.handshake.session.userId;
+
+        finalizeBoardUserStroke(socket.roomId, userId);
+
+        socket.to(socket.roomId).emit("board stroke end", { userId });
+      }),
+    );
+
+    socket.on(
+      "board close",
+      safe(async () => {
+        if (!socket.roomId || !socket.handshake.session?.userId) return;
+        const userId = socket.handshake.session.userId;
+        socket.boardOpen = false;
+
+        // Finalize any active stroke
+        finalizeBoardUserStroke(socket.roomId, userId);
+
+        setupAFKTimers(socket, userId);
+        socket.to(socket.roomId).emit("board user status", {
+          userId,
+          open: false,
+        });
+      }),
+    );
+
+    socket.on(
+      "board cursor",
+      safe(async (data) => {
+        if (!socket.roomId || !socket.handshake.session?.userId) return;
+        if (typeof data?.x !== "number" || typeof data?.y !== "number") return;
+        socket.to(socket.roomId).emit("board cursor", {
+          userId: socket.handshake.session.userId,
+          username: socket.handshake.session.username || "Anonymous",
+          x: data.x,
+          y: data.y,
+        });
+      }),
+    );
+
+    socket.on(
+      "board chat",
+      safe(async (data) => {
+        if (!socket.roomId || !socket.handshake.session?.userId) return;
+        if (!data?.text || typeof data.text !== "string") return;
+        const text = data.text.slice(0, 200);
+        io()
+          .to(socket.roomId)
+          .emit("board chat", {
+            userId: socket.handshake.session.userId,
+            username: socket.handshake.session.username || "Anonymous",
+            text,
+            timestamp: Date.now(),
+          });
+      }),
+    );
+
+    socket.on(
+      "board clear",
+      safe(async () => {
+        if (!socket.roomId || !socket.handshake.session?.userId) return;
+        // Clear server-side board state
+        const bs = boardState.get(socket.roomId);
+        if (bs) {
+          bs.strokes = [];
+          bs.active.clear();
+        }
+        io().to(socket.roomId).emit("board clear");
+      }),
+    );
+
+    // ═════════════════════════════════════════════════════════════════════
+    // ROOM MANAGEMENT
+    // ═════════════════════════════════════════════════════════════════════
 
     socket.on(
       "create room",
@@ -1489,7 +1702,6 @@ function registerSocketHandlers() {
               userCount: r.users.length,
               lastChatActivity: state.roomLastChatActivity.get(r.id) || 0,
               createdAt: r.createdAt || r.lastActiveTime || 0,
-              // DEV MODE: include isDev flag in user objects
               users: (r.users || []).map(formatUser),
             }));
           state.apiCache.set(key, { timestamp: Date.now(), data });
@@ -1497,7 +1709,6 @@ function registerSocketHandlers() {
         socket.emit("initial rooms", data);
         socket.emit("initial rooms", data);
 
-        // DEV MODE: Send lobby context to dev socket
         if (socket.isDev) {
           const codes = {};
           for (const [roomId, room] of state.rooms) {
@@ -1529,7 +1740,6 @@ function registerSocketHandlers() {
           name: room.name,
           type: room.type,
           layout: room.layout,
-          // DEV MODE: include isDev flag in user objects
           users: (room.users || []).map(formatUser),
           votes: room.votes,
           currentMessages: getCurrentMessages(room.users),
@@ -1538,11 +1748,10 @@ function registerSocketHandlers() {
       }),
     );
 
-    // ── DEV MODE: Force-kick any user from any room ─────────────────────
+    // ── DEV MODE: Force-kick ────────────────────────────────────────────
     socket.on(
       "dev force kick",
       safe(async (data) => {
-        // Only dev users can use this
         if (!socket.isDev) {
           return socket.emit(
             "error",
@@ -1562,7 +1771,6 @@ function registerSocketHandlers() {
 
         const targetUserId = data.targetUserId;
 
-        // Find which room the target user is in
         let targetRoomId = null;
         let targetRoom = null;
         for (const [roomId, room] of state.rooms) {
@@ -1583,7 +1791,6 @@ function registerSocketHandlers() {
           );
         }
 
-        // Find the target user's socket
         const targetSocket = findSocketByUserId(targetUserId, targetRoomId);
         if (!targetSocket) {
           return socket.emit(
@@ -1595,12 +1802,10 @@ function registerSocketHandlers() {
           );
         }
 
-        // Get target info for logging
         const targetUser = targetRoom.users.find((u) => u.id === targetUserId);
         const targetName = targetUser?.username || "Unknown";
         const roomName = targetRoom.name || targetRoomId;
 
-        // Kick them
         targetSocket.emit("kicked");
         await leaveRoom(targetSocket, targetUserId);
 
@@ -1608,7 +1813,6 @@ function registerSocketHandlers() {
           `[DEV] Force-kicked "${targetName}" from "${roomName}" by dev user`,
         );
 
-        // Confirm to the dev
         socket.emit("dev kick success", {
           targetUserId,
           targetUsername: targetName,
@@ -1624,8 +1828,6 @@ function registerSocketHandlers() {
       safe(async (data) => {
         if (!socket.isDev) return;
         if (!data?.color || typeof data.color !== "string") return;
-
-        // Validate hex color format
         if (!/^#[0-9a-fA-F]{6}$/.test(data.color)) return;
 
         const userId = socket.handshake.session?.userId;
@@ -1634,17 +1836,25 @@ function registerSocketHandlers() {
         const room = state.rooms.get(socket.roomId);
         if (!room) return;
 
-        // Store color on the user object in the room
         const user = room.users.find((u) => u.id === userId);
         if (user) {
           user.devColor = data.color;
         }
 
-        // Broadcast room update so all clients see the new color
         updateRoom(socket.roomId);
       }),
     );
 
+    // ── AFK Response ────────────────────────────────────────────────────
+    socket.on(
+      "afk response",
+      safe(async () => {
+        const userId = socket.handshake.session?.userId;
+        if (userId && socket.roomId) setupAFKTimers(socket, userId);
+      }),
+    );
+
+    // ── Disconnect ──────────────────────────────────────────────────────
     socket.on(
       "disconnect",
       safe(async (reason) => {
@@ -1655,7 +1865,6 @@ function registerSocketHandlers() {
           clearAFKTimers(userId);
           await leaveRoom(socket, userId);
           state.userMessageBuffers.delete(userId);
-          // DEV MODE: clean up dev tracking on disconnect
           state.devUsers.delete(userId);
           if (state.typingTimeouts.has(userId)) {
             clearTimeout(state.typingTimeouts.get(userId));
@@ -1676,14 +1885,6 @@ function registerSocketHandlers() {
         console.log(
           `Disconnected: "${username}" from "${location}" (${reason}) IP:${socket.clientIp}${socket.isBot ? " [BOT]" : ""}${socket.isDev ? " [DEV]" : ""}`,
         );
-      }),
-    );
-
-    socket.on(
-      "afk response",
-      safe(async () => {
-        const userId = socket.handshake.session?.userId;
-        if (userId && socket.roomId) setupAFKTimers(socket, userId);
       }),
     );
   });
@@ -1804,6 +2005,10 @@ function startCleanupIntervals() {
     for (const roomId of state.roomLastChatActivity.keys()) {
       if (!state.rooms.has(roomId)) state.roomLastChatActivity.delete(roomId);
     }
+    // Clean up board state for deleted rooms
+    for (const roomId of boardState.keys()) {
+      if (!state.rooms.has(roomId)) boardState.delete(roomId);
+    }
   }, 180000);
 
   // Empty room cleanup (10 min)
@@ -1821,6 +2026,7 @@ function startCleanupIntervals() {
       state.rooms.delete(id);
       state.roomSoloSince.delete(id);
       state.roomLastChatActivity.delete(id);
+      cleanupBoardState(id);
       if (state.roomDeletionTimers.has(id)) {
         clearTimeout(state.roomDeletionTimers.get(id));
         state.roomDeletionTimers.delete(id);
@@ -1851,6 +2057,7 @@ function startCleanupIntervals() {
           state.userMessageBuffers.delete(u.id);
           clearAFKTimers(u.id);
           state.devUsers.delete(u.id);
+          finalizeBoardUserStroke(roomId, u.id);
           if (state.typingTimeouts.has(u.id)) {
             clearTimeout(state.typingTimeouts.get(u.id));
             state.typingTimeouts.delete(u.id);
@@ -1897,7 +2104,8 @@ function startCleanupIntervals() {
         `Solo:${stats.soloRooms} TTL:${stats.currentSoloTTL}s ` +
         `Users:${stats.totalUsers} Heap:${heapMB}MB ` +
         `Tokens:${state.botTokens.size} ` +
-        `Devs:${state.devUsers.size}`,
+        `Devs:${state.devUsers.size} ` +
+        `Boards:${boardState.size}`,
     );
     if (heapMB > 400) {
       console.warn(`MEMORY WARNING: ${heapMB}MB heap`);
@@ -1932,6 +2140,7 @@ function purgeAllGhostUsers() {
       room.users = [];
       room.votes = {};
       room.lastActiveTime = Date.now();
+      cleanupBoardState(roomId);
       startRoomDeletionTimer(roomId);
     }
   }
