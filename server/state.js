@@ -17,7 +17,7 @@ const CONFIG = {
     MAX_AFK_TIME: 180000,
     MAX_LOCATION_LENGTH: 20,
     MAX_ROOM_NAME_LENGTH: 25,
-    MAX_MESSAGE_LENGTH: 15000,
+    MAX_MESSAGE_LENGTH: 5000, // to match w client and cuz ion know what type of rendering issues it was causing.
     MAX_ROOM_CAPACITY: 5,
     BASE_MAX_ROOMS: 15,
     ROOM_SCALING_INCREMENT: 5,
