@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="stylesheets/room.css?v=2.0.2" />
     <link rel="icon" type="image/png" href="images/icons/favicon.png" />
     <style>
-      /* Emote system styles */
+      /* Emote system */
       .emote-autocomplete {
         position: absolute;
         z-index: 1000;
@@ -112,6 +112,8 @@
         height: 20px;
         margin: 0 2px;
       }
+
+      /* App directory */
       .app-directory-toggle {
         background: none;
         border: none;
@@ -291,7 +293,7 @@
         opacity: 0.4;
       }
 
-      /* ── Feature Announcement Modal ──────────────────────────────────── */
+      /* Feature announcement modal */
       .feature-announce-overlay {
         display: none;
         position: fixed;
@@ -488,9 +490,7 @@
       </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- Feature Announcement: Word Filter Toggle                          -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- Feature announcement: word filter toggle -->
     <div id="featureAnnounce" class="feature-announce-overlay">
       <div class="feature-announce-box">
         <div class="feature-announce-icon">🛡️</div>
@@ -519,8 +519,8 @@
     <audio id="leaveSound" src="audio/ding.mp3"></audio>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="js/word-filter-client.js?v=2.0.0"></script>
-    <script src="js/room-client.js?v=2.0.0"></script>
+    <script src="js/word-filter-client.js?v=2.1.0"></script>
+    <script src="js/room-client.js?v=2.1.0"></script>
     <script src="js/talkoboard.js?v=1.0.2"></script>
 
     <script src="js/games-client.js?v=1.0.3"></script>

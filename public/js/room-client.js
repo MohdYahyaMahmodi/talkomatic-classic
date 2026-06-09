@@ -1,32 +1,10 @@
-// ╔═══════════════════════════════════════════════════════════════════════════╗
-// ║  room-client.js — Talkomatic Chat Room Client                            ║
-// ║                                                                           ║
-// ║  PATCHED (June 2026 anniversary batch):                                   ║
-// ║  • FIX #4: Legacy ?accessCode= URLs are scrubbed from the address bar     ║
-// ║            and browser history on load (history.replaceState).            ║
-// ║  • FIX #6: Emoticons button lives beside .room-type, never replaces it.   ║
-// ║                                                                           ║
-// ║  PATCHED (June 2026 anniversary batch — BATCH 1):                         ║
-// ║  • FIX #7: Emote autocomplete no longer breaks after the first insert.    ║
-// ║            findEmoteAtCursor() now handles element-node cursor positions  ║
-// ║            (the caret lands on an element after insertHTML), and          ║
-// ║            insertEmote() guarantees the caret ends up inside a text       ║
-// ║            node so every subsequent ":" lookup succeeds.                  ║
-// ║  • FIX #8: Emote codes are protected from the word filter. Text is        ║
-// ║            filtered in segments AROUND valid :code: tokens, so e.g.       ║
-// ║            an emote whose code matches a filtered word still renders      ║
-// ║            instead of being turned into asterisks.                        ║
-// ║  • FIX #9: Vote counters are cleaned up properly. Counters and "voted"    ║
-// ║            highlights are removed when the room drops below the voting    ║
-// ║            minimum (3 users) or when votes reset, and the vote UI is      ║
-// ║            refreshed when a user leaves.                                  ║
-// ║  • FIX #10: updateInviteLink() no longer renders a broken invite link     ║
-// ║            (empty roomId) before the room has been joined.                ║
-// ╚═══════════════════════════════════════════════════════════════════════════╝
+// public/js/room-client.js
+// Talkomatic chat room client: real-time diff-based chat, emote system,
+// word filter integration, vote-kick UI, link safety, dev mode UI, layout.
 
 // ── 1. CONSTANTS & STATE ────────────────────────────────────────────────────
 
-// DEV MODE: Pass devKey from localStorage in socket auth
+// Dev mode: pass devKey from localStorage in socket auth
 const socket = io({
   auth: {
     devKey: localStorage.getItem("talkomatic_devKey") || undefined,
@@ -43,13 +21,12 @@ let lastSentMessage = "";
 let chatInput = null;
 let talkoboardInstance = null;
 
-// DEV MODE: Track if the current user is a dev
+// Dev mode state
 let currentUserIsDev = false;
-// DEV MODE: Track whether the current dev is vanished
 let currentUserIsVanished = false;
-// DEV MODE: Track whether the current dev is hidden
 let currentUserIsHidden = false;
 
+// The user's own raw (unfiltered) text and whether the display is filtered
 let selfRawText = "";
 let selfIsFiltered = false;
 
@@ -59,12 +36,11 @@ const storedMessagesForMutedUsers = new Map();
 
 const MAX_MESSAGE_LENGTH = 5000;
 
-// FIX #9: client-side mirror of the server's CONFIG.LIMITS.MIN_USERS_FOR_VOTING.
-// Used purely for UI cleanup — the server remains the authority on votes.
+// Client-side mirror of the server's MIN_USERS_FOR_VOTING, used for UI
+// cleanup only; the server remains the authority on votes
 const MIN_USERS_FOR_VOTING = 3;
 
-// FIX #9: last vote state received from the server, so the vote UI can be
-// re-rendered after local DOM changes (e.g. a user leaving).
+// Last vote state from the server, re-rendered after local DOM changes
 let currentVotes = {};
 
 const ERROR_CODES = {
@@ -87,19 +63,9 @@ const ERROR_CODES = {
 let clientWordFilter = null;
 let wordFilterEnabled = true;
 
-/**
- * FIX #8: Filter text while protecting valid emote tokens.
- *
- * The word filter normalizes away the colons in ":code:", so an emote whose
- * code happens to contain a filtered word would be censored into asterisks
- * before replaceEmotes() ever sees it. To prevent that, the text is split
- * into segments around each VALID emote token (one that exists in emoteList),
- * each segment is filtered independently, and the untouched tokens are
- * stitched back in.
- *
- * Unknown ":notanemote:" tokens are NOT protected — they're plain text and
- * get filtered like everything else.
- */
+// Filters text in segments around valid :code: emote tokens so emote codes
+// containing filtered substrings still render instead of becoming asterisks.
+// Unknown ":notanemote:" tokens are plain text and stay filterable.
 function filterTextPreservingEmotes(text) {
   if (!text.includes(":")) {
     return clientWordFilter.filterText(text);
@@ -112,10 +78,10 @@ function filterTextPreservingEmotes(text) {
   let match;
 
   while ((match = regex.exec(text)) !== null) {
-    if (!emoteList[match[1]]) continue; // not a real emote — leave it filterable
+    if (!emoteList[match[1]]) continue;
     foundEmote = true;
     result += clientWordFilter.filterText(text.slice(lastIndex, match.index));
-    result += match[0]; // the :code: token, untouched
+    result += match[0];
     lastIndex = match.index + match[0].length;
   }
 
@@ -131,7 +97,6 @@ function applyWordFilter(text) {
   if (!wordFilterEnabled || !clientWordFilter || !clientWordFilter.ready) {
     return text;
   }
-  // FIX #8: route ALL display filtering through the emote-protecting wrapper
   return filterTextPreservingEmotes(text);
 }
 
@@ -307,6 +272,8 @@ function updateMuteIcon() {
 
 // ── 5. CONTENTEDITABLE UTILITIES ────────────────────────────────────────────
 
+// Extracts plain text from the contenteditable, converting emote <img>
+// elements back to their :code: tokens and DIVs/BRs to newlines
 function getPlainText(element) {
   if (!element) return "";
   function extract(node) {
@@ -347,6 +314,8 @@ function placeCursorAtEnd(el) {
   } catch {}
 }
 
+// Returns the caret position as a plain-text offset (emotes count as the
+// length of their :code: token)
 function getCursorPosition(element) {
   if (!element) return 0;
   try {
@@ -381,6 +350,7 @@ function getCursorPosition(element) {
   }
 }
 
+// Restores the caret to a plain-text offset
 function setCursorPosition(element, position) {
   if (!element) return;
   try {
@@ -436,6 +406,7 @@ function setCursorPosition(element, position) {
   }
 }
 
+// Computes a minimal diff between two strings for the chat update protocol
 function getDiff(oldStr, newStr) {
   if (oldStr === newStr) return null;
   if (newStr.startsWith(oldStr))
@@ -475,6 +446,8 @@ async function loadEmotes() {
   }
 }
 
+// Converts :code: tokens in an element to emote <img> elements, preserving
+// the caret if the element is focused
 function replaceEmotes(element) {
   if (!element) return;
   const text = getPlainText(element);
@@ -509,16 +482,9 @@ function replaceEmotes(element) {
   }
 }
 
-/**
- * FIX #7: Find the ":prefix" the user is typing at the caret.
- *
- * Previously this returned null whenever the caret's startContainer was an
- * ELEMENT node — which is exactly where the caret lands right after an emote
- * <img> is inserted via insertHTML. That made autocomplete dead after the
- * first insertion. Now, when the caret sits between an element's children,
- * we step into the text node immediately BEFORE the caret (if there is one)
- * and continue the lookup from its end.
- */
+// Finds the ":prefix" being typed at the caret. Handles element-node caret
+// positions (where the caret lands right after an emote <img> insertion) by
+// stepping into the text node immediately before the caret.
 function findEmoteAtCursor() {
   if (!chatInput || document.activeElement !== chatInput) return null;
   const sel = window.getSelection();
@@ -528,14 +494,13 @@ function findEmoteAtCursor() {
   let node = range.startContainer;
   let offset = range.startOffset;
 
-  // FIX #7: caret on an element node → resolve to the text node before it
   if (node.nodeType === Node.ELEMENT_NODE) {
     const prev = node.childNodes[offset - 1];
     if (prev && prev.nodeType === Node.TEXT_NODE) {
       node = prev;
       offset = prev.textContent.length;
     } else {
-      return null; // caret sits after an <img>/<br> — nothing to complete
+      return null; // caret sits after an <img>/<br>, nothing to complete
     }
   }
 
@@ -675,14 +640,9 @@ function updateSelectedEmote() {
     });
 }
 
-/**
- * FIX #7: After inserting HTML, the caret usually ends up positioned between
- * the chat-input's child nodes (an ELEMENT-node selection). Some browsers then
- * keep it there even as the user types, which breaks findEmoteAtCursor().
- * This helper guarantees the caret lives inside a TEXT node: if it doesn't,
- * an empty text node is inserted at the caret and the selection moves into it.
- * Empty text nodes are invisible and ignored by getPlainText().
- */
+// Guarantees the caret lives inside a TEXT node after an insertHTML, so the
+// next ":" the user types is found by findEmoteAtCursor(). Empty text nodes
+// are invisible and ignored by getPlainText().
 function ensureCaretInTextNode() {
   try {
     const sel = window.getSelection();
@@ -697,7 +657,7 @@ function ensureCaretInTextNode() {
     sel.removeAllRanges();
     sel.addRange(range);
   } catch {
-    /* non-fatal — autocomplete will simply skip this position */
+    // non-fatal: autocomplete will simply skip this position
   }
 }
 
@@ -721,8 +681,6 @@ function insertEmote(emoteCode, emoteInfo) {
     } catch {}
   }
 
-  // FIX #7: make sure the caret lands in a text node after the image,
-  // so the NEXT ":" the user types is found by findEmoteAtCursor().
   ensureCaretInTextNode();
 
   hideAutocomplete();
@@ -734,6 +692,8 @@ function insertEmote(emoteCode, emoteInfo) {
   }, 10);
 }
 
+// Reads the input, reconstructs the raw text if the display is filtered,
+// and sends a diff to the server
 function updateSentMessage() {
   if (!chatInput) return;
   try {
@@ -762,6 +722,8 @@ function updateSentMessage() {
   }
 }
 
+// Maps an edit made on the FILTERED display back onto the RAW text by
+// finding the common prefix/suffix and splicing the inserted region
 function reconstructRawText(prevFiltered, currentDisplay, prevRaw) {
   if (prevFiltered === currentDisplay) return prevRaw;
 
@@ -789,6 +751,7 @@ function reconstructRawText(prevFiltered, currentDisplay, prevRaw) {
   return prevRaw.slice(0, start) + inserted + prevRaw.slice(prevEnd + 1);
 }
 
+// Re-renders the user's own input with the filter applied
 function applySelfFilter() {
   if (!chatInput) return;
 
@@ -813,23 +776,19 @@ function applySelfFilter() {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FIX #6: Emoticons button lives in a .room-type-group beside .room-type.
-// ─────────────────────────────────────────────────────────────────────────────
+// Builds the Emoticons button beside .room-type (wrapped in a group so the
+// room type display is never replaced) and the emote picker dropdown
 function createEmotesDropdown() {
-  // Guard: never create the button twice.
   if (document.getElementById("emotesButton")) return;
 
   const roomTypeEl = document.querySelector(".room-type");
   if (!roomTypeEl) return;
 
-  // Build the button
   const button = document.createElement("button");
   button.id = "emotesButton";
   button.className = "emotes-button";
   button.textContent = "Emoticons";
 
-  // Build the dropdown
   const dropdown = document.createElement("div");
   dropdown.id = "emotesDropdown";
   dropdown.className = "emotes-dropdown";
@@ -886,11 +845,10 @@ function createEmotesDropdown() {
       dropdown.style.display = "none";
   });
 
-  // Wrap .room-type and the button together so the navbar keeps 3 sections.
   const group = document.createElement("div");
   group.className = "room-type-group";
   roomTypeEl.parentNode.insertBefore(group, roomTypeEl);
-  group.appendChild(roomTypeEl); // moves the existing element into the group
+  group.appendChild(roomTypeEl);
   group.appendChild(button);
 
   document.body.appendChild(dropdown);
@@ -1052,7 +1010,7 @@ function initializeAppDirectory() {
   });
 }
 
-// ── TALKOBOARD INTEGRATION ──────────────────────────────────────────────────
+// ── 8. TALKOBOARD INTEGRATION ───────────────────────────────────────────────
 
 function openTalkoboard() {
   if (!currentRoomId || !currentUserId) {
@@ -1065,19 +1023,11 @@ function openTalkoboard() {
   talkoboardInstance.open();
 }
 
-// ── 8. VOTING ───────────────────────────────────────────────────────────────
+// ── 9. VOTING UI ────────────────────────────────────────────────────────────
 
-/**
- * FIX #9: Vote UI rendering, now with proper cleanup.
- *
- * - Stores the latest vote state in `currentVotes` so it can be re-rendered
- *   after DOM changes (user leaves, room update) without waiting for the
- *   server.
- * - When the room is below MIN_USERS_FOR_VOTING, all counters are REMOVED
- *   and all "voted" highlights cleared (the server ignores votes below the
- *   minimum anyway — the UI now agrees with it).
- * - A counter with 0 votes is removed instead of lingering as "👎 0".
- */
+// Renders vote counters and button states. Below MIN_USERS_FOR_VOTING all
+// counters are removed and highlights cleared (matching server behavior).
+// Counters at 0 votes are removed instead of lingering.
 function updateVotesUI(votes) {
   currentVotes = votes || {};
   const rows = document.querySelectorAll(".chat-row");
@@ -1146,8 +1096,9 @@ function adjustMuteButtonVisibility() {
   });
 }
 
-// ── 9. CHAT PROCESSING ──────────────────────────────────────────────────────
+// ── 10. CHAT PROCESSING ─────────────────────────────────────────────────────
 
+// Renders another user's message: filter, emotes, then link detection
 function renderOtherUserMessage(element, rawMessage) {
   if (!element) return;
   element.dataset.rawText = rawMessage;
@@ -1155,6 +1106,7 @@ function renderOtherUserMessage(element, rawMessage) {
   element.innerHTML = "";
   element.appendChild(document.createTextNode(display));
   replaceEmotes(element);
+  linkifyElement(element);
 }
 
 function updateCurrentMessages(messages) {
@@ -1243,12 +1195,183 @@ function displayChatMessage(data) {
   }
 }
 
-// ── 10. DEV MODE: Confetti & Color Picker ───────────────────────────────────
+// ── 11. LINK SAFETY ─────────────────────────────────────────────────────────
+// URLs in OTHER users' messages are wrapped in .chat-link spans, never real
+// anchors. Clicking one opens a warning popup explaining that strange links
+// can log your IP or scam you; navigation only happens after confirmation,
+// in a new tab with noopener/noreferrer. The user's own input is NOT
+// linkified because it is a contenteditable with delicate caret handling.
 
-/**
- * Lightweight confetti burst for dev user join.
- * Self-contained, does not depend on confetti.js.
- */
+const URL_PATTERN = new RegExp(
+  "(?:https?:\\/\\/[^\\s<>\"']+)" +
+    "|(?:www\\.[^\\s<>\"']+)" +
+    "|(?:\\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?" +
+    "(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*" +
+    "\\.(?:com|net|org|io|gg|co|me|app|dev|xyz|info|link|site|online|club|live|stream|fun|top|cc|tv|to|gl|ly|us|uk|ca|eu|de|fr|es|it|nl|jp|kr|in|br|au|ru|cn)" +
+    "(?:\\/[^\\s<>\"']*)?)",
+  "gi",
+);
+
+const TRAILING_PUNCTUATION = /[.,!?;:)\]}'"]+$/;
+
+let linkWarningOverlay = null;
+let pendingLinkUrl = "";
+
+// Walks the text nodes of a rendered message and wraps detected URLs in
+// .chat-link spans. Only TEXT nodes are visited, so emote <img> elements
+// are untouched. Runs after replaceEmotes().
+function linkifyElement(element) {
+  if (!element) return;
+
+  const walker = document.createTreeWalker(
+    element,
+    NodeFilter.SHOW_TEXT,
+    null,
+    false,
+  );
+  const candidates = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (node.parentNode?.closest?.(".chat-link")) continue;
+    URL_PATTERN.lastIndex = 0;
+    if (URL_PATTERN.test(node.textContent)) candidates.push(node);
+  }
+
+  for (const node of candidates) {
+    const text = node.textContent;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    let found = false;
+    let match;
+
+    URL_PATTERN.lastIndex = 0;
+    while ((match = URL_PATTERN.exec(text)) !== null) {
+      const url = match[0].replace(TRAILING_PUNCTUATION, "");
+      if (!url) continue;
+
+      frag.appendChild(document.createTextNode(text.slice(last, match.index)));
+
+      const span = document.createElement("span");
+      span.className = "chat-link";
+      span.dataset.url = url;
+      span.title = "Outside link. Click for safety info.";
+      span.textContent = url;
+      frag.appendChild(span);
+
+      last = match.index + url.length;
+      found = true;
+    }
+
+    if (!found) continue;
+    frag.appendChild(document.createTextNode(text.slice(last)));
+    node.parentNode.replaceChild(frag, node);
+  }
+}
+
+function createLinkWarningModal() {
+  linkWarningOverlay = document.createElement("div");
+  linkWarningOverlay.className = "link-warning-overlay";
+
+  const box = document.createElement("div");
+  box.className = "link-warning-box";
+
+  const icon = document.createElement("div");
+  icon.className = "link-warning-icon";
+  icon.textContent = "\u26A0\uFE0F";
+
+  const title = document.createElement("div");
+  title.className = "link-warning-title";
+  title.textContent = "You Are Leaving Talkomatic";
+
+  const body = document.createElement("div");
+  body.textContent =
+    "This link was posted by another user. The site behind it can log " +
+    "your IP address, estimate your location, or try to scam you. Never " +
+    "trust links from strangers. The safest option is to type the address " +
+    "yourself in a new tab, on your own.";
+
+  const urlBox = document.createElement("div");
+  urlBox.className = "link-warning-url";
+
+  const note = document.createElement("div");
+  note.className = "link-warning-note";
+  note.textContent =
+    "Talkomatic does not check or endorse outside links. Continue only if " +
+    "you know and trust this site.";
+
+  const buttons = document.createElement("div");
+  buttons.className = "link-warning-buttons";
+
+  const backBtn = document.createElement("button");
+  backBtn.className = "link-warning-back";
+  backBtn.textContent = "Go Back";
+  backBtn.addEventListener("click", hideLinkWarning);
+
+  const visitBtn = document.createElement("button");
+  visitBtn.className = "link-warning-visit";
+  visitBtn.textContent = "Visit At My Own Risk";
+  visitBtn.addEventListener("click", () => {
+    let target = pendingLinkUrl;
+    if (!target) return hideLinkWarning();
+    if (!/^https?:\/\//i.test(target)) target = "https://" + target;
+    window.open(target, "_blank", "noopener,noreferrer");
+    hideLinkWarning();
+  });
+
+  buttons.appendChild(backBtn);
+  buttons.appendChild(visitBtn);
+
+  box.appendChild(icon);
+  box.appendChild(title);
+  box.appendChild(body);
+  box.appendChild(urlBox);
+  box.appendChild(note);
+  box.appendChild(buttons);
+  linkWarningOverlay.appendChild(box);
+
+  linkWarningOverlay.addEventListener("click", (e) => {
+    if (e.target === linkWarningOverlay) hideLinkWarning();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && linkWarningOverlay.classList.contains("show")) {
+      hideLinkWarning();
+    }
+  });
+
+  document.body.appendChild(linkWarningOverlay);
+}
+
+function showLinkWarning(url) {
+  if (!url) return;
+  if (!linkWarningOverlay) createLinkWarningModal();
+  pendingLinkUrl = url;
+  linkWarningOverlay.querySelector(".link-warning-url").textContent = url;
+  linkWarningOverlay.classList.add("show");
+}
+
+function hideLinkWarning() {
+  if (!linkWarningOverlay) return;
+  linkWarningOverlay.classList.remove("show");
+  pendingLinkUrl = "";
+}
+
+// One delegated click listener on the static chat container, so it survives
+// every room update that rebuilds the rows inside it
+function initLinkSafety() {
+  const container = document.querySelector(".chat-container");
+  if (!container) return;
+  container.addEventListener("click", (e) => {
+    const link = e.target.closest?.(".chat-link");
+    if (!link) return;
+    e.preventDefault();
+    e.stopPropagation();
+    showLinkWarning(link.dataset.url);
+  });
+}
+
+// ── 12. DEV MODE: Confetti & Navbar Controls ────────────────────────────────
+
+// Self-contained confetti burst shown when a dev joins
 function triggerDevConfetti() {
   const container = document.createElement("div");
   container.style.cssText =
@@ -1303,16 +1426,12 @@ function triggerDevConfetti() {
   }
   frame = requestAnimationFrame(animate);
 
-  // Safety cleanup after 5 seconds
   setTimeout(() => {
     cancelAnimationFrame(frame);
     if (container.parentNode) container.remove();
   }, 5000);
 }
 
-/**
- * Create the dev color picker UI in the navbar (only for dev users).
- */
 function createDevColorPicker() {
   const navRight = document.querySelector(".navbar-right");
   if (!navRight || document.getElementById("devColorPicker")) return;
@@ -1328,7 +1447,6 @@ function createDevColorPicker() {
 
   const input = document.createElement("input");
   input.type = "color";
-  // Restore saved color or default to orange
   input.value = localStorage.getItem("talkomatic_devColor") || "#ff9800";
   input.title = "Change your text color";
   input.style.cssText =
@@ -1351,7 +1469,6 @@ function createDevColorPicker() {
     navRight.appendChild(wrapper);
   }
 
-  // Apply saved color on picker creation
   const savedColor = localStorage.getItem("talkomatic_devColor");
   if (savedColor) {
     socket.emit("dev set color", { color: savedColor });
@@ -1477,8 +1594,7 @@ function createDevHideToggle() {
   else navRight.appendChild(button);
 }
 
-// ── DEV MODE: Room context overlay ──────────────────────────────────────────
-
+// Dev-only overlay showing per-user context (IP) in the room
 function renderDevContext() {
   if (!currentUserIsDev) return;
   document.querySelectorAll(".chat-row").forEach((row) => {
@@ -1486,7 +1602,6 @@ function renderDevContext() {
     const info = row.querySelector(".user-info");
     if (!info) return;
 
-    // Remove existing
     const existing = info.querySelector(".dev-meta");
     if (existing) existing.remove();
 
@@ -1522,7 +1637,7 @@ socket.on("dev hide status", (data) => {
   renderDevContext();
 });
 
-// ── 11. ROOM UI ─────────────────────────────────────────────────────────────
+// ── 13. ROOM UI ─────────────────────────────────────────────────────────────
 
 function createUserRow(user, container) {
   const row = document.createElement("div");
@@ -1530,7 +1645,6 @@ function createUserRow(user, container) {
   if (user.id === currentUserId) row.classList.add("current-user");
   row.dataset.userId = user.id;
 
-  // DEV MODE: Add dev-user class for neon red border
   if (user.isDev && !user.isHidden) {
     row.classList.add("dev-user");
   }
@@ -1538,7 +1652,6 @@ function createUserRow(user, container) {
   const info = document.createElement("span");
   info.className = "user-info";
 
-  // DEV MODE: Add crown gif before username
   if (user.isDev && !user.isHidden) {
     const crown = document.createElement("img");
     crown.src = "images/icons/crown.gif";
@@ -1591,7 +1704,7 @@ function createUserRow(user, container) {
   info.appendChild(muteBtn);
   info.appendChild(voteBtn);
 
-  // DEV MODE: Force-kick button (only visible to dev, not on themselves)
+  // Dev force-kick button (visible to devs, not on themselves)
   if (currentUserIsDev && user.id !== currentUserId) {
     const kickBtn = document.createElement("button");
     kickBtn.className = "dev-kick-button";
@@ -1613,12 +1726,10 @@ function createUserRow(user, container) {
   const div = document.createElement("div");
   div.className = "chat-input";
 
-  // DEV MODE: Add fire text class for dev users
   if (user.isDev && !user.isHidden) {
     div.classList.add("dev-fire-text");
   }
 
-  // DEV MODE: Apply custom dev color if set
   if (user.devColor && user.isDev && !user.isHidden) {
     div.style.setProperty("color", user.devColor, "important");
   }
@@ -1628,7 +1739,6 @@ function createUserRow(user, container) {
     "width:100%;height:100%;background:black;color:orange;overflow-x:hidden;overflow-y:auto;padding:6px 8px;box-sizing:border-box;outline:none;white-space:pre-wrap;word-break:break-word;position:absolute;top:0;left:0;z-index:2";
   div.spellcheck = false;
 
-  // DEV MODE: Override color for dev users with custom color
   if (user.devColor && user.isDev && !user.isHidden) {
     div.style.color = user.devColor;
   }
@@ -1696,7 +1806,6 @@ function updateRoomUI(roomData) {
     }, 0);
 }
 
-// FIX #6 (support): human-readable room type labels
 function getRoomTypeDisplay(type) {
   switch (type) {
     case "public":
@@ -1719,8 +1828,7 @@ function updateRoomInfo(data) {
     nameEl.textContent = `Room: ${currentRoomName || data.roomName || data.roomId}`;
   if (idEl) idEl.textContent = `Room ID: ${data.roomId || currentRoomId}`;
 
-  // FIX #6: the .room-type element survives now, so keep it updated.
-  // "room joined" sends roomType, "room update" sends type.
+  // "room joined" sends roomType, "room update" sends type
   const roomType = data.roomType || data.type;
   if (typeEl && roomType) {
     typeEl.textContent = `${getRoomTypeDisplay(roomType)} Room`;
@@ -1729,7 +1837,7 @@ function updateRoomInfo(data) {
   if (!document.getElementById("emotesButton")) createEmotesDropdown();
 }
 
-// ── 12. LAYOUT ──────────────────────────────────────────────────────────────
+// ── 14. LAYOUT ──────────────────────────────────────────────────────────────
 
 let _stylesInjected = false;
 function injectStyles() {
@@ -1757,12 +1865,48 @@ function injectStyles() {
     .emote-item span { font-size:10px; color:white; margin-top:5px; text-align:center; word-break:break-all; }
     #filterToggle { font-size:16px; opacity:1; transition:opacity 0.2s ease; }
     #filterToggle.filter-off { opacity:0.4; }
+
+    /* Link safety */
+    .chat-link { color:#4da6ff; text-decoration:underline; cursor:pointer; word-break:break-all; }
+    .chat-link:hover { color:#80c1ff; }
+    .link-warning-overlay { display:none; position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.8); align-items:center; justify-content:center; }
+    .link-warning-overlay.show { display:flex; }
+    .link-warning-box { background:#1a1a1a; border:2px solid #ff9800; border-radius:12px; max-width:440px; width:90%; padding:24px 28px; text-align:center; color:#ccc; font-size:14px; line-height:1.6; box-shadow:0 12px 40px rgba(0,0,0,0.6); }
+    .link-warning-icon { font-size:40px; margin-bottom:6px; }
+    .link-warning-title { color:#ff9800; font-size:18px; font-weight:bold; margin:6px 0 12px; }
+    .link-warning-url { background:#000; border:1px solid #555; border-radius:6px; padding:8px 10px; margin:12px 0; color:#fff; word-break:break-all; font-family:monospace; font-size:13px; max-height:80px; overflow-y:auto; }
+    .link-warning-note { color:#888; font-size:12px; margin-top:10px; }
+    .link-warning-buttons { display:flex; gap:10px; justify-content:center; margin-top:18px; }
+    .link-warning-back { background:#444; color:#fff; border:none; padding:10px 18px; border-radius:6px; cursor:pointer; font-weight:bold; }
+    .link-warning-back:hover { background:#555; }
+    .link-warning-visit { background:#ff9800; color:#000; border:none; padding:10px 18px; border-radius:6px; cursor:pointer; font-weight:bold; }
+    .link-warning-visit:hover { background:#ffb74d; }
+
+    /* Mobile: prefer dynamic viewport units where supported */
+    @supports (height: 100dvh) {
+      html, body { height: 100dvh; }
+      .page-container { height: 100dvh; min-height: 100dvh; }
+    }
   `;
   document.head.appendChild(style);
 }
 
 function isMobile() {
   return window.innerWidth <= 768;
+}
+
+// On mobile, the collapsing URL bar and on-screen keyboard change
+// visualViewport.height without a matching change to window.innerHeight,
+// which left a dead white strip at the bottom. Desktop is unchanged since
+// the two values match there.
+function getAvailableViewportHeight() {
+  if (
+    window.visualViewport &&
+    typeof window.visualViewport.height === "number"
+  ) {
+    return window.visualViewport.height;
+  }
+  return window.innerHeight;
 }
 
 function adjustLayout() {
@@ -1780,7 +1924,8 @@ function adjustLayout() {
   const layout = isMobile() ? "horizontal" : currentRoomLayout;
   if (layout === "horizontal") {
     container.style.flexDirection = "column";
-    const avail = window.innerHeight - container.offsetTop;
+    const containerTop = container.getBoundingClientRect().top;
+    const avail = getAvailableViewportHeight() - containerTop;
     const gap = (rows.length - 1) * 10;
     const h = Math.floor((avail - gap) / rows.length);
     rows.forEach((row) => {
@@ -1816,21 +1961,25 @@ function adjustLayout() {
 function handleViewportChange() {
   const vp = document.querySelector("meta[name=viewport]");
   if (window.visualViewport) {
-    if (window.visualViewport.height < window.innerHeight) {
-      vp.setAttribute(
-        "content",
-        "width=device-width, initial-scale=1, maximum-scale=1",
-      );
+    // -1 tolerates sub-pixel rounding so the keyboard branch only fires
+    // when the keyboard or URL bar is genuinely eating space
+    if (window.visualViewport.height < window.innerHeight - 1) {
+      if (vp)
+        vp.setAttribute(
+          "content",
+          "width=device-width, initial-scale=1, maximum-scale=1",
+        );
       document.body.style.height = `${window.visualViewport.height}px`;
     } else {
-      vp.setAttribute("content", "width=device-width, initial-scale=1");
-      document.body.style.height = "100%";
+      if (vp) vp.setAttribute("content", "width=device-width, initial-scale=1");
+      // Clear the inline override so the dvh rule applies instead
+      document.body.style.height = "";
     }
   }
   adjustLayout();
 }
 
-// ── 13. INVITE LINKS & DATE/TIME ────────────────────────────────────────────
+// ── 15. INVITE LINKS & DATE/TIME ────────────────────────────────────────────
 
 function generateInviteLink() {
   const url = new URL(window.location.href);
@@ -1839,10 +1988,7 @@ function generateInviteLink() {
   return url.href;
 }
 
-/**
- * FIX #10: don't render an invite link before a room has actually been
- * joined — the page-load call used to produce a link with an empty roomId.
- */
+// No-op until a room has been joined, so an empty roomId never renders
 function updateInviteLink() {
   const el = document.getElementById("inviteLink");
   const copyBtn = document.getElementById("copyInviteLink");
@@ -1877,7 +2023,7 @@ function updateDateTime() {
   );
 }
 
-// ── 14. SOCKET EVENT HANDLERS ───────────────────────────────────────────────
+// ── 16. SOCKET EVENT HANDLERS ───────────────────────────────────────────────
 
 socket.on("chat update", displayChatMessage);
 
@@ -1909,7 +2055,6 @@ socket.on("room joined", (data) => {
   currentRoomLayout = data.layout || currentRoomLayout;
   currentRoomName = data.roomName;
 
-  // DEV MODE: Track if this user is a dev
   currentUserIsDev = !!data.isDev;
   currentUserIsHidden = !!data.isHidden;
   currentUserIsVanished = !!data.isVanished;
@@ -1921,19 +2066,16 @@ socket.on("room joined", (data) => {
   updateInviteLink();
   createEmotesDropdown();
 
-  // DEV MODE: Create color picker if dev
   if (currentUserIsDev) {
     createDevColorPicker();
     createDevHideToggle();
     createDevVanishToggle();
     updateDevHideButton(document.getElementById("devHideToggle"));
     if (!currentUserIsHidden) triggerDevConfetti();
-    // Re-apply saved dev color
     const savedColor = localStorage.getItem("talkomatic_devColor");
     if (savedColor) applyDevColor(savedColor);
   }
 
-  // DEV MODE: Render room context
   renderDevContext();
   updateDevHideButton(document.getElementById("devHideToggle"));
 
@@ -1963,10 +2105,10 @@ socket.on("user joined", (data) => {
       updateRoomInfo(data);
       playJoinSound();
 
-      // FIX #9: a new join can cross the voting threshold — re-render votes
+      // A new join can cross the voting threshold
       updateVotesUI(currentVotes);
 
-      // DEV MODE: Trigger confetti only on the dev's own screen
+      // Confetti only on the dev's own screen
       if (data.isDev && !data.isHidden && currentUserIsDev) {
         triggerDevConfetti();
       }
@@ -1983,10 +2125,7 @@ socket.on("user left", (userId) => {
       adjustLayout();
       playLeaveSound();
 
-      // FIX #9: dropping below the voting minimum (or losing a voter) must
-      // clean up counters, buttons, and highlights immediately — the server
-      // will also send "update votes", but the UI shouldn't show stale state
-      // in the meantime.
+      // Dropping below the voting minimum must clean up vote UI immediately
       adjustVoteButtonVisibility();
       updateVotesUI(currentVotes);
     }
@@ -2035,7 +2174,7 @@ socket.on("room update", (roomData) => {
       r.remove();
   });
 
-  // DEV MODE: Update dev-user class and devColor on existing rows
+  // Refresh dev appearance on existing rows
   if (roomData.users) {
     roomData.users.forEach((u) => {
       const row = document.querySelector(`.chat-row[data-user-id="${u.id}"]`);
@@ -2074,12 +2213,11 @@ socket.on("room update", (roomData) => {
     }
   });
 
-  // FIX #9: always re-render the vote UI after the row set may have changed
+  // Re-render vote UI after the row set may have changed
   adjustVoteButtonVisibility();
   updateVotesUI(roomData.votes || currentVotes);
   adjustLayout();
 
-  // DEV MODE: Re-render room context
   renderDevContext();
 });
 
@@ -2121,20 +2259,18 @@ socket.on("error", (error) => {
   );
 });
 
-// DEV MODE: Force-kick confirmation
 socket.on("dev kick success", (data) => {
   console.log(`[DEV] Kicked "${data.targetUsername}" from "${data.roomName}"`);
 });
 
-// ── 15. INITIALIZATION ──────────────────────────────────────────────────────
+// ── 17. INITIALIZATION ──────────────────────────────────────────────────────
 
 function joinRoom(roomId, accessCode = null) {
   socket.emit("join room", { roomId, accessCode });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FIX #4: Scrub ?accessCode= from the URL and browser history.
-// ─────────────────────────────────────────────────────────────────────────────
+// Reads roomId from the URL and scrubs any legacy ?accessCode= parameter
+// from the address bar and browser history
 function readAndScrubUrlParams() {
   const params = new URLSearchParams(window.location.search);
   const roomId = params.get("roomId");
@@ -2147,7 +2283,7 @@ function readAndScrubUrlParams() {
     try {
       history.replaceState(null, "", cleanUrl);
     } catch {
-      // history API unavailable — non-fatal, join still works
+      // history API unavailable, join still works
     }
   }
 
@@ -2164,7 +2300,6 @@ async function initRoom() {
   wordFilterEnabled = saved !== "false";
   updateFilterToggleUI();
 
-  // FIX #4: read params once, scrub the access code from the URL
   const { roomId, accessCode } = readAndScrubUrlParams();
 
   if (roomId) {
@@ -2182,7 +2317,7 @@ window.addEventListener("load", () => {
   initRoom();
   updateDateTime();
   adjustLayout();
-  updateInviteLink(); // FIX #10: now a no-op until a room is joined
+  updateInviteLink();
   initializeAppDirectory();
 
   document
@@ -2201,9 +2336,12 @@ window.addEventListener("load", () => {
   const filterBtn = document.getElementById("filterToggle");
   if (filterBtn) filterBtn.addEventListener("click", toggleWordFilter);
 
-  // Viewport
+  // Viewport: immediate handler so the mobile keyboard reflows without lag
   if (window.visualViewport)
     window.visualViewport.addEventListener("resize", handleViewportChange);
+
+  // Link safety (delegated click handler + warning popup)
+  initLinkSafety();
 
   // Ensure autocomplete element exists
   if (!document.getElementById("emoteAutocomplete")) {
@@ -2221,6 +2359,16 @@ document.querySelector(".leave-room").addEventListener("click", () => {
   window.location.href = "/index.html";
 });
 
+// Window resize runs ONE debounced layout pass (the visualViewport listener
+// above stays immediate for keyboard responsiveness)
+let viewportDebounceTimer = null;
+function debouncedViewportChange() {
+  if (viewportDebounceTimer) clearTimeout(viewportDebounceTimer);
+  viewportDebounceTimer = setTimeout(() => {
+    viewportDebounceTimer = null;
+    handleViewportChange();
+  }, 100);
+}
+
 setInterval(updateDateTime, 1000);
-window.addEventListener("resize", adjustLayout);
-window.addEventListener("resize", handleViewportChange);
+window.addEventListener("resize", debouncedViewportChange);

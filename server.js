@@ -1,7 +1,5 @@
-// ╔═══════════════════════════════════════════════════════════════════════════╗
-// ║  server.js (root - entry point)                                           ║
-// ║  Express, Socket.IO, API routes, startup                                  ║
-// ╚═══════════════════════════════════════════════════════════════════════════╝
+// server.js (root entry point)
+// Express, Socket.IO, API routes, startup.
 
 require("dotenv").config();
 const express = require("express");
@@ -73,12 +71,13 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization", "x-api-key"],
 };
 
-// ── Middleware (order matters!) ──────────────────────────────────────────────
+// ── Middleware (order matters) ──────────────────────────────────────────────
 
 app.use(express.json({ limit: "100kb" }));
 app.use(cors(corsOptions));
 app.use(cookieParser());
 
+// Per-request CSP nonce for inline scripts
 app.use((req, res, next) => {
   res.locals.nonce = crypto.randomBytes(16).toString("base64");
   next();
@@ -141,7 +140,7 @@ app.use(
 app.use(xss());
 app.use(hpp());
 
-// Rate limiter — skip static file requests so they don't eat the limit
+// Rate limiter, skips static assets and socket.io so they don't eat the limit
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -165,8 +164,8 @@ app.use(
 
 // ── Session ─────────────────────────────────────────────────────────────────
 // SESSION_SECRET must be set in .env for sessions to survive restarts.
-// Without it a random secret is generated on boot, which invalidates every
-// existing session (all users get signed out and lose validated access codes).
+// Without it a random secret is generated on boot, which signs out every
+// user and invalidates all validated room access codes.
 
 const SESSION_SECRET = process.env.SESSION_SECRET;
 
@@ -197,6 +196,7 @@ const sessionMiddleware = session({
   },
 });
 
+// Optionally auto-assigns IP-based guest identities to browser requests
 function enhancedSessionMiddleware(req, res, next) {
   sessionMiddleware(req, res, () => {
     if (CONFIG.FEATURES.ENABLE_IP_BASED_USERS && !req.session.username) {
@@ -242,7 +242,8 @@ state.io = io;
 
 io.use(sharedsession(sessionMiddleware, { autoSave: true }));
 
-// Socket.IO security middleware
+// Socket.IO security middleware: IP blocks, dev key validation, antibot,
+// connection caps, and per-socket event rate limiting
 io.use((socket, next) => {
   try {
     const clientIp = getClientIP({
@@ -337,7 +338,7 @@ io.use((socket, next) => {
   }
 });
 
-// ── Static Files (AFTER session so HTML pages get session cookies) ───────────
+// ── Static Files (after session so HTML pages get session cookies) ──────────
 
 app.use(
   express.static(path.join(__dirname, "public"), {
@@ -402,6 +403,7 @@ app.get(`${API}/me`, (req, res) => {
   else res.json({ isSignedIn: false, isBot: !!req.isBot });
 });
 
+// Emoji list, cached in memory for an hour
 const emojiCache = { data: null, ts: 0 };
 app.get("/js/emojiList.json", async (req, res) => {
   try {
@@ -508,8 +510,17 @@ app.post(`${API}/rooms`, apiAuth, async (req, res) => {
         "Creating rooms too fast",
         429,
       );
-    const { enforceRoomNameLimit } = require("./server/state");
-    let name = enforceRoomNameLimit(data.name);
+
+    // Room names get the same zalgo/RTL sanitization as the socket path
+    const { enforceRoomNameLimit, sanitizeName } = require("./server/state");
+    let name = enforceRoomNameLimit(sanitizeName(data.name));
+    if (!name)
+      return sendErrorResponse(
+        res,
+        ERROR_CODES.VALIDATION_ERROR,
+        "Room name contains no valid characters",
+        400,
+      );
     if (rooms.roomNameExists(name))
       return sendErrorResponse(
         res,
@@ -624,7 +635,7 @@ async function start() {
   });
 }
 
-// Graceful shutdown
+// Graceful shutdown: save rooms before exit
 async function shutdown(signal) {
   console.log(`${signal} received. Saving rooms and shutting down...`);
   try {

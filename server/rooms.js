@@ -1,34 +1,7 @@
-// ╔═══════════════════════════════════════════════════════════════════════════╗
-// ║  server/rooms.js                                                          ║
-// ║  Room management, chat processing, AFK, sockets, cleanup                  ║
-// ║                                                                           ║
-// ║  Anti-spam systems:                                                       ║
-// ║  • Pressure-based cleanup: solo rooms die faster as total count rises     ║
-// ║  • Smart room limit: only "healthy" rooms count toward creation cap       ║
-// ║  • Per-IP room creation limits and rate limiting                          ║
-// ║  • AFK resets only on actual typing (chat update), not any event          ║
-// ║  • Lobby broadcasts include activity metadata for client-side sorting     ║
-// ║                                                                           ║
-// ║  Chat sanitization:                                                       ║
-// ║  • All message buffers pass through sanitizeMessage() (state.js), which   ║
-// ║    strips direction overrides, clamps combining-mark spam, and enforces   ║
-// ║    the server message length limit                                        ║
-// ║                                                                           ║
-// ║  Voting:                                                                  ║
-// ║  • Votes are only accepted in rooms with MIN_USERS_FOR_VOTING or more     ║
-// ║                                                                           ║
-// ║  Dev mode:                                                                ║
-// ║  • isDev flag included in all user broadcasts                             ║
-// ║  • Dev users bypass AFK timers                                            ║
-// ║  • Dev force-kick: remove any user from any room                          ║
-// ║  • Vanish: dev is invisible to non-dev users (not in user list)           ║
-// ║  • Hide: dev flair (crown, glow, color) stripped, appears as normal       ║
-// ║                                                                           ║
-// ║  Talkoboard v2:                                                           ║
-// ║  • Stroke lifecycle protocol (start/move/end)                             ║
-// ║  • Server-side stroke storage per room (ephemeral, not saved to disk)     ║
-// ║  • Full board state sync on open                                          ║
-// ╚═══════════════════════════════════════════════════════════════════════════╝
+// server/rooms.js
+// Room management, chat processing, AFK handling, socket events, cleanup.
+// Includes anti-spam (pressure cleanup, per-IP limits), vote-kick, dev mode
+// (force-kick, vanish, hide, color), and Talkoboard stroke storage.
 
 const path = require("path");
 const fs = require("fs").promises;
@@ -41,6 +14,7 @@ const {
   normalize,
   promisifySessionSave,
   sanitizeMessage,
+  sanitizeName,
   enforceCharacterLimit,
   enforceUsernameLimit,
   enforceLocationLimit,
@@ -55,7 +29,7 @@ const {
   validateObject,
 } = require("./security");
 
-// Helper to get io — always access through state so it's available after init
+// io is accessed through state so it is available after server.js init
 function io() {
   return state.io;
 }
@@ -134,6 +108,7 @@ function getRoomCountByIP(clientIp) {
 }
 
 // ── Anti-Spam: Pressure System ──────────────────────────────────────────────
+// Solo rooms get a shorter time-to-live as the total room count rises.
 
 function getSoloRoomTTL() {
   const totalRooms = state.rooms.size;
@@ -330,14 +305,9 @@ function getCurrentMessages(usersInRoom) {
   return msgs;
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// Dev mode: visibility helpers for vanish / hide
-// ═════════════════════════════════════════════════════════════════════════════
+// ── Dev Mode: Visibility Helpers (vanish / hide) ────────────────────────────
 
-/**
- * Count users that occupy a "real" slot (non-vanished).
- * Vanished devs don't count toward room capacity.
- */
+// Vanished devs do not count toward room capacity
 function getJoinableUserCount(room) {
   return (room?.users || []).filter((u) => !(u.isDev && u.isVanished)).length;
 }
@@ -346,12 +316,8 @@ function getRecipientUserId(socket) {
   return socket?.handshake?.session?.userId || null;
 }
 
-/**
- * Can the recipient socket see a given user?
- * - Non-dev users are always visible.
- * - Vanished devs are only visible to themselves and other devs.
- * - Hidden devs are visible to everyone but without flair.
- */
+// Vanished devs are only visible to themselves and other devs.
+// Hidden devs are visible to everyone but without flair.
 function canRecipientSeeDevUser(recipientSocket, user) {
   if (!user) return false;
   if (!user.isDev) return true;
@@ -362,11 +328,8 @@ function canRecipientSeeDevUser(recipientSocket, user) {
   return false;
 }
 
-/**
- * Format a single user object for a specific recipient socket.
- * Returns null if the recipient cannot see this user.
- * If user.isHidden, strips all dev flair.
- */
+// Formats one user for one recipient. Returns null if not visible.
+// Hidden devs are stripped of all dev flair.
 function formatUserForSocket(user, recipientSocket) {
   if (!user) return null;
 
@@ -391,18 +354,13 @@ function formatUserForSocket(user, recipientSocket) {
   return formatted;
 }
 
-/**
- * Filter + format a user array for a specific recipient socket.
- */
 function filterUsersForSocket(users, recipientSocket) {
   return (users || [])
     .map((user) => formatUserForSocket(user, recipientSocket))
     .filter(Boolean);
 }
 
-/**
- * Filter votes so vanished dev voters/targets are invisible to non-devs.
- */
+// Votes involving invisible (vanished) users are hidden from non-devs
 function filterVotesForSocket(room, recipientSocket) {
   const votes = room?.votes || {};
   const roomUsers = room?.users || [];
@@ -420,9 +378,6 @@ function filterVotesForSocket(room, recipientSocket) {
   return filtered;
 }
 
-/**
- * Filter current messages so vanished dev messages are invisible to non-devs.
- */
 function filterCurrentMessagesForSocket(room, recipientSocket) {
   const messages = {};
   for (const user of room?.users || []) {
@@ -432,9 +387,7 @@ function filterCurrentMessagesForSocket(room, recipientSocket) {
   return messages;
 }
 
-/**
- * Format a room for lobby display, tailored to a specific recipient socket.
- */
+// Lobby-list view of a room, tailored to one recipient
 function formatRoomForSocket(room, recipientSocket) {
   const users = filterUsersForSocket(room.users || [], recipientSocket);
   const joinableCount = getJoinableUserCount(room);
@@ -452,9 +405,7 @@ function formatRoomForSocket(room, recipientSocket) {
   };
 }
 
-/**
- * Format full room state for in-room display, tailored to a specific recipient.
- */
+// Full in-room state, tailored to one recipient
 function formatRoomStateForSocket(room, recipientSocket) {
   const users = filterUsersForSocket(room.users || [], recipientSocket);
   const joinableCount = getJoinableUserCount(room);
@@ -472,9 +423,7 @@ function formatRoomStateForSocket(room, recipientSocket) {
   };
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// Per-socket emission helpers (visibility-aware)
-// ═════════════════════════════════════════════════════════════════════════════
+// ── Per-Socket Emission Helpers (visibility-aware) ──────────────────────────
 
 function emitRoomSnapshot(roomId) {
   if (!io()) return;
@@ -521,7 +470,7 @@ function emitRoomUserJoined(room, joinedUser) {
   if (!io()) return;
   for (const [, recipient] of io().sockets.sockets) {
     if (!recipient.connected || recipient.roomId !== room.id) continue;
-    // Don't re-send to the user who just joined (they get "room joined")
+    // The joining user gets "room joined" instead
     const recipientUserId = getRecipientUserId(recipient);
     if (recipientUserId === joinedUser.id) continue;
     if (!canRecipientSeeDevUser(recipient, joinedUser)) continue;
@@ -569,7 +518,7 @@ function emitRoomChatUpdate(socket, payload) {
   }
 }
 
-// ── Dev mode: room context for dev users ────────────────────────────────────
+// ── Dev Mode: Room / Lobby Context ──────────────────────────────────────────
 
 function getDevRoomContext(roomId) {
   if (!io()) return {};
@@ -596,6 +545,7 @@ function sendDevRoomContext(roomId) {
   }
 }
 
+// Devs idle in the lobby receive semi-private access codes
 function sendDevLobbyContext() {
   if (!io()) return;
   const devSockets = [];
@@ -773,8 +723,8 @@ function clearAFKTimers(userId) {
 function setupAFKTimers(socket, userId) {
   clearAFKTimers(userId);
   if (!socket || !socket.roomId) return;
-  if (socket.isDev) return;
-  if (socket.boardOpen) return;
+  if (socket.isDev) return; // devs bypass AFK
+  if (socket.boardOpen) return; // drawing on the board counts as active
 
   state.afkWarningTimers.set(
     userId,
@@ -823,6 +773,8 @@ function checkChatCircuit() {
   return !cs.isOpen;
 }
 
+// Applies queued diffs to the user's message buffer in rate-limited batches,
+// sanitizes the result, and broadcasts a full-replace to the room.
 async function processPendingChatUpdates(userId, socket) {
   try {
     if (!state.pendingChatUpdates.has(userId) || !socket || !socket.roomId)
@@ -1077,6 +1029,8 @@ function joinRoom(socket, roomId, userId) {
     setupAFKTimers(socket, userId);
     updateRoomSoloTracking(roomId);
 
+    // Session save must complete before emitting join success, so the
+    // room page can rejoin via the session without an access code in the URL
     if (socket.handshake.session) {
       socket.handshake.session.currentRoom = roomId;
       socket.handshake.session.save((err) => {
@@ -1116,7 +1070,7 @@ function emitJoinSuccess(socket, room, userId, username, location) {
     isVanished: !!socket.isVanished,
   };
 
-  // Send full room state to the joining user (they always see themselves)
+  // The joining user always sees themselves in full
   socket.emit("room joined", {
     roomId: room.id,
     userId,
@@ -1135,7 +1089,6 @@ function emitJoinSuccess(socket, room, userId, username, location) {
 
   socket.leave("lobby");
 
-  // Notify others in the room (visibility-aware)
   emitRoomUserJoined(room, joinedUser);
   updateRoom(room.id);
   updateLobby();
@@ -1173,6 +1126,8 @@ function registerSocketHandlers() {
   io().on("connection", (socket) => {
     const clientIp = socket.clientIp || socket.handshake.address;
 
+    // Wraps handlers so one error cannot crash the process; disconnects
+    // sockets that error repeatedly
     function safe(fn) {
       return async (...args) => {
         try {
@@ -1270,8 +1225,25 @@ function registerSocketHandlers() {
         });
         if (valErr) return socket.emit("validation_error", valErr);
 
-        let username = enforceUsernameLimit(data.username);
-        let location = enforceLocationLimit(data.location || "On The Web");
+        // Identity fields are sanitized (zalgo/RTL stripped) before the
+        // word filter runs, so obfuscated slurs are cleaned then caught
+        let username = enforceUsernameLimit(sanitizeName(data.username));
+        let location = enforceLocationLimit(
+          sanitizeName(data.location || "On The Web"),
+        );
+
+        // Sanitization can empty a name made entirely of stripped
+        // characters; reject instead of admitting a blank user
+        if (!username) {
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.VALIDATION_ERROR,
+              "Username contains no valid characters.",
+            ),
+          );
+        }
+        if (!location) location = "On The Web";
 
         if (CONFIG.FEATURES.ENABLE_WORD_FILTER) {
           if (wordFilter.checkText(username).hasOffensiveWord)
@@ -1328,9 +1300,7 @@ function registerSocketHandlers() {
       }),
     );
 
-    // ═════════════════════════════════════════════════════════════════════
-    // Talkoboard v2 — stroke lifecycle + state sync
-    // ═════════════════════════════════════════════════════════════════════
+    // ── Talkoboard: stroke lifecycle + state sync ───────────────────────
 
     socket.on(
       "board open",
@@ -1499,10 +1469,7 @@ function registerSocketHandlers() {
       }),
     );
 
-    // ═════════════════════════════════════════════════════════════════════
-    // Room management
-    // ═════════════════════════════════════════════════════════════════════
-
+    // ── Create Room ─────────────────────────────────────────────────────
     socket.on(
       "create room",
       safe(async (data) => {
@@ -1617,7 +1584,17 @@ function registerSocketHandlers() {
           );
         }
 
-        let roomName = enforceRoomNameLimit(data.name);
+        // Room names get the same zalgo/RTL sanitization as usernames
+        let roomName = enforceRoomNameLimit(sanitizeName(data.name));
+        if (!roomName) {
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.VALIDATION_ERROR,
+              "Room name contains no valid characters.",
+            ),
+          );
+        }
         if (roomNameExists(roomName))
           return socket.emit(
             "error",
@@ -1669,6 +1646,8 @@ function registerSocketHandlers() {
           createdAt: now,
         });
 
+        // Creator's access code is validated into the session up front,
+        // so the room page can join without the code in the URL
         if (data.type === "semi-private" && data.accessCode) {
           if (!socket.handshake.session.validatedRooms)
             socket.handshake.session.validatedRooms = {};
@@ -1690,6 +1669,7 @@ function registerSocketHandlers() {
       }),
     );
 
+    // ── Join Room ───────────────────────────────────────────────────────
     socket.on(
       "join room",
       safe(async (data) => {
@@ -1738,6 +1718,7 @@ function registerSocketHandlers() {
           }
         }
 
+        // Semi-private rooms: session-validated codes skip the prompt
         if (room.type === "semi-private") {
           const validated =
             socket.handshake.session.validatedRooms?.[data.roomId];
@@ -1777,6 +1758,7 @@ function registerSocketHandlers() {
       }),
     );
 
+    // ── Vote Kick ───────────────────────────────────────────────────────
     socket.on(
       "vote",
       safe(async (data) => {
@@ -1791,6 +1773,7 @@ function registerSocketHandlers() {
           userId === data.targetUserId
         )
           return;
+        // Votes are only accepted at or above the minimum room size
         if (room.users.length < CONFIG.LIMITS.MIN_USERS_FOR_VOTING) return;
         if (!room.users.find((u) => u.id === data.targetUserId)) return;
         if (!room.votes) room.votes = {};
@@ -1823,6 +1806,7 @@ function registerSocketHandlers() {
       }),
     );
 
+    // ── Chat Updates (diff-based, batched) ──────────────────────────────
     socket.on(
       "chat update",
       safe(async (data) => {
@@ -1951,7 +1935,7 @@ function registerSocketHandlers() {
       }),
     );
 
-    // ── Dev mode: force-kick ────────────────────────────────────────────
+    // ── Dev Mode: Force-Kick ────────────────────────────────────────────
     socket.on(
       "dev force kick",
       safe(async (data) => {
@@ -2024,7 +2008,7 @@ function registerSocketHandlers() {
       }),
     );
 
-    // ── Dev mode: set username color ────────────────────────────────────
+    // ── Dev Mode: Set Username Color ────────────────────────────────────
     socket.on(
       "dev set color",
       safe(async (data) => {
@@ -2047,7 +2031,7 @@ function registerSocketHandlers() {
       }),
     );
 
-    // ── Dev mode: vanish (invisible to non-devs) ───────────────────────
+    // ── Dev Mode: Vanish (invisible to non-devs) ────────────────────────
     socket.on(
       "dev set vanish",
       safe(async (data) => {
@@ -2072,7 +2056,7 @@ function registerSocketHandlers() {
       }),
     );
 
-    // ── Dev mode: hide flair (appear as normal user) ────────────────────
+    // ── Dev Mode: Hide Flair (appear as normal user) ────────────────────
     socket.on(
       "dev set hide",
       safe(async (data) => {
@@ -2211,7 +2195,7 @@ function startCleanupIntervals() {
     if (cleaned > 0) console.log(`Cleaned ${cleaned} inactive IP users`);
   }, CONFIG.LIMITS.IP_USER_CLEANUP_INTERVAL);
 
-  // Resource cleanup (5 min)
+  // Resource cleanup (5 min): drop buffers/timers for users no longer in rooms
   setInterval(() => {
     const active = new Set();
     for (const [, room] of state.rooms) {
@@ -2295,7 +2279,7 @@ function startCleanupIntervals() {
     }
   }, 600000);
 
-  // Ghost user cleanup (1 min)
+  // Ghost user cleanup (1 min): removes room users with no live socket
   setInterval(() => {
     const activeIds = new Set();
     for (const [, s] of io().sockets.sockets) {
@@ -2348,7 +2332,7 @@ function startCleanupIntervals() {
     }
   }, 60000);
 
-  // Server monitor (2 min)
+  // Server monitor (2 min): status log and memory pressure relief
   setInterval(() => {
     const mem = process.memoryUsage();
     const stats = getRoomStatistics();

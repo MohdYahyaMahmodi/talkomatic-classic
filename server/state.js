@@ -1,7 +1,5 @@
-// ╔═══════════════════════════════════════════════════════════════════════════╗
-// ║  server/state.js                                                          ║
-// ║  Shared config, constants, state, and utility functions                   ║
-// ╚═══════════════════════════════════════════════════════════════════════════╝
+// server/state.js
+// Shared config, constants, mutable state, and utility functions.
 
 const path = require("path");
 const fs = require("fs").promises;
@@ -83,7 +81,7 @@ const CONFIG = {
   },
   VERSIONS: {
     API: "v1",
-    SERVER: "2.2.0",
+    SERVER: "2.3.0",
   },
 
   // Dev mode: SHA-256 hash of the secret dev key, set in .env as DEV_KEY_HASH.
@@ -241,13 +239,10 @@ function normalize(str) {
   return normalized;
 }
 
-// ── Message Sanitization ────────────────────────────────────────────────────
-// Single authoritative pass applied to every chat message buffer:
-//   1. Strips the right-to-left override character (U+202E) and carriage returns.
-//   2. Clamps runs of combining diacritical marks (zalgo text) to a safe maximum
-//      per base character. Targets the generic combining blocks used for zalgo
-//      while leaving language-specific marks (Arabic, Hebrew, Thai) untouched.
-//   3. Enforces the server message length limit.
+// ── Text Sanitization ───────────────────────────────────────────────────────
+// COMBINING_MARK_RUN matches runs of combining diacritical marks (zalgo text)
+// longer than the allowed maximum. Targets the generic combining blocks while
+// leaving language-specific marks (Arabic, Hebrew, Thai) untouched.
 
 const COMBINING_MARK_RUN = new RegExp(
   "[\\u0300-\\u036f" + // Combining Diacritical Marks
@@ -260,6 +255,8 @@ const COMBINING_MARK_RUN = new RegExp(
   "g",
 );
 
+// Sanitizes a chat message buffer: strips the right-to-left override and
+// carriage returns, clamps zalgo runs, enforces the message length limit.
 function sanitizeMessage(msg) {
   if (typeof msg !== "string") return "";
 
@@ -277,6 +274,31 @@ function sanitizeMessage(msg) {
 
   return clean.slice(0, CONFIG.LIMITS.MAX_MESSAGE_LENGTH);
 }
+
+// Sanitizes identity fields (usernames, locations, room names). These render
+// in every user-info row, the lobby list, and join notifications, so they get
+// the same zalgo/RTL protection as chat messages. Also strips newlines and
+// tabs, which have no place in a name. Length limits are applied separately
+// by the enforce* helpers.
+function sanitizeName(value) {
+  if (typeof value !== "string") return "";
+
+  let clean = "";
+  for (const char of value) {
+    const code = char.codePointAt(0);
+    if (code === 0x202e) continue; // right-to-left override
+    if (char === "\r" || char === "\n" || char === "\t") continue;
+    clean += char;
+  }
+
+  clean = clean.replace(COMBINING_MARK_RUN, (run) =>
+    run.slice(0, CONFIG.LIMITS.MAX_COMBINING_MARKS),
+  );
+
+  return clean.trim();
+}
+
+// ── Length Enforcement ──────────────────────────────────────────────────────
 
 function enforceCharacterLimit(msg) {
   return typeof msg === "string"
@@ -316,6 +338,7 @@ module.exports = {
   sendErrorResponse,
   normalize,
   sanitizeMessage,
+  sanitizeName,
   enforceCharacterLimit,
   enforceUsernameLimit,
   enforceLocationLimit,
