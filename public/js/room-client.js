@@ -1,6 +1,13 @@
 // ╔═══════════════════════════════════════════════════════════════════════════╗
-// ║  room-client.js — Talkomatic Chat Room Client                           ║
-// ║  Organized into sections. Word filter is client-side & per-user.        ║
+// ║  room-client.js — Talkomatic Chat Room Client                            ║
+// ║                                                                           ║
+// ║  PATCHED (June 2026 anniversary batch):                                   ║
+// ║  • FIX #4: Legacy ?accessCode= URLs are scrubbed from the address bar     ║
+// ║            and browser history on load (history.replaceState). The param  ║
+// ║            is still honored once as a join fallback for old links.        ║
+// ║  • FIX #6: Emoticons button no longer replaces the .room-type element.    ║
+// ║            Both now live side-by-side inside a .room-type-group wrapper,  ║
+// ║            and updateRoomInfo() keeps the room type label up to date.     ║
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
 // ── 1. CONSTANTS & STATE ────────────────────────────────────────────────────
@@ -685,19 +692,38 @@ function applySelfFilter() {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FIX #6: Emoticons button no longer replaces the .room-type element.
+//
+// Before: roomTypeEl.parentNode.replaceChild(button, roomTypeEl) destroyed the
+// room type display permanently. Users could no longer see whether they were
+// in a public / semi-private / private room.
+//
+// After: the .room-type element is wrapped (together with the new button) in
+// a .room-type-group flex container, so both render side-by-side. The wrapper
+// also preserves .second-navbar's three-section layout (group | name | id).
+// ─────────────────────────────────────────────────────────────────────────────
 function createEmotesDropdown() {
+  // Guard: never create the button twice.
+  if (document.getElementById("emotesButton")) return;
+
   const roomTypeEl = document.querySelector(".room-type");
   if (!roomTypeEl) return;
+
+  // Build the button
   const button = document.createElement("button");
   button.id = "emotesButton";
   button.className = "emotes-button";
   button.textContent = "Emoticons";
+
+  // Build the dropdown
   const dropdown = document.createElement("div");
   dropdown.id = "emotesDropdown";
   dropdown.className = "emotes-dropdown";
   dropdown.style.display = "none";
   dropdown.style.position = "absolute";
   dropdown.style.zIndex = "10000";
+
   Object.entries(emoteList).forEach(([code, url]) => {
     const item = document.createElement("div");
     item.className = "emote-item";
@@ -721,6 +747,7 @@ function createEmotesDropdown() {
     });
     dropdown.appendChild(item);
   });
+
   button.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -736,6 +763,7 @@ function createEmotesDropdown() {
       if (chatInput) setTimeout(() => chatInput.focus(), 0);
     }
   });
+
   document.addEventListener("click", (e) => {
     if (
       dropdown.style.display === "flex" &&
@@ -744,7 +772,14 @@ function createEmotesDropdown() {
     )
       dropdown.style.display = "none";
   });
-  roomTypeEl.parentNode.replaceChild(button, roomTypeEl);
+
+  // Wrap .room-type and the button together so the navbar keeps 3 sections.
+  const group = document.createElement("div");
+  group.className = "room-type-group";
+  roomTypeEl.parentNode.insertBefore(group, roomTypeEl);
+  group.appendChild(roomTypeEl); // moves the existing element into the group
+  group.appendChild(button);
+
   document.body.appendChild(dropdown);
 }
 
@@ -916,6 +951,7 @@ function openTalkoboard() {
   }
   talkoboardInstance.open();
 }
+
 // ── 8. VOTING ───────────────────────────────────────────────────────────────
 
 function updateVotesUI(votes) {
@@ -1182,9 +1218,7 @@ function createDevColorPicker() {
 }
 
 function getCurrentUserRow() {
-  return document.querySelector(
-    `.chat-row[data-user-id="${currentUserId}"]`,
-  );
+  return document.querySelector(`.chat-row[data-user-id="${currentUserId}"]`);
 }
 
 function applyDevAppearanceToRow(row, user) {
@@ -1240,11 +1274,6 @@ function refreshCurrentUserAppearance() {
 function applyDevColor(color) {
   refreshCurrentUserAppearance();
 }
-
-/**
- * Apply dev color to own chat input. Called from color picker
- * and after room updates to ensure color sticks.
- */
 
 function updateDevVanishButton(button) {
   if (!button) return;
@@ -1525,12 +1554,36 @@ function updateRoomUI(roomData) {
     }, 0);
 }
 
+// FIX #6 (support): human-readable room type labels
+function getRoomTypeDisplay(type) {
+  switch (type) {
+    case "public":
+      return "Public";
+    case "semi-private":
+      return "Semi-Private";
+    case "private":
+      return "Private";
+    default:
+      return type || "";
+  }
+}
+
 function updateRoomInfo(data) {
   const nameEl = document.querySelector(".room-name");
   const idEl = document.querySelector(".room-id");
+  const typeEl = document.querySelector(".room-type");
+
   if (nameEl)
     nameEl.textContent = `Room: ${currentRoomName || data.roomName || data.roomId}`;
   if (idEl) idEl.textContent = `Room ID: ${data.roomId || currentRoomId}`;
+
+  // FIX #6: the .room-type element survives now, so keep it updated.
+  // "room joined" sends roomType, "room update" sends type.
+  const roomType = data.roomType || data.type;
+  if (typeEl && roomType) {
+    typeEl.textContent = `${getRoomTypeDisplay(roomType)} Room`;
+  }
+
   if (!document.getElementById("emotesButton")) createEmotesDropdown();
 }
 
@@ -1640,7 +1693,7 @@ function handleViewportChange() {
 function generateInviteLink() {
   const url = new URL(window.location.href);
   url.searchParams.set("roomId", currentRoomId);
-  url.searchParams.delete("accessCode");
+  url.searchParams.delete("accessCode"); // never leak codes in invite links
   return url.href;
 }
 
@@ -1914,6 +1967,34 @@ function joinRoom(roomId, accessCode = null) {
   socket.emit("join room", { roomId, accessCode });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FIX #4: Scrub ?accessCode= from the URL and browser history.
+//
+// The lobby no longer puts access codes in redirect URLs (session-validated
+// server-side instead), but old bookmarks / shared links may still carry one.
+// We read it ONCE as a join fallback, then immediately rewrite the URL with
+// history.replaceState so the code never persists in the address bar,
+// history, or analytics.
+// ─────────────────────────────────────────────────────────────────────────────
+function readAndScrubUrlParams() {
+  const params = new URLSearchParams(window.location.search);
+  const roomId = params.get("roomId");
+  const accessCode = params.get("accessCode"); // legacy fallback only
+
+  if (accessCode !== null) {
+    params.delete("accessCode");
+    const query = params.toString();
+    const cleanUrl = window.location.pathname + (query ? `?${query}` : "");
+    try {
+      history.replaceState(null, "", cleanUrl);
+    } catch {
+      // history API unavailable — non-fatal, join still works
+    }
+  }
+
+  return { roomId, accessCode };
+}
+
 async function initRoom() {
   const filter = new ClientWordFilter();
   await Promise.all([loadEmotes(), filter.init()]);
@@ -1924,9 +2005,9 @@ async function initRoom() {
   wordFilterEnabled = saved !== "false";
   updateFilterToggleUI();
 
-  const params = new URLSearchParams(window.location.search);
-  const roomId = params.get("roomId");
-  const accessCode = params.get("accessCode");
+  // FIX #4: read params once, scrub the access code from the URL
+  const { roomId, accessCode } = readAndScrubUrlParams();
+
   if (roomId) {
     currentRoomId = roomId;
     joinRoom(roomId, accessCode);

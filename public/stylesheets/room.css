@@ -179,6 +179,28 @@ html {
   color: #ff9800;
 }
 
+/* FIX #6: Room type + Emoticons button live side-by-side */
+.room-type-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  justify-content: flex-start;
+}
+
+@media screen and (max-width: 576px) {
+  .room-type-group {
+    gap: 6px;
+  }
+  .room-type-group .emotes-button {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .room-type {
+    font-size: 12px;
+  }
+}
+
 /* =============================================================================
      Chat Container Styles
      -----------------------------------------------------------------------------
@@ -1173,5 +1195,69 @@ html {
 
   .tb-chat-log {
     max-height: 100px;
+  }
+}
+
+/* =============================================================================
+   FIX #6: Second navbar layout
+   -----------------------------------------------------------------------------
+   Three equal flex columns so the room name is truly centered:
+     LEFT:   [Emoticons button] [Room type]   (.room-type-group)
+     CENTER: Room name                         (.room-name)
+     RIGHT:  Room ID                           (.room-id)
+
+   The JS appends the button AFTER .room-type inside the group; `order: -1`
+   flips it visually so the button renders first. No JS changes needed.
+   =============================================================================*/
+
+.room-type-group {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0; /* allow shrinking instead of pushing siblings */
+}
+
+/* Button before the room type label, per design */
+.room-type-group .emotes-button {
+  order: -1;
+}
+
+/* Before JS wraps it (brief moment on load), keep the bare element balanced */
+.second-navbar > .room-type {
+  flex: 1;
+}
+
+.second-navbar .room-name {
+  flex: 1;
+  text-align: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.second-navbar .room-id {
+  flex: 1;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Mobile */
+@media screen and (max-width: 576px) {
+  .room-type-group {
+    gap: 6px;
+  }
+  .room-type-group .emotes-button {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .room-type {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .second-navbar .room-id {
+    font-size: 11px;
   }
 }

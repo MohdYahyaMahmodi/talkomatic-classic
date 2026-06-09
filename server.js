@@ -1,6 +1,6 @@
 // ╔═══════════════════════════════════════════════════════════════════════════╗
-// ║  FILE 4: server.js (root - entry point)                                 ║
-// ║  Express, Socket.IO, API routes, startup                                ║
+// ║  server.js (root - entry point)                                           ║
+// ║  Express, Socket.IO, API routes, startup                                  ║
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
 require("dotenv").config();
@@ -164,9 +164,29 @@ app.use(
 );
 
 // ── Session ─────────────────────────────────────────────────────────────────
+// SESSION_SECRET must be set in .env for sessions to survive restarts.
+// Without it a random secret is generated on boot, which invalidates every
+// existing session (all users get signed out and lose validated access codes).
+
+const SESSION_SECRET = process.env.SESSION_SECRET;
+
+if (!SESSION_SECRET) {
+  console.warn(
+    "\n" +
+      "════════════════════════════════════════════════════════════\n" +
+      "  WARNING: SESSION_SECRET is not set in .env\n" +
+      "  A temporary secret will be generated for this process.\n" +
+      "  Every restart will sign out ALL users and invalidate all\n" +
+      "  validated room access codes.\n" +
+      "\n" +
+      "  Fix: add to .env →  SESSION_SECRET=<long random string>\n" +
+      "  Generate one:       openssl rand -hex 32\n" +
+      "════════════════════════════════════════════════════════════\n",
+  );
+}
 
 const sessionMiddleware = session({
-  secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex"),
+  secret: SESSION_SECRET || crypto.randomBytes(32).toString("hex"),
   resave: false,
   saveUninitialized: true,
   cookie: {
@@ -239,9 +259,7 @@ io.use((socket, next) => {
       state.blockedIPs.delete(clientIp);
     }
 
-    // ── DEV MODE CHECK ──────────────────────────────────────────────
-    // Check for devKey in auth. If valid, flag the socket as dev.
-    // This runs before bot/browser checks so it works for both.
+    // Dev mode: validate devKey from socket auth before bot/browser checks
     const devKey = socket.handshake.auth.devKey;
     if (devKey && CONFIG.DEV.KEY_HASH) {
       const hash = crypto
@@ -255,7 +273,6 @@ io.use((socket, next) => {
         console.log(`[DEV] Dev mode activated for IP:${clientIp}`);
       }
     }
-    // ── END DEV MODE CHECK ──────────────────────────────────────────
 
     if (CONFIG.FEATURES.ENABLE_STRICT_ANTIBOT && !browser.isBrowser) {
       if (CONFIG.FEATURES.ENABLE_BOT_TOKENS) {
@@ -279,7 +296,7 @@ io.use((socket, next) => {
         socket.browserDetection = browser;
 
         socket.use((packet, nextMw) => {
-          // DEV MODE: Dev users bypass all socket rate limits
+          // Dev users bypass socket rate limits
           if (socket.isDev) return nextMw();
 
           const evt = packet[0];
@@ -602,6 +619,7 @@ async function start() {
   Rooms: ${stats.totalRooms}/${stats.currentLimit} | Users: ${stats.totalUsers}
   Antibot: ${CONFIG.FEATURES.ENABLE_STRICT_ANTIBOT ? "ON" : "OFF"} | Bot Tokens: ${CONFIG.FEATURES.ENABLE_BOT_TOKENS ? "ON" : "OFF"}
   Dev Mode: ${CONFIG.DEV.KEY_HASH ? "CONFIGURED" : "NOT SET"}
+  Session Secret: ${SESSION_SECRET ? "SET (persistent)" : "MISSING (ephemeral — sessions reset on restart)"}
 ══════════════════════════════════════════════════════`);
   });
 }

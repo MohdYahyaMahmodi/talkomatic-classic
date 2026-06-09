@@ -1,9 +1,19 @@
-// ============================================================================
-// lobby-client.js - Enhanced with server statistics, anti-spam lobby sorting,
-// and integrated lobby visibility fixes
-// ============================================================================
+// ╔═══════════════════════════════════════════════════════════════════════════╗
+// ║  lobby-client.js — Talkomatic Lobby Client                                ║
+// ║  Server statistics, anti-spam lobby sorting, lobby visibility             ║
+// ║                                                                           ║
+// ║  PATCHED (June 2026 anniversary batch):                                   ║
+// ║  • FIX #4: Access codes are NEVER placed in redirect URLs anymore.        ║
+// ║    The server validates the code and stores it in the session BEFORE      ║
+// ║    emitting "room joined" / "room created", so the room page joins        ║
+// ║    via the session — no ?accessCode= in the address bar, history,         ║
+// ║    or analytics. The lastUsedAccessCode variable has been removed         ║
+// ║    entirely since it only existed to build those URLs.                    ║
+// ╚═══════════════════════════════════════════════════════════════════════════╝
 
-// Modal functionality wrapped in an IIFE to avoid conflicts
+// ============================================================================
+// 1. CUSTOM MODAL SYSTEM (IIFE to avoid conflicts)
+// ============================================================================
 (function () {
   // Only initialize once to avoid duplicate event listeners
   if (window.modalFunctionsInitialized) {
@@ -176,7 +186,7 @@
 })();
 
 // ============================================================================
-// Stats for Nerds Modal Management
+// 2. STATS FOR NERDS MODAL
 // ============================================================================
 class StatsModal {
   constructor() {
@@ -286,7 +296,9 @@ class StatsModal {
 
       const healthData = await healthResponse.json();
       const configData =
-        configResponse && configResponse.ok ? await configResponse.json() : null;
+        configResponse && configResponse.ok
+          ? await configResponse.json()
+          : null;
 
       this.updateStatsDisplay(healthData, configData);
       this.setConnectionStatus(true);
@@ -307,8 +319,9 @@ class StatsModal {
   updateStatsDisplay(healthData, configData) {
     const stats = healthData.roomStatistics || {};
 
-    this.elements.rooms.textContent = `${stats.totalRooms || 0}/${stats.currentLimit || 15
-      }`;
+    this.elements.rooms.textContent = `${stats.totalRooms || 0}/${
+      stats.currentLimit || 15
+    }`;
     this.elements.users.textContent = stats.totalUsers || 0;
     this.elements.version.textContent = healthData.version || "Unknown";
 
@@ -321,7 +334,8 @@ class StatsModal {
 
     if (stats.roomTypes) {
       this.elements.public.textContent = stats.roomTypes.public || 0;
-      this.elements.semiPrivate.textContent = stats.roomTypes["semi-private"] || 0;
+      this.elements.semiPrivate.textContent =
+        stats.roomTypes["semi-private"] || 0;
       this.elements.private.textContent = stats.roomTypes.private || 0;
     }
 
@@ -363,7 +377,7 @@ class StatsModal {
 }
 
 // ============================================================================
-// Connection and Socket Management
+// 3. CONNECTION STATUS INDICATOR
 // ============================================================================
 
 const connectionStatus = document.createElement("div");
@@ -390,6 +404,10 @@ function updateConnectionStatus() {
   }
 }
 
+// ============================================================================
+// 4. SOCKET.IO INITIALIZATION
+// ============================================================================
+
 // Socket.io initialization with robust connection settings
 const socket = io({
   reconnectionAttempts: 5,
@@ -401,6 +419,10 @@ const socket = io({
     devKey: localStorage.getItem("talkomatic_devKey") || undefined,
   },
 });
+
+// ============================================================================
+// 5. DOM REFERENCES & STATE
+// ============================================================================
 
 // DOM elements
 const logForm = document.getElementById("logform");
@@ -426,7 +448,6 @@ let currentUsername = "";
 let currentLocation = "";
 let currentUserId = null;
 let isSignedIn = false;
-let lastUsedAccessCode = null;
 let connectionRetryCount = 0;
 const MAX_RETRIES = 3;
 const MAX_USERNAME_LENGTH = 15;
@@ -434,6 +455,10 @@ const MAX_LOCATION_LENGTH = 20;
 const MAX_ROOM_NAME_LENGTH = 25;
 let devLobbyCodes = {};
 let statsModal = null;
+
+// ============================================================================
+// 6. SIGN-IN HELPERS
+// ============================================================================
 
 function checkSignInStatus() {
   if (socket.connected) {
@@ -489,6 +514,10 @@ function emitJoinLobby(username, location) {
   }
 }
 
+// ============================================================================
+// 7. SOCKET CONNECTION EVENTS
+// ============================================================================
+
 socket.on("connect", () => {
   console.log("Socket connected successfully");
   connectionRetryCount = 0;
@@ -510,7 +539,9 @@ socket.on("connect_error", (error) => {
 
   if (connectionRetryCount < MAX_RETRIES) {
     connectionRetryCount++;
-    console.log(`Retrying connection (${connectionRetryCount}/${MAX_RETRIES})...`);
+    console.log(
+      `Retrying connection (${connectionRetryCount}/${MAX_RETRIES})...`,
+    );
 
     if (socket.disconnected) {
       setTimeout(() => {
@@ -536,6 +567,10 @@ socket.on("reconnect", (attemptNumber) => {
 socket.on("dev lobby context", (codes) => {
   devLobbyCodes = codes || {};
 });
+
+// ============================================================================
+// 8. FORM HANDLERS
+// ============================================================================
 
 // Show/hide access code field
 roomTypeRadios.forEach((radio) => {
@@ -618,10 +653,11 @@ goChatButton.addEventListener("click", () => {
         );
         return;
       }
-
-      lastUsedAccessCode = accessCode;
     }
 
+    // FIX #4: The access code is sent to the server ONLY in this socket
+    // event. The server validates it and stores it in the session before
+    // confirming, so the redirect URL never needs to carry it.
     socket.emit("create room", {
       name: roomName,
       type: roomType,
@@ -655,6 +691,10 @@ dynamicRoomList.addEventListener("click", (e) => {
   }
 });
 
+// ============================================================================
+// 9. ROOM JOIN / CREATE FLOW
+// ============================================================================
+
 function promptAccessCode(roomId) {
   window.showInputModal(
     "Access Code Required",
@@ -672,7 +712,6 @@ function promptAccessCode(roomId) {
     },
     (confirmed, accessCode) => {
       if (confirmed && accessCode) {
-        lastUsedAccessCode = accessCode;
         joinRoom(roomId, accessCode);
       }
     },
@@ -696,14 +735,22 @@ socket.on("access code required", () => {
   promptAccessCode(roomId);
 });
 
+// FIX #4: Redirect with roomId ONLY. The server has already validated and
+// stored the access code in the session (it awaits the session save before
+// emitting this event), so room.html joins via the session — the code never
+// touches the URL, browser history, or analytics.
 socket.on("room joined", (data) => {
-  if (lastUsedAccessCode) {
-    window.location.href = `/room.html?roomId=${data.roomId}&accessCode=${lastUsedAccessCode}`;
-    lastUsedAccessCode = null;
-  } else {
-    window.location.href = `/room.html?roomId=${data.roomId}`;
-  }
+  window.location.href = `/room.html?roomId=${data.roomId}`;
 });
+
+// FIX #4: Same for room creation — roomId only.
+socket.on("room created", (roomId) => {
+  window.location.href = `/room.html?roomId=${roomId}`;
+});
+
+// ============================================================================
+// 10. SIGN-IN STATUS & SIGN-OUT
+// ============================================================================
 
 socket.on("signin status", (data) => {
   if (data.isSignedIn) {
@@ -753,24 +800,19 @@ function signOut() {
   }
 }
 
+// ============================================================================
+// 11. LOBBY ROOM LIST
+// ============================================================================
+
 socket.on("lobby update", (rooms) => {
   updateLobby(rooms);
-});
-
-socket.on("room created", (roomId) => {
-  if (lastUsedAccessCode) {
-    window.location.href = `/room.html?roomId=${roomId}&accessCode=${lastUsedAccessCode}`;
-    lastUsedAccessCode = null;
-  } else {
-    window.location.href = `/room.html?roomId=${roomId}`;
-  }
 });
 
 socket.on("error", (error) => {
   console.log(error);
   window.showErrorModal(
     (error.error.replaceDefaultText ? "" : `An error occurred: `) +
-    error.error.message,
+      error.error.message,
     error.error.code,
   );
 });
@@ -878,8 +920,9 @@ function getRoomTypeDisplay(type) {
 }
 
 // ============================================================================
-// Anti-Spam: Activity-based room sorting
+// 12. ANTI-SPAM: ACTIVITY-BASED ROOM SORTING
 // ============================================================================
+
 function sortRoomsByActivity(rooms) {
   return rooms.slice().sort((a, b) => {
     const aCount = getJoinableCount(a);
@@ -932,6 +975,10 @@ function showRoomList() {
     });
   }
 }
+
+// ============================================================================
+// 13. INITIALIZATION
+// ============================================================================
 
 function initLobby() {
   document.querySelector('input[name="roomType"][value="public"]').checked =

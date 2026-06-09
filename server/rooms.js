@@ -1,25 +1,33 @@
 // ╔═══════════════════════════════════════════════════════════════════════════╗
-// ║  FILE 3: server/rooms.js                                                ║
-// ║  Room management, chat processing, AFK, sockets, cleanup                ║
-// ║                                                                         ║
-// ║  Anti-spam systems:                                                     ║
-// ║  • Pressure-based cleanup: solo rooms die faster as total count rises   ║
-// ║  • Smart room limit: only "healthy" rooms count toward creation cap     ║
-// ║  • Per-IP room creation limits and rate limiting                        ║
-// ║  • AFK resets only on actual typing (chat update), not any event        ║
-// ║  • Lobby broadcasts include activity metadata for client-side sorting   ║
-// ║                                                                         ║
-// ║  Dev mode:                                                              ║
-// ║  • isDev flag included in all user broadcasts                           ║
-// ║  • Dev users bypass AFK timers                                          ║
-// ║  • Dev force-kick: remove any user from any room                        ║
-// ║  • Vanish: dev is invisible to non-dev users (not in user list)         ║
-// ║  • Hide: dev flair (crown, glow, color) stripped, appears as normal     ║
-// ║                                                                         ║
-// ║  Talkoboard v2:                                                         ║
-// ║  • Stroke lifecycle protocol (start/move/end)                           ║
-// ║  • Server-side stroke storage per room (ephemeral, not saved to disk)   ║
-// ║  • Full board state sync on open                                        ║
+// ║  server/rooms.js                                                          ║
+// ║  Room management, chat processing, AFK, sockets, cleanup                  ║
+// ║                                                                           ║
+// ║  Anti-spam systems:                                                       ║
+// ║  • Pressure-based cleanup: solo rooms die faster as total count rises     ║
+// ║  • Smart room limit: only "healthy" rooms count toward creation cap       ║
+// ║  • Per-IP room creation limits and rate limiting                          ║
+// ║  • AFK resets only on actual typing (chat update), not any event          ║
+// ║  • Lobby broadcasts include activity metadata for client-side sorting     ║
+// ║                                                                           ║
+// ║  Chat sanitization:                                                       ║
+// ║  • All message buffers pass through sanitizeMessage() (state.js), which   ║
+// ║    strips direction overrides, clamps combining-mark spam, and enforces   ║
+// ║    the server message length limit                                        ║
+// ║                                                                           ║
+// ║  Voting:                                                                  ║
+// ║  • Votes are only accepted in rooms with MIN_USERS_FOR_VOTING or more     ║
+// ║                                                                           ║
+// ║  Dev mode:                                                                ║
+// ║  • isDev flag included in all user broadcasts                             ║
+// ║  • Dev users bypass AFK timers                                            ║
+// ║  • Dev force-kick: remove any user from any room                          ║
+// ║  • Vanish: dev is invisible to non-dev users (not in user list)           ║
+// ║  • Hide: dev flair (crown, glow, color) stripped, appears as normal       ║
+// ║                                                                           ║
+// ║  Talkoboard v2:                                                           ║
+// ║  • Stroke lifecycle protocol (start/move/end)                             ║
+// ║  • Server-side stroke storage per room (ephemeral, not saved to disk)     ║
+// ║  • Full board state sync on open                                          ║
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
 const path = require("path");
@@ -32,6 +40,7 @@ const {
   createErrorResponse,
   normalize,
   promisifySessionSave,
+  sanitizeMessage,
   enforceCharacterLimit,
   enforceUsernameLimit,
   enforceLocationLimit,
@@ -322,7 +331,7 @@ function getCurrentMessages(usersInRoom) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// DEV MODE: Visibility helpers for vanish / hide
+// Dev mode: visibility helpers for vanish / hide
 // ═════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -347,7 +356,6 @@ function canRecipientSeeDevUser(recipientSocket, user) {
   if (!user) return false;
   if (!user.isDev) return true;
   if (!user.isVanished) return true;
-  // User is a vanished dev — only visible to self or other devs
   const recipientUserId = getRecipientUserId(recipientSocket);
   if (recipientUserId && recipientUserId === user.id) return true;
   if (recipientSocket?.isDev) return true;
@@ -370,12 +378,10 @@ function formatUserForSocket(user, recipientSocket) {
     location: user.location,
   };
 
-  // If hidden, return as a plain user (no dev flair at all)
   if (user.isHidden) {
     return formatted;
   }
 
-  // Otherwise include dev metadata
   if (user.isDev) {
     formatted.isDev = true;
     if (user.devColor) formatted.devColor = user.devColor;
@@ -467,7 +473,7 @@ function formatRoomStateForSocket(room, recipientSocket) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// PER-SOCKET EMISSION HELPERS (visibility-aware)
+// Per-socket emission helpers (visibility-aware)
 // ═════════════════════════════════════════════════════════════════════════════
 
 function emitRoomSnapshot(roomId) {
@@ -563,7 +569,7 @@ function emitRoomChatUpdate(socket, payload) {
   }
 }
 
-// ── DEV MODE: Room context for dev users ────────────────────────────────────
+// ── Dev mode: room context for dev users ────────────────────────────────────
 
 function getDevRoomContext(roomId) {
   if (!io()) return {};
@@ -869,11 +875,7 @@ async function processPendingChatUpdates(userId, socket) {
       }
     }
 
-    msg = [...msg]
-      .filter((c) => c.codePointAt(0) !== 8238)
-      .join("")
-      .replace(/\r/g, "");
-    msg = enforceCharacterLimit(msg);
+    msg = sanitizeMessage(msg);
     state.userMessageBuffers.set(userId, msg);
 
     if (socket.roomId) {
@@ -1327,7 +1329,7 @@ function registerSocketHandlers() {
     );
 
     // ═════════════════════════════════════════════════════════════════════
-    // TALKOBOARD v2 — Stroke lifecycle + state sync
+    // Talkoboard v2 — stroke lifecycle + state sync
     // ═════════════════════════════════════════════════════════════════════
 
     socket.on(
@@ -1498,7 +1500,7 @@ function registerSocketHandlers() {
     );
 
     // ═════════════════════════════════════════════════════════════════════
-    // ROOM MANAGEMENT
+    // Room management
     // ═════════════════════════════════════════════════════════════════════
 
     socket.on(
@@ -1789,6 +1791,8 @@ function registerSocketHandlers() {
           userId === data.targetUserId
         )
           return;
+        if (room.users.length < CONFIG.LIMITS.MIN_USERS_FOR_VOTING) return;
+        if (!room.users.find((u) => u.id === data.targetUserId)) return;
         if (!room.votes) room.votes = {};
         if (room.votes[userId] === data.targetUserId) delete room.votes[userId];
         else room.votes[userId] = data.targetUserId;
@@ -1796,10 +1800,7 @@ function registerSocketHandlers() {
         const votesAgainst = Object.values(room.votes).filter(
           (v) => v === data.targetUserId,
         ).length;
-        if (
-          room.users.length >= 3 &&
-          votesAgainst > Math.floor(room.users.length / 2)
-        ) {
+        if (votesAgainst > Math.floor(room.users.length / 2)) {
           const target = findSocketByUserId(data.targetUserId, roomId);
           if (target) {
             target.emit("kicked");
@@ -1950,7 +1951,7 @@ function registerSocketHandlers() {
       }),
     );
 
-    // ── DEV MODE: Force-kick ────────────────────────────────────────────
+    // ── Dev mode: force-kick ────────────────────────────────────────────
     socket.on(
       "dev force kick",
       safe(async (data) => {
@@ -2023,7 +2024,7 @@ function registerSocketHandlers() {
       }),
     );
 
-    // ── DEV MODE: Set username color ────────────────────────────────────
+    // ── Dev mode: set username color ────────────────────────────────────
     socket.on(
       "dev set color",
       safe(async (data) => {
@@ -2046,7 +2047,7 @@ function registerSocketHandlers() {
       }),
     );
 
-    // ── DEV MODE: Vanish (invisible to non-devs) ───────────────────────
+    // ── Dev mode: vanish (invisible to non-devs) ───────────────────────
     socket.on(
       "dev set vanish",
       safe(async (data) => {
@@ -2071,7 +2072,7 @@ function registerSocketHandlers() {
       }),
     );
 
-    // ── DEV MODE: Hide flair (appear as normal user) ────────────────────
+    // ── Dev mode: hide flair (appear as normal user) ────────────────────
     socket.on(
       "dev set hide",
       safe(async (data) => {

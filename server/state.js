@@ -1,6 +1,6 @@
 // ╔═══════════════════════════════════════════════════════════════════════════╗
-// ║  FILE 1: server/state.js                                                ║
-// ║  Shared config, constants, state, and utility functions                  ║
+// ║  server/state.js                                                          ║
+// ║  Shared config, constants, state, and utility functions                   ║
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
 const path = require("path");
@@ -17,7 +17,7 @@ const CONFIG = {
     MAX_AFK_TIME: 180000,
     MAX_LOCATION_LENGTH: 20,
     MAX_ROOM_NAME_LENGTH: 25,
-    MAX_MESSAGE_LENGTH: 15000,
+    MAX_MESSAGE_LENGTH: 5000,
     MAX_ROOM_CAPACITY: 5,
     BASE_MAX_ROOMS: 15,
     ROOM_SCALING_INCREMENT: 5,
@@ -38,11 +38,17 @@ const CONFIG = {
     BOT_TOKEN_REQUEST_COOLDOWN: 300000,
     IP_USER_CLEANUP_INTERVAL: 3600000,
 
-    // ── Anti-Spam: Per-IP Room Limits ─────────────────────────────────
-    MAX_ROOMS_PER_IP: 2,
-    IP_ROOM_CREATION_COOLDOWN: 30000, // 30s between room creations per IP
+    // Minimum users in a room before the vote-kick system is active
+    MIN_USERS_FOR_VOTING: 3,
 
-    // ── Anti-Spam: Pressure System ────────────────────────────────────
+    // Maximum consecutive combining marks allowed per base character
+    MAX_COMBINING_MARKS: 2,
+
+    // Anti-spam: per-IP room limits
+    MAX_ROOMS_PER_IP: 2,
+    IP_ROOM_CREATION_COOLDOWN: 30000,
+
+    // Anti-spam: pressure system
     HARD_MAX_ROOMS: 50,
 
     PRESSURE_TIERS: [
@@ -77,13 +83,11 @@ const CONFIG = {
   },
   VERSIONS: {
     API: "v1",
-    SERVER: "2.1.0",
+    SERVER: "2.2.0",
   },
 
-  // ── DEV MODE ────────────────────────────────────────────────────────────
-  // SHA-256 hash of the secret dev key. Set in .env as DEV_KEY_HASH.
-  // Generate it:  echo -n "your_secret_key" | sha256sum
-  // Or in Node:   crypto.createHash('sha256').update('your_secret_key').digest('hex')
+  // Dev mode: SHA-256 hash of the secret dev key, set in .env as DEV_KEY_HASH.
+  // Generate with: crypto.createHash('sha256').update('your_key').digest('hex')
   DEV: {
     KEY_HASH: process.env.DEV_KEY_HASH || "",
   },
@@ -173,18 +177,16 @@ const state = {
   botTokenRequests: new Map(),
   ipBasedUsers: new Map(),
 
-  // ── Anti-Spam: Per-IP room creation tracking ──────────────────────
+  // Anti-spam: per-IP room creation tracking
   ipLastRoomCreation: new Map(),
 
-  // ── Anti-Spam: Per-room solo timestamp ────────────────────────────
+  // Anti-spam: per-room solo timestamp
   roomSoloSince: new Map(),
 
-  // ── Anti-Spam: Per-room last chat activity ────────────────────────
+  // Anti-spam: per-room last chat activity
   roomLastChatActivity: new Map(),
 
-  // ── DEV MODE: Track which userIds are devs ────────────────────────
-  // Set by socket middleware when a valid devKey is provided.
-  // Maps userId -> true. Used to include isDev in user broadcasts.
+  // Dev mode: userIds with a verified dev key
   devUsers: new Set(),
 
   // Caches
@@ -239,6 +241,43 @@ function normalize(str) {
   return normalized;
 }
 
+// ── Message Sanitization ────────────────────────────────────────────────────
+// Single authoritative pass applied to every chat message buffer:
+//   1. Strips the right-to-left override character (U+202E) and carriage returns.
+//   2. Clamps runs of combining diacritical marks (zalgo text) to a safe maximum
+//      per base character. Targets the generic combining blocks used for zalgo
+//      while leaving language-specific marks (Arabic, Hebrew, Thai) untouched.
+//   3. Enforces the server message length limit.
+
+const COMBINING_MARK_RUN = new RegExp(
+  "[\\u0300-\\u036f" + // Combining Diacritical Marks
+    "\\u0483-\\u0489" + // Combining Cyrillic
+    "\\u1ab0-\\u1aff" + // Combining Diacritical Marks Extended
+    "\\u1dc0-\\u1dff" + // Combining Diacritical Marks Supplement
+    "\\u20d0-\\u20ff" + // Combining Marks for Symbols
+    "\\ufe20-\\ufe2f]" + // Combining Half Marks
+    `{${CONFIG.LIMITS.MAX_COMBINING_MARKS + 1},}`,
+  "g",
+);
+
+function sanitizeMessage(msg) {
+  if (typeof msg !== "string") return "";
+
+  let clean = "";
+  for (const char of msg) {
+    const code = char.codePointAt(0);
+    if (code === 0x202e) continue; // right-to-left override
+    if (char === "\r") continue;
+    clean += char;
+  }
+
+  clean = clean.replace(COMBINING_MARK_RUN, (run) =>
+    run.slice(0, CONFIG.LIMITS.MAX_COMBINING_MARKS),
+  );
+
+  return clean.slice(0, CONFIG.LIMITS.MAX_MESSAGE_LENGTH);
+}
+
 function enforceCharacterLimit(msg) {
   return typeof msg === "string"
     ? msg.slice(0, CONFIG.LIMITS.MAX_MESSAGE_LENGTH)
@@ -276,6 +315,7 @@ module.exports = {
   createErrorResponse,
   sendErrorResponse,
   normalize,
+  sanitizeMessage,
   enforceCharacterLimit,
   enforceUsernameLimit,
   enforceLocationLimit,
