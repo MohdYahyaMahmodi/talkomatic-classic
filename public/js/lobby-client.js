@@ -786,10 +786,10 @@ function signOut() {
   usernameInput.value = "";
   locationInput.value = "";
 
-  signInButton.textContent = "Sign In";
   while (signInButton.firstChild) {
     signInButton.removeChild(signInButton.firstChild);
   }
+  signInButton.appendChild(document.createTextNode("Sign In"));
 
   createRoomForm.classList.add("hidden");
   signInMessage.style.display = "block";

@@ -1,4 +1,34 @@
+// ╔═══════════════════════════════════════════════════════════════════════════╗
+// ║  word-filter.js — Talkomatic word filter (server)                        ║
+// ║  v2.1.0 — June 2026 anniversary batch                                    ║
+// ║                                                                           ║
+// ║  HARDENING (this version):                                                ║
+// ║  • Cross-newline detection: a whole-text scan supplements the per-line   ║
+// ║    scan, so "f\nu\nc\nk" no longer bypasses the filter.                  ║
+// ║  • Digit-padding detection: a digit-dropping variant scan catches        ║
+// ║    "fu1ck" (digits normally MAP to letters, which used to break the      ║
+// ║    match instead of being ignorable padding).                            ║
+// ║  • Doubled-letter detection: a fully-collapsed variant scan (text AND    ║
+// ║    word lists collapsed the same way) catches "fuuck".                   ║
+// ║  • Span gate: variant scans only accept a match when the original text   ║
+// ║    region is LONGER than the matched word — i.e. some bypass character   ║
+// ║    was actually present. Clean words can never be flagged by a variant   ║
+// ║    scan, so false positives are no worse than the primary scan.          ║
+// ║  • Unicode index fix: normalization and index-mapping are now built in   ║
+// ║    a single pass (buildNormalizedWithMap), iterating code POINTS and     ║
+// ║    handling multi-char mappings ("½"→"12"). Previously, astral chars     ║
+// ║    (mathematical bold etc.) desynced the asterisk ranges.                ║
+// ║  • Per-line result cache: while a user types on one line, every other    ║
+// ║    line is a cache hit. The old full-text cache had a ~0% hit rate.      ║
+// ║                                                                           ║
+// ║  PARITY RULE: the algorithm in this file and in word-filter-client.js    ║
+// ║  must remain IDENTICAL. Only the loading mechanism differs               ║
+// ║  (fs.readFileSync here, fetch in the client).                            ║
+// ╚═══════════════════════════════════════════════════════════════════════════╝
+
 const fs = require("fs");
+
+// ── Trie ────────────────────────────────────────────────────────────────────
 
 class TrieNode {
   constructor() {
@@ -35,6 +65,8 @@ class Trie {
   }
 }
 
+// ── WordFilter ──────────────────────────────────────────────────────────────
+
 class WordFilter {
   constructor(wordsFilePath, substitutionsFilePath) {
     try {
@@ -45,39 +77,35 @@ class WordFilter {
         !Array.isArray(data.whitelisted_words)
       ) {
         throw new Error(
-          "Invalid JSON structure: offensive_words and whitelisted_words must be arrays"
+          "Invalid JSON structure: offensive_words and whitelisted_words must be arrays",
         );
       }
 
-      this.offensiveTrie = new Trie();
-      data.offensive_words.forEach((word) =>
-        this.offensiveTrie.insert(word.toLowerCase())
-      );
-
-      this.whitelistTrie = new Trie();
-      data.whitelisted_words.forEach((word) =>
-        this.whitelistTrie.insert(word.toLowerCase())
-      );
+      this.buildTries(data.offensive_words, data.whitelisted_words);
 
       console.log(
-        `Loaded ${data.offensive_words.length} offensive words and ${data.whitelisted_words.length} whitelisted words`
+        `Loaded ${data.offensive_words.length} offensive words and ${data.whitelisted_words.length} whitelisted words`,
       );
 
-      // Initialize cache
+      // Caches:
+      // - cache: full-text results (helps repeated renders of the same text)
+      // - lineCache: per-line results (helps live typing — unchanged lines hit)
       this.cache = new Map();
       this.cacheSize = 1000;
+      this.lineCache = new Map();
+      this.lineCacheSize = 2000;
       this.cacheHits = 0;
       this.cacheMisses = 0;
 
       // Build comprehensive obfuscation mapping
       this.obfuscationMap = this.buildComprehensiveObfuscationMap(
-        substitutionsFilePath
+        substitutionsFilePath,
       );
 
       console.log(
-        `WordFilter initialized successfully with ${
+        `WordFilter v2.1.0 initialized with ${
           Object.keys(this.obfuscationMap).length
-        } character mappings`
+        } character mappings`,
       );
     } catch (error) {
       console.error("Error initializing WordFilter:", error);
@@ -86,299 +114,250 @@ class WordFilter {
   }
 
   /**
-   * Builds a comprehensive obfuscation map by combining the existing substitutions file
-   * with additional Unicode mappings for bypass prevention
+   * Builds the four tries:
+   * - offensiveTrie / whitelistTrie: words as-is (lowercased)
+   * - offensiveTrieCollapsed / whitelistTrieCollapsed: words with ALL
+   *   repeated-character runs collapsed to a single character, used by the
+   *   doubled-letter variant scan. Building the whitelist the same way keeps
+   *   whitelist behavior consistent between the two scans.
+   */
+  buildTries(offensiveWords, whitelistedWords) {
+    this.offensiveTrie = new Trie();
+    this.whitelistTrie = new Trie();
+    this.offensiveTrieCollapsed = new Trie();
+    this.whitelistTrieCollapsed = new Trie();
+
+    offensiveWords.forEach((word) => {
+      const w = word.toLowerCase();
+      this.offensiveTrie.insert(w);
+      this.offensiveTrieCollapsed.insert(this.collapseRuns(w));
+    });
+    whitelistedWords.forEach((word) => {
+      const w = word.toLowerCase();
+      this.whitelistTrie.insert(w);
+      this.whitelistTrieCollapsed.insert(this.collapseRuns(w));
+    });
+  }
+
+  /** Collapses every run of repeated characters to a single character. */
+  collapseRuns(str) {
+    return str.replace(/(.)\1+/g, "$1");
+  }
+
+  /**
+   * Builds a comprehensive obfuscation map by combining the substitutions
+   * file with built-in Unicode mappings.
+   * (Server-only difference: reads from disk. The client receives the parsed
+   * JSON object instead.)
    */
   buildComprehensiveObfuscationMap(substitutionsFilePath) {
     let mappings = {};
 
-    // First, load existing substitutions from file
     try {
       const fileSubstitutions = JSON.parse(
-        fs.readFileSync(substitutionsFilePath, "utf8")
+        fs.readFileSync(substitutionsFilePath, "utf8"),
       );
       mappings = { ...fileSubstitutions };
       console.log(
         `Loaded ${
           Object.keys(fileSubstitutions).length
-        } substitutions from file`
+        } substitutions from file`,
       );
     } catch (error) {
       console.warn(
         "Could not load substitutions file, using built-in mappings only:",
-        error.message
+        error.message,
       );
     }
 
-    // Add comprehensive built-in mappings as fallbacks
     const builtInMappings = this.createBuiltInUnicodeMappings();
-
-    // Merge mappings (file mappings take precedence over built-in ones)
-    const combinedMappings = { ...builtInMappings, ...mappings };
-
-    console.log(
-      `Total character mappings: ${Object.keys(combinedMappings).length}`
-    );
-    return combinedMappings;
+    return { ...builtInMappings, ...mappings };
   }
 
-  /**
-   * Creates comprehensive built-in Unicode mappings as fallbacks
-   */
   createBuiltInUnicodeMappings() {
     const mappings = {};
-
-    // Mathematical Alphanumeric Symbols - comprehensive coverage
     this.addMathematicalAlphanumericMappings(mappings);
-
-    // Cyrillic characters that look like Latin
     this.addCyrillicMappings(mappings);
-
-    // Greek characters that look like Latin
     this.addGreekMappings(mappings);
-
-    // Fullwidth characters (Ａ-Ｚ, ａ-ｚ, ０-９)
     this.addFullwidthMappings(mappings);
-
-    // Common leetspeak and symbol substitutions
     this.addCommonSubstitutions(mappings);
-
-    // Additional Unicode confusables
     this.addUnicodeConfusables(mappings);
-
-    // Superscript and subscript characters
     this.addSuperSubscriptMappings(mappings);
-
-    // Zero-width and invisible characters
     this.addInvisibleCharacterMappings(mappings);
-
     return mappings;
   }
 
-  /**
-   * Adds mathematical alphanumeric symbol mappings (𝐀-𝚥)
-   */
   addMathematicalAlphanumericMappings(mappings) {
-    // Define Unicode ranges for mathematical alphanumeric symbols
     const ranges = [
-      { start: 0x1d400, end: 0x1d433, name: "Mathematical Bold" }, // 𝐀-𝐳
-      { start: 0x1d434, end: 0x1d467, name: "Mathematical Italic" }, // 𝐴-𝑧
-      { start: 0x1d468, end: 0x1d49b, name: "Mathematical Bold Italic" }, // 𝑨-𝒛
-      { start: 0x1d49c, end: 0x1d4cf, name: "Mathematical Script" }, // 𝒜-𝓏
-      { start: 0x1d4d0, end: 0x1d503, name: "Mathematical Bold Script" }, // 𝓐-𝔃
-      { start: 0x1d504, end: 0x1d537, name: "Mathematical Fraktur" }, // 𝔄-𝔷
-      { start: 0x1d538, end: 0x1d56b, name: "Mathematical Double-Struck" }, // 𝔸-𝕫
-      { start: 0x1d56c, end: 0x1d59f, name: "Mathematical Bold Fraktur" }, // 𝕬-𝖟
-      { start: 0x1d5a0, end: 0x1d5d3, name: "Mathematical Sans-Serif" }, // 𝖠-𝗓
-      { start: 0x1d5d4, end: 0x1d607, name: "Mathematical Bold Sans-Serif" }, // 𝗔-𝘇
-      { start: 0x1d608, end: 0x1d63b, name: "Mathematical Italic Sans-Serif" }, // 𝘈-𝘻
-      {
-        start: 0x1d63c,
-        end: 0x1d66f,
-        name: "Mathematical Bold Italic Sans-Serif",
-      }, // 𝘼-𝙯
-      { start: 0x1d670, end: 0x1d6a3, name: "Mathematical Monospace" }, // 𝚀-𝚥
+      { start: 0x1d400, end: 0x1d433 },
+      { start: 0x1d434, end: 0x1d467 },
+      { start: 0x1d468, end: 0x1d49b },
+      { start: 0x1d49c, end: 0x1d4cf },
+      { start: 0x1d4d0, end: 0x1d503 },
+      { start: 0x1d504, end: 0x1d537 },
+      { start: 0x1d538, end: 0x1d56b },
+      { start: 0x1d56c, end: 0x1d59f },
+      { start: 0x1d5a0, end: 0x1d5d3 },
+      { start: 0x1d5d4, end: 0x1d607 },
+      { start: 0x1d608, end: 0x1d63b },
+      { start: 0x1d63c, end: 0x1d66f },
+      { start: 0x1d670, end: 0x1d6a3 },
     ];
-
     ranges.forEach((range) => {
-      // Handle uppercase letters A-Z (first 26 characters)
       for (let i = 0; i < 26; i++) {
-        const codePoint = range.start + i;
-        if (codePoint <= range.end) {
-          const mathChar = String.fromCodePoint(codePoint);
-          const normalChar = String.fromCharCode(65 + i).toLowerCase(); // A-Z -> a-z
-          mappings[mathChar] = normalChar;
+        const cp = range.start + i;
+        if (cp <= range.end) {
+          try {
+            mappings[String.fromCodePoint(cp)] = String.fromCharCode(
+              65 + i,
+            ).toLowerCase();
+          } catch (_) {}
         }
       }
-
-      // Handle lowercase letters a-z (next 26 characters)
       for (let i = 0; i < 26; i++) {
-        const codePoint = range.start + 26 + i;
-        if (codePoint <= range.end) {
-          const mathChar = String.fromCodePoint(codePoint);
-          const normalChar = String.fromCharCode(97 + i); // a-z
-          mappings[mathChar] = normalChar;
+        const cp = range.start + 26 + i;
+        if (cp <= range.end) {
+          try {
+            mappings[String.fromCodePoint(cp)] = String.fromCharCode(97 + i);
+          } catch (_) {}
         }
       }
     });
-
-    // Mathematical digit ranges
-    const numberRanges = [
-      { start: 0x1d7ce, name: "Mathematical Bold Digits" }, // 𝟎-𝟗
-      { start: 0x1d7d8, name: "Mathematical Double-Struck Digits" }, // 𝟘-𝟡
-      { start: 0x1d7e2, name: "Mathematical Sans-Serif Digits" }, // 𝟢-𝟫
-      { start: 0x1d7ec, name: "Mathematical Bold Sans-Serif Digits" }, // 𝟬-𝟵
-      { start: 0x1d7f6, name: "Mathematical Monospace Digits" }, // 𝟶-𝟿
-    ];
-
-    numberRanges.forEach((range) => {
+    const numberRanges = [0x1d7ce, 0x1d7d8, 0x1d7e2, 0x1d7ec, 0x1d7f6];
+    numberRanges.forEach((start) => {
       for (let i = 0; i < 10; i++) {
-        const mathChar = String.fromCodePoint(range.start + i);
-        const normalChar = String.fromCharCode(48 + i); // 0-9
-        mappings[mathChar] = normalChar;
+        try {
+          mappings[String.fromCodePoint(start + i)] = String.fromCharCode(
+            48 + i,
+          );
+        } catch (_) {}
       }
     });
   }
 
-  /**
-   * Adds Cyrillic character mappings that visually resemble Latin letters
-   */
   addCyrillicMappings(mappings) {
-    const cyrillicMappings = {
-      // Lowercase Cyrillic that looks like Latin
-      а: "a",
-      е: "e",
-      о: "o",
-      р: "p",
-      с: "c",
-      у: "y",
-      х: "x",
-      ѕ: "s",
-      і: "i",
-      ј: "j",
-      ӏ: "l",
-      ԁ: "d",
-      ԍ: "g",
-      ԛ: "q",
-      ѵ: "v",
-      ԝ: "w",
-      ҁ: "c",
-      ԏ: "o",
-      ռ: "n",
-      ճ: "u",
-      հ: "h",
-
-      // Uppercase Cyrillic that looks like Latin
-      А: "a",
-      В: "b",
-      Е: "e",
-      К: "k",
-      М: "m",
-      Н: "h",
-      О: "o",
-      Р: "p",
-      С: "c",
-      Т: "t",
-      У: "y",
-      Х: "x",
-      Ѕ: "s",
-      І: "i",
-      Ј: "j",
-      Ӏ: "l",
-      Ԁ: "d",
-      Ԍ: "g",
-      Ԛ: "q",
-      Ѵ: "v",
-      Ԝ: "w",
-      Ҁ: "c",
-      Ԏ: "o",
-      Ռ: "n",
-      Ճ: "u",
-      Հ: "h",
-    };
-
-    Object.assign(mappings, cyrillicMappings);
+    Object.assign(mappings, {
+      "\u0430": "a",
+      "\u0435": "e",
+      "\u043e": "o",
+      "\u0440": "p",
+      "\u0441": "c",
+      "\u0443": "y",
+      "\u0445": "x",
+      "\u0455": "s",
+      "\u0456": "i",
+      "\u0458": "j",
+      "\u04CF": "l",
+      "\u0501": "d",
+      "\u050D": "g",
+      "\u051B": "q",
+      "\u0475": "v",
+      "\u051D": "w",
+      "\u0481": "c",
+      "\u050F": "o",
+      "\u057C": "n",
+      "\u0573": "u",
+      "\u0570": "h",
+      "\u0410": "a",
+      "\u0412": "b",
+      "\u0415": "e",
+      "\u041A": "k",
+      "\u041C": "m",
+      "\u041D": "h",
+      "\u041E": "o",
+      "\u0420": "p",
+      "\u0421": "c",
+      "\u0422": "t",
+      "\u0423": "y",
+      "\u0425": "x",
+      "\u0405": "s",
+      "\u0406": "i",
+      "\u0408": "j",
+      "\u04C0": "l",
+      "\u0500": "d",
+      "\u050C": "g",
+      "\u051A": "q",
+      "\u0474": "v",
+      "\u051C": "w",
+      "\u0480": "c",
+      "\u050E": "o",
+      "\u054C": "n",
+      "\u0543": "u",
+      "\u0540": "h",
+    });
   }
 
-  /**
-   * Adds Greek character mappings that visually resemble Latin letters
-   */
   addGreekMappings(mappings) {
-    const greekMappings = {
-      // Lowercase Greek
-      α: "a",
-      β: "b",
-      γ: "y",
-      δ: "d",
-      ε: "e",
-      ζ: "z",
-      η: "h",
-      θ: "o",
-      ι: "i",
-      κ: "k",
-      λ: "l",
-      μ: "m",
-      ν: "n",
-      ξ: "x",
-      ο: "o",
-      π: "p",
-      ρ: "p",
-      σ: "s",
-      τ: "t",
-      υ: "y",
-      φ: "f",
-      χ: "x",
-      ψ: "y",
-      ω: "w",
-      ς: "s",
-      ϱ: "p",
-      ϲ: "c",
-      ϳ: "j",
-
-      // Uppercase Greek
-      Α: "a",
-      Β: "b",
-      Γ: "y",
-      Δ: "d",
-      Ε: "e",
-      Ζ: "z",
-      Η: "h",
-      Θ: "o",
-      Ι: "i",
-      Κ: "k",
-      Λ: "l",
-      Μ: "m",
-      Ν: "n",
-      Ξ: "x",
-      Ο: "o",
-      Π: "p",
-      Ρ: "p",
-      Σ: "s",
-      Τ: "t",
-      Υ: "y",
-      Φ: "f",
-      Χ: "x",
-      Ψ: "y",
-      Ω: "w",
-      Ϲ: "c",
-      Ϳ: "j",
-    };
-
-    Object.assign(mappings, greekMappings);
+    Object.assign(mappings, {
+      "\u03B1": "a",
+      "\u03B2": "b",
+      "\u03B3": "y",
+      "\u03B4": "d",
+      "\u03B5": "e",
+      "\u03B6": "z",
+      "\u03B7": "h",
+      "\u03B8": "o",
+      "\u03B9": "i",
+      "\u03BA": "k",
+      "\u03BB": "l",
+      "\u03BC": "m",
+      "\u03BD": "n",
+      "\u03BE": "x",
+      "\u03BF": "o",
+      "\u03C0": "p",
+      "\u03C1": "p",
+      "\u03C3": "s",
+      "\u03C4": "t",
+      "\u03C5": "y",
+      "\u03C6": "f",
+      "\u03C7": "x",
+      "\u03C8": "y",
+      "\u03C9": "w",
+      "\u03C2": "s",
+      "\u03F1": "p",
+      "\u03F2": "c",
+      "\u03F3": "j",
+      "\u0391": "a",
+      "\u0392": "b",
+      "\u0393": "y",
+      "\u0394": "d",
+      "\u0395": "e",
+      "\u0396": "z",
+      "\u0397": "h",
+      "\u0398": "o",
+      "\u0399": "i",
+      "\u039A": "k",
+      "\u039B": "l",
+      "\u039C": "m",
+      "\u039D": "n",
+      "\u039E": "x",
+      "\u039F": "o",
+      "\u03A0": "p",
+      "\u03A1": "p",
+      "\u03A3": "s",
+      "\u03A4": "t",
+      "\u03A5": "y",
+      "\u03A6": "f",
+      "\u03A7": "x",
+      "\u03A8": "y",
+      "\u03A9": "w",
+      "\u03F9": "c",
+      "\u037F": "j",
+    });
   }
 
-  /**
-   * Adds fullwidth character mappings (commonly used in CJK text)
-   */
   addFullwidthMappings(mappings) {
-    // Fullwidth uppercase letters A-Z (U+FF21 to U+FF3A)
     for (let i = 0; i < 26; i++) {
-      const fullwidthChar = String.fromCharCode(0xff21 + i); // Ａ-Ｚ
-      const normalChar = String.fromCharCode(97 + i); // a-z
-      mappings[fullwidthChar] = normalChar;
+      mappings[String.fromCharCode(0xff21 + i)] = String.fromCharCode(97 + i);
+      mappings[String.fromCharCode(0xff41 + i)] = String.fromCharCode(97 + i);
     }
-
-    // Fullwidth lowercase letters a-z (U+FF41 to U+FF5A)
-    for (let i = 0; i < 26; i++) {
-      const fullwidthChar = String.fromCharCode(0xff41 + i); // ａ-ｚ
-      const normalChar = String.fromCharCode(97 + i); // a-z
-      mappings[fullwidthChar] = normalChar;
-    }
-
-    // Fullwidth digits 0-9 (U+FF10 to U+FF19)
     for (let i = 0; i < 10; i++) {
-      const fullwidthChar = String.fromCharCode(0xff10 + i); // ０-９
-      const normalChar = String.fromCharCode(48 + i); // 0-9
-      mappings[fullwidthChar] = normalChar;
+      mappings[String.fromCharCode(0xff10 + i)] = String.fromCharCode(48 + i);
     }
   }
 
-  /**
-   * Adds common character substitutions used in leetspeak and obfuscation
-   */
   addCommonSubstitutions(mappings) {
-    const substitutions = {
-      // Numbers that look like letters
+    Object.assign(mappings, {
       0: "o",
       1: "i",
       3: "e",
@@ -388,548 +367,657 @@ class WordFilter {
       7: "t",
       8: "b",
       9: "g",
-
-      // Symbols that look like letters
       "@": "a",
       $: "s",
       "!": "i",
       "|": "i",
       "+": "t",
       "&": "a",
-      "§": "s",
-      "¢": "c",
-      "€": "e",
-      "£": "l",
-      "¥": "y",
-      "₹": "r",
-      "₽": "p",
-      "₩": "w",
-
-      // Mathematical symbols
-      "∀": "a",
-      "∃": "e",
-      "∩": "n",
-      "∪": "u",
-      "∑": "s",
-      "∏": "p",
-      "∆": "d",
-      "∇": "v",
-      "∈": "e",
-      "∋": "n",
-      "∞": "o",
-      "∫": "f",
-
-      // Arrows and directional symbols
-      "↑": "i",
-      "↓": "i",
-      "←": "l",
-      "→": "r",
-      "↔": "x",
-      "⇑": "i",
-      "⇓": "i",
-      "⇐": "l",
-      "⇒": "r",
-      "⇔": "x",
-
-      // Fractions
-      "½": "12",
-      "⅓": "13",
-      "⅔": "23",
-      "¼": "14",
-      "¾": "34",
-      "⅛": "18",
-      "⅜": "38",
-      "⅝": "58",
-      "⅞": "78",
-
-      // Roman numerals
-      Ⅰ: "i",
-      Ⅱ: "ii",
-      Ⅲ: "iii",
-      Ⅳ: "iv",
-      Ⅴ: "v",
-      Ⅵ: "vi",
-      Ⅶ: "vii",
-      Ⅷ: "viii",
-      Ⅸ: "ix",
-      Ⅹ: "x",
-      ⅰ: "i",
-      ⅱ: "ii",
-      ⅲ: "iii",
-      ⅳ: "iv",
-      ⅴ: "v",
-      ⅵ: "vi",
-      ⅶ: "vii",
-      ⅷ: "viii",
-      ⅸ: "ix",
-      ⅹ: "x",
-
-      // Circled letters
-      "Ⓐ": "a",
-      "Ⓑ": "b",
-      "Ⓒ": "c",
-      "Ⓓ": "d",
-      "Ⓔ": "e",
-      "Ⓕ": "f",
-      "Ⓖ": "g",
-      "Ⓗ": "h",
-      "Ⓘ": "i",
-      "Ⓙ": "j",
-      "Ⓚ": "k",
-      "Ⓛ": "l",
-      "Ⓜ": "m",
-      "Ⓝ": "n",
-      "Ⓞ": "o",
-      "Ⓟ": "p",
-      "Ⓠ": "q",
-      "Ⓡ": "r",
-      "Ⓢ": "s",
-      "Ⓣ": "t",
-      "Ⓤ": "u",
-      "Ⓥ": "v",
-      "Ⓦ": "w",
-      "Ⓧ": "x",
-      "Ⓨ": "y",
-      "Ⓩ": "z",
-      "ⓐ": "a",
-      "ⓑ": "b",
-      "ⓒ": "c",
-      "ⓓ": "d",
-      "ⓔ": "e",
-      "ⓕ": "f",
-      "ⓖ": "g",
-      "ⓗ": "h",
-      "ⓘ": "i",
-      "ⓙ": "j",
-      "ⓚ": "k",
-      "ⓛ": "l",
-      "ⓜ": "m",
-      "ⓝ": "n",
-      "ⓞ": "o",
-      "ⓟ": "p",
-      "ⓠ": "q",
-      "ⓡ": "r",
-      "ⓢ": "s",
-      "ⓣ": "t",
-      "ⓤ": "u",
-      "ⓥ": "v",
-      "ⓦ": "w",
-      "ⓧ": "x",
-      "ⓨ": "y",
-      "ⓩ": "z",
-
-      // Parenthesized letters
-      "⒜": "a",
-      "⒝": "b",
-      "⒞": "c",
-      "⒟": "d",
-      "⒠": "e",
-      "⒡": "f",
-      "⒢": "g",
-      "⒣": "h",
-      "⒤": "i",
-      "⒥": "j",
-      "⒦": "k",
-      "⒧": "l",
-      "⒨": "m",
-      "⒩": "n",
-      "⒪": "o",
-      "⒫": "p",
-      "⒬": "q",
-      "⒭": "r",
-      "⒮": "s",
-      "⒯": "t",
-      "⒰": "u",
-      "⒱": "v",
-      "⒲": "w",
-      "⒳": "x",
-      "⒴": "y",
-      "⒵": "z",
-    };
-
-    Object.assign(mappings, substitutions);
+      "\u00A7": "s",
+      "\u00A2": "c",
+      "\u20AC": "e",
+      "\u00A3": "l",
+      "\u00A5": "y",
+      "\u20B9": "r",
+      "\u20BD": "p",
+      "\u20A9": "w",
+      "\u2200": "a",
+      "\u2203": "e",
+      "\u2229": "n",
+      "\u222A": "u",
+      "\u2211": "s",
+      "\u220F": "p",
+      "\u2206": "d",
+      "\u2207": "v",
+      "\u2208": "e",
+      "\u220B": "n",
+      "\u221E": "o",
+      "\u222B": "f",
+      "\u2191": "i",
+      "\u2193": "i",
+      "\u2190": "l",
+      "\u2192": "r",
+      "\u2194": "x",
+      "\u21D1": "i",
+      "\u21D3": "i",
+      "\u21D0": "l",
+      "\u21D2": "r",
+      "\u21D4": "x",
+      "\u00BD": "12",
+      "\u2153": "13",
+      "\u2154": "23",
+      "\u00BC": "14",
+      "\u00BE": "34",
+      "\u215B": "18",
+      "\u215C": "38",
+      "\u215D": "58",
+      "\u215E": "78",
+      "\u2160": "i",
+      "\u2161": "ii",
+      "\u2162": "iii",
+      "\u2163": "iv",
+      "\u2164": "v",
+      "\u2165": "vi",
+      "\u2166": "vii",
+      "\u2167": "viii",
+      "\u2168": "ix",
+      "\u2169": "x",
+      "\u2170": "i",
+      "\u2171": "ii",
+      "\u2172": "iii",
+      "\u2173": "iv",
+      "\u2174": "v",
+      "\u2175": "vi",
+      "\u2176": "vii",
+      "\u2177": "viii",
+      "\u2178": "ix",
+      "\u2179": "x",
+      "\u24B6": "a",
+      "\u24B7": "b",
+      "\u24B8": "c",
+      "\u24B9": "d",
+      "\u24BA": "e",
+      "\u24BB": "f",
+      "\u24BC": "g",
+      "\u24BD": "h",
+      "\u24BE": "i",
+      "\u24BF": "j",
+      "\u24C0": "k",
+      "\u24C1": "l",
+      "\u24C2": "m",
+      "\u24C3": "n",
+      "\u24C4": "o",
+      "\u24C5": "p",
+      "\u24C6": "q",
+      "\u24C7": "r",
+      "\u24C8": "s",
+      "\u24C9": "t",
+      "\u24CA": "u",
+      "\u24CB": "v",
+      "\u24CC": "w",
+      "\u24CD": "x",
+      "\u24CE": "y",
+      "\u24CF": "z",
+      "\u24D0": "a",
+      "\u24D1": "b",
+      "\u24D2": "c",
+      "\u24D3": "d",
+      "\u24D4": "e",
+      "\u24D5": "f",
+      "\u24D6": "g",
+      "\u24D7": "h",
+      "\u24D8": "i",
+      "\u24D9": "j",
+      "\u24DA": "k",
+      "\u24DB": "l",
+      "\u24DC": "m",
+      "\u24DD": "n",
+      "\u24DE": "o",
+      "\u24DF": "p",
+      "\u24E0": "q",
+      "\u24E1": "r",
+      "\u24E2": "s",
+      "\u24E3": "t",
+      "\u24E4": "u",
+      "\u24E5": "v",
+      "\u24E6": "w",
+      "\u24E7": "x",
+      "\u24E8": "y",
+      "\u24E9": "z",
+      "\u249C": "a",
+      "\u249D": "b",
+      "\u249E": "c",
+      "\u249F": "d",
+      "\u24A0": "e",
+      "\u24A1": "f",
+      "\u24A2": "g",
+      "\u24A3": "h",
+      "\u24A4": "i",
+      "\u24A5": "j",
+      "\u24A6": "k",
+      "\u24A7": "l",
+      "\u24A8": "m",
+      "\u24A9": "n",
+      "\u24AA": "o",
+      "\u24AB": "p",
+      "\u24AC": "q",
+      "\u24AD": "r",
+      "\u24AE": "s",
+      "\u24AF": "t",
+      "\u24B0": "u",
+      "\u24B1": "v",
+      "\u24B2": "w",
+      "\u24B3": "x",
+      "\u24B4": "y",
+      "\u24B5": "z",
+    });
   }
 
-  /**
-   * Adds additional Unicode confusable characters
-   */
   addUnicodeConfusables(mappings) {
-    const confusables = {
-      // Double-struck letters
-      ℂ: "c",
-      ℍ: "h",
-      ℕ: "n",
-      ℚ: "q",
-      ℝ: "r",
-      ℤ: "z",
-      ℎ: "h",
-      ℓ: "l",
-      "℘": "p",
-      ℬ: "b",
-      ℰ: "e",
-      ℱ: "f",
-      ℋ: "h",
-      ℐ: "i",
-      ℒ: "l",
-      ℳ: "m",
-      ℛ: "r",
-      ℯ: "e",
-
-      // Set theory symbols
-      "∩": "n",
-      "∪": "u",
-      "⊂": "c",
-      "⊃": "c",
-      "⊆": "c",
-      "⊇": "c",
-      "⊕": "o",
-      "⊗": "x",
-      "⊙": "o",
-      "⊚": "o",
-      "⊛": "o",
-
-      // Box drawing characters
-      "│": "i",
-      "║": "i",
-      "┃": "i",
-      "┊": "i",
-      "┋": "i",
-      "─": "l",
-      "═": "l",
-      "━": "l",
-      "┄": "l",
-      "┅": "l",
-
-      // Currency and symbols
-      "¤": "o",
-      "¦": "i",
-      "©": "c",
-      "®": "r",
-      "°": "o",
-      "±": "t",
-      "²": "2",
-      "³": "3",
-      "¹": "1",
-      "¼": "14",
-      "½": "12",
-      "¾": "34",
-      "×": "x",
-      "÷": "d",
-      "‰": "o",
-
-      // Punctuation lookalikes (using Unicode escape sequences)
-      "\u2018": "'", // Left single quotation mark
-      "\u2019": "'", // Right single quotation mark
-      "\u201C": '"', // Left double quotation mark
-      "\u201D": '"', // Right double quotation mark
-      "\u2026": "...", // Horizontal ellipsis
-      "\u2013": "-", // En dash
-      "\u2014": "-", // Em dash
-      "\u2015": "-", // Horizontal bar
-      "\u2022": "o", // Bullet
-      "\u201A": ",", // Single low-9 quotation mark
-      "\u201E": '"', // Double low-9 quotation mark
-      "\u2039": "<", // Single left-pointing angle quotation mark
-      "\u203A": ">", // Single right-pointing angle quotation mark
-      "\u00AB": "<", // Left-pointing double angle quotation mark
-      "\u00BB": ">", // Right-pointing double angle quotation mark
-
-      // Miscellaneous symbols
-      "☆": "o",
-      "★": "o",
-      "♠": "s",
-      "♣": "c",
-      "♥": "h",
-      "♦": "d",
-      "♀": "f",
-      "♂": "m",
-      "☀": "o",
-      "☁": "o",
-      "☂": "i",
-      "☃": "o",
-      "♩": "i",
-      "♪": "i",
-      "♫": "i",
-      "♬": "i",
-      "♭": "b",
-      "♮": "h",
-      "♯": "#",
-    };
-
-    Object.assign(mappings, confusables);
+    Object.assign(mappings, {
+      "\u2102": "c",
+      "\u210D": "h",
+      "\u2115": "n",
+      "\u211A": "q",
+      "\u211D": "r",
+      "\u2124": "z",
+      "\u210E": "h",
+      "\u2113": "l",
+      "\u2118": "p",
+      "\u212C": "b",
+      "\u2130": "e",
+      "\u2131": "f",
+      "\u210B": "h",
+      "\u2110": "i",
+      "\u2112": "l",
+      "\u2133": "m",
+      "\u211B": "r",
+      "\u212F": "e",
+      "\u2229": "n",
+      "\u222A": "u",
+      "\u2282": "c",
+      "\u2283": "c",
+      "\u2286": "c",
+      "\u2287": "c",
+      "\u2295": "o",
+      "\u2297": "x",
+      "\u2299": "o",
+      "\u229A": "o",
+      "\u229B": "o",
+      "\u2502": "i",
+      "\u2551": "i",
+      "\u2503": "i",
+      "\u250A": "i",
+      "\u250B": "i",
+      "\u2500": "l",
+      "\u2550": "l",
+      "\u2501": "l",
+      "\u2504": "l",
+      "\u2505": "l",
+      "\u00A4": "o",
+      "\u00A6": "i",
+      "\u00A9": "c",
+      "\u00AE": "r",
+      "\u00B0": "o",
+      "\u00B1": "t",
+      "\u00B2": "2",
+      "\u00B3": "3",
+      "\u00B9": "1",
+      "\u00BC": "14",
+      "\u00BD": "12",
+      "\u00BE": "34",
+      "\u00D7": "x",
+      "\u00F7": "d",
+      "\u2030": "o",
+      "\u2018": "'",
+      "\u2019": "'",
+      "\u201C": '"',
+      "\u201D": '"',
+      "\u2026": "...",
+      "\u2013": "-",
+      "\u2014": "-",
+      "\u2015": "-",
+      "\u2022": "o",
+      "\u201A": ",",
+      "\u201E": '"',
+      "\u2039": "<",
+      "\u203A": ">",
+      "\u00AB": "<",
+      "\u00BB": ">",
+      "\u2606": "o",
+      "\u2605": "o",
+      "\u2660": "s",
+      "\u2663": "c",
+      "\u2665": "h",
+      "\u2666": "d",
+      "\u2640": "f",
+      "\u2642": "m",
+      "\u2600": "o",
+      "\u2601": "o",
+      "\u2602": "i",
+      "\u2603": "o",
+      "\u2669": "i",
+      "\u266A": "i",
+      "\u266B": "i",
+      "\u266C": "i",
+      "\u266D": "b",
+      "\u266E": "h",
+      "\u266F": "#",
+    });
   }
 
-  /**
-   * Adds superscript and subscript character mappings
-   */
   addSuperSubscriptMappings(mappings) {
-    const superSubscriptMappings = {
-      // Superscript numbers
-      "⁰": "0",
-      "¹": "1",
-      "²": "2",
-      "³": "3",
-      "⁴": "4",
-      "⁵": "5",
-      "⁶": "6",
-      "⁷": "7",
-      "⁸": "8",
-      "⁹": "9",
-
-      // Subscript numbers
-      "₀": "0",
-      "₁": "1",
-      "₂": "2",
-      "₃": "3",
-      "₄": "4",
-      "₅": "5",
-      "₆": "6",
-      "₇": "7",
-      "₈": "8",
-      "₉": "9",
-
-      // Superscript letters
-      ᵃ: "a",
-      ᵇ: "b",
-      ᶜ: "c",
-      ᵈ: "d",
-      ᵉ: "e",
-      ᶠ: "f",
-      ᵍ: "g",
-      ʰ: "h",
-      ⁱ: "i",
-      ʲ: "j",
-      ᵏ: "k",
-      ˡ: "l",
-      ᵐ: "m",
-      ⁿ: "n",
-      ᵒ: "o",
-      ᵖ: "p",
-      ʳ: "r",
-      ˢ: "s",
-      ᵗ: "t",
-      ᵘ: "u",
-      ᵛ: "v",
-      ʷ: "w",
-      ˣ: "x",
-      ʸ: "y",
-      ᶻ: "z",
-
-      // Subscript letters
-      ₐ: "a",
-      ₑ: "e",
-      ₕ: "h",
-      ᵢ: "i",
-      ⱼ: "j",
-      ₖ: "k",
-      ₗ: "l",
-      ₘ: "m",
-      ₙ: "n",
-      ₒ: "o",
-      ₚ: "p",
-      ᵣ: "r",
-      ₛ: "s",
-      ₜ: "t",
-      ᵤ: "u",
-      ᵥ: "v",
-      ₓ: "x",
-
-      // Superscript symbols
-      "⁺": "+",
-      "⁻": "-",
-      "⁼": "=",
-      "⁽": "(",
-      "⁾": ")",
-      ⁿ: "n",
-
-      // Subscript symbols
-      "₊": "+",
-      "₋": "-",
-      "₌": "=",
-      "₍": "(",
-      "₎": ")",
-    };
-
-    Object.assign(mappings, superSubscriptMappings);
+    Object.assign(mappings, {
+      "\u2070": "0",
+      "\u00B9": "1",
+      "\u00B2": "2",
+      "\u00B3": "3",
+      "\u2074": "4",
+      "\u2075": "5",
+      "\u2076": "6",
+      "\u2077": "7",
+      "\u2078": "8",
+      "\u2079": "9",
+      "\u2080": "0",
+      "\u2081": "1",
+      "\u2082": "2",
+      "\u2083": "3",
+      "\u2084": "4",
+      "\u2085": "5",
+      "\u2086": "6",
+      "\u2087": "7",
+      "\u2088": "8",
+      "\u2089": "9",
+      "\u1D43": "a",
+      "\u1D47": "b",
+      "\u1D9C": "c",
+      "\u1D48": "d",
+      "\u1D49": "e",
+      "\u1DA0": "f",
+      "\u1D4D": "g",
+      "\u02B0": "h",
+      "\u2071": "i",
+      "\u02B2": "j",
+      "\u1D4F": "k",
+      "\u02E1": "l",
+      "\u1D50": "m",
+      "\u207F": "n",
+      "\u1D52": "o",
+      "\u1D56": "p",
+      "\u02B3": "r",
+      "\u02E2": "s",
+      "\u1D57": "t",
+      "\u1D58": "u",
+      "\u1D5B": "v",
+      "\u02B7": "w",
+      "\u02E3": "x",
+      "\u02B8": "y",
+      "\u1DBB": "z",
+      "\u2090": "a",
+      "\u2091": "e",
+      "\u2095": "h",
+      "\u1D62": "i",
+      "\u2C7C": "j",
+      "\u2096": "k",
+      "\u2097": "l",
+      "\u2098": "m",
+      "\u2099": "n",
+      "\u2092": "o",
+      "\u209A": "p",
+      "\u1D63": "r",
+      "\u209B": "s",
+      "\u209C": "t",
+      "\u1D64": "u",
+      "\u1D65": "v",
+      "\u2093": "x",
+      "\u207A": "+",
+      "\u207B": "-",
+      "\u207C": "=",
+      "\u207D": "(",
+      "\u207E": ")",
+      "\u208A": "+",
+      "\u208B": "-",
+      "\u208C": "=",
+      "\u208D": "(",
+      "\u208E": ")",
+    });
   }
 
-  /**
-   * Adds mappings for zero-width and invisible characters
-   */
   addInvisibleCharacterMappings(mappings) {
-    const invisibleMappings = {
-      // Zero-width characters
-      "\u200B": "", // Zero width space
-      "\u200C": "", // Zero width non-joiner
-      "\u200D": "", // Zero width joiner
-      "\u2060": "", // Word joiner
-      "\uFEFF": "", // Zero width no-break space (BOM)
-      "\u180E": "", // Mongolian vowel separator
-      "\u061C": "", // Arabic letter mark
-
-      // Bidirectional text control characters
-      "\u200E": "", // Left-to-right mark
-      "\u200F": "", // Right-to-left mark
-      "\u202A": "", // Left-to-right embedding
-      "\u202B": "", // Right-to-left embedding
-      "\u202C": "", // Pop directional formatting
-      "\u202D": "", // Left-to-right override
-      "\u202E": "", // Right-to-left override
-      "\u2066": "", // Left-to-right isolate
-      "\u2067": "", // Right-to-left isolate
-      "\u2068": "", // First strong isolate
-      "\u2069": "", // Pop directional isolate
-
-      // Other invisible characters
-      "\u034F": "", // Combining grapheme joiner
-      "\u17B4": "", // Khmer vowel inherent AQ
-      "\u17B5": "", // Khmer vowel inherent AA
-      "\u2028": "", // Line separator
-      "\u2029": "", // Paragraph separator
-      "\u00AD": "", // Soft hyphen
-      "\u115F": "", // Hangul choseong filler
-      "\u1160": "", // Hangul jungseong filler
-      "\u3164": "", // Hangul filler
-      "\uFFA0": "", // Halfwidth hangul filler
-    };
-
-    Object.assign(mappings, invisibleMappings);
+    Object.assign(mappings, {
+      "\u200B": "",
+      "\u200C": "",
+      "\u200D": "",
+      "\u2060": "",
+      "\uFEFF": "",
+      "\u180E": "",
+      "\u061C": "",
+      "\u200E": "",
+      "\u200F": "",
+      "\u202A": "",
+      "\u202B": "",
+      "\u202C": "",
+      "\u202D": "",
+      "\u202E": "",
+      "\u2066": "",
+      "\u2067": "",
+      "\u2068": "",
+      "\u2069": "",
+      "\u034F": "",
+      "\u17B4": "",
+      "\u17B5": "",
+      "\u2028": "",
+      "\u2029": "",
+      "\u00AD": "",
+      "\u115F": "",
+      "\u1160": "",
+      "\u3164": "",
+      "\uFFA0": "",
+    });
   }
 
+  // ── Normalization with index mapping ──────────────────────────────────────
+
   /**
-   * Enhanced string normalization with comprehensive Unicode handling
-   * Optimized for Talkomatic's real-time chat scenarios
+   * Normalizes text to lowercase alphanumeric AND builds the index map back
+   * to the original string, in a single code-point-aware pass.
+   *
+   * Returns { normalized, map } where map[k] is the code-UNIT index in the
+   * original text of the character that produced normalized[k]. This is the
+   * fix for the astral-plane desync: the old findOriginalIndex iterated code
+   * units and pushed one index per multi-char mapping, so any message with
+   * mathematical-bold (or similar) characters had its asterisk ranges
+   * shifted.
+   *
+   * Options:
+   * - dropDigits: remove digits entirely instead of mapping them to letters
+   *   (variant scan for number padding, e.g. "fu1ck").
+   * - maxRun: maximum allowed run of identical characters. 2 = legacy
+   *   behavior (preserves doubles), 1 = fully collapsed (variant scan for
+   *   doubled letters, e.g. "fuuck").
    */
-  stringToAlphanumeric(text) {
-    if (!text || typeof text !== "string") {
-      return "";
-    }
+  buildNormalizedWithMap(text, options = {}) {
+    const dropDigits = options.dropDigits === true;
+    const maxRun = options.maxRun || 2;
 
-    let result = "";
+    let normalized = "";
+    const map = [];
+    let codeUnitIndex = 0;
+    let lastChar = "";
+    let runLength = 0;
 
-    // Process each character individually for maximum compatibility
-    for (let char of text) {
-      // Handle both original case and lowercase
+    for (const char of text) {
+      const unitLen = char.length; // 1, or 2 for surrogate pairs
+
       let lowerChar = char.toLowerCase();
-
-      // Remove diacritics and combining marks
       lowerChar = lowerChar.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-      // Apply obfuscation mapping (check original char first, then lowercase)
-      let mappedChar =
+      const mapped =
         this.obfuscationMap[char] ||
         this.obfuscationMap[lowerChar] ||
         lowerChar;
 
-      // Only keep alphanumeric characters
-      if (/[a-z0-9]/.test(mappedChar)) {
-        result += mappedChar;
+      // A mapping may produce multiple characters ("½" → "12", "Ⅱ" → "ii").
+      for (const out of mapped) {
+        if (!/[a-z0-9]/.test(out)) continue;
+        if (dropDigits && /[0-9]/.test(out)) continue;
+
+        // Run clamping (replaces the old post-hoc regex, so the index map
+        // stays correct). Dropped characters do not break a run, matching
+        // the legacy behavior of collapsing AFTER normalization.
+        if (out === lastChar) {
+          runLength++;
+          if (runLength > maxRun) continue;
+        } else {
+          lastChar = out;
+          runLength = 1;
+        }
+
+        normalized += out;
+        map.push(codeUnitIndex);
       }
-      // All other characters (spaces, punctuation, symbols) are ignored
+
+      codeUnitIndex += unitLen;
     }
 
-    // Handle excessive repeated characters that might be used to break detection
-    // (e.g., "baaaadword" -> "badword") while preserving legitimate doubles
-    result = this.normalizeRepeatedCharacters(result);
-
-    return result;
+    return { normalized, map };
   }
 
   /**
-   * Normalizes repeated characters while preserving legitimate patterns
+   * Legacy-compatible normalization (kept for tests/debug tooling).
    */
-  normalizeRepeatedCharacters(text) {
-    // Replace runs of 3+ identical characters with just 2
-    // This preserves legitimate double letters while reducing padding attempts
-    return text.replace(/(.)\1{2,}/g, "$1$1");
+  stringToAlphanumeric(text) {
+    if (!text || typeof text !== "string") return "";
+    return this.buildNormalizedWithMap(text).normalized;
+  }
+
+  // ── Scanning ───────────────────────────────────────────────────────────────
+
+  /**
+   * Walks normalized text against an offensive/whitelist trie pair.
+   * Returns matches as [startNorm, endNorm) index pairs into `normalized`.
+   */
+  scanNormalized(normalized, offensiveTrie, whitelistTrie) {
+    const matches = [];
+    let i = 0;
+
+    while (i < normalized.length) {
+      let maxOffensiveMatchLength = 0;
+      let maxWhitelistMatchLength = 0;
+
+      let node = offensiveTrie.root;
+      let j = i;
+      while (j < normalized.length && node.children[normalized[j]]) {
+        node = node.children[normalized[j]];
+        j++;
+        if (node.isEndOfWord) maxOffensiveMatchLength = j - i;
+      }
+
+      node = whitelistTrie.root;
+      j = i;
+      while (j < normalized.length && node.children[normalized[j]]) {
+        node = node.children[normalized[j]];
+        j++;
+        if (node.isEndOfWord) maxWhitelistMatchLength = j - i;
+      }
+
+      if (
+        maxOffensiveMatchLength > 0 &&
+        maxOffensiveMatchLength >= maxWhitelistMatchLength
+      ) {
+        if (
+          this.isValidOffensiveMatch(normalized, i, i + maxOffensiveMatchLength)
+        ) {
+          matches.push([i, i + maxOffensiveMatchLength]);
+        }
+        i += maxOffensiveMatchLength;
+      } else {
+        i++;
+      }
+    }
+    return matches;
   }
 
   /**
-   * Enhanced text checking with improved pattern detection
+   * Validates whether an offensive word match is legitimate
+   * (unchanged from v2.0: rejects 1-2 char matches, boundary-checks 3-4).
+   */
+  isValidOffensiveMatch(normalizedText, startPos, endPos) {
+    const matchLength = endPos - startPos;
+
+    if (matchLength <= 2) {
+      return false;
+    }
+
+    if (matchLength <= 4) {
+      const beforeChar = startPos > 0 ? normalizedText[startPos - 1] : "";
+      const afterChar =
+        endPos < normalizedText.length ? normalizedText[endPos] : "";
+      const isEmbedded =
+        /[a-z0-9]/.test(beforeChar) && /[a-z0-9]/.test(afterChar);
+      if (isEmbedded) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Runs one full scan of `text` under the given normalization options and
+   * trie pair, returning ranges as [start, end) code-unit indices into the
+   * ORIGINAL text.
+   *
+   * gate=true → span gate: only accept a match whose original-text region is
+   * LONGER than the matched word. That means a bypass character (newline,
+   * digit, repeated letter, dropped symbol...) was actually present inside
+   * the match. Clean single-line words always have span === length and are
+   * left to the primary per-line scan, so variant scans can never flag a
+   * word the primary scan considers clean (e.g. "Bob" vs a collapsed "boob").
+   */
+  scanVariant(text, options, offensiveTrie, whitelistTrie, gate) {
+    const { normalized, map } = this.buildNormalizedWithMap(text, options);
+    if (normalized.length === 0) return [];
+
+    const matches = this.scanNormalized(
+      normalized,
+      offensiveTrie,
+      whitelistTrie,
+    );
+    const ranges = [];
+
+    for (const [start, end] of matches) {
+      const origStart = map[start];
+      const origEnd = end < map.length ? map[end] : text.length;
+      if (gate && origEnd - origStart <= end - start) continue;
+      ranges.push([origStart, origEnd]);
+    }
+    return ranges;
+  }
+
+  /** Per-line primary scan, cached by line text. */
+  checkLine(line) {
+    if (this.lineCache.has(line)) {
+      this.cacheHits++;
+      return this.lineCache.get(line);
+    }
+    this.cacheMisses++;
+
+    const ranges = this.scanVariant(
+      line,
+      {},
+      this.offensiveTrie,
+      this.whitelistTrie,
+      false, // primary scan: no gate
+    );
+
+    this.lineCache.set(line, ranges);
+    if (this.lineCache.size > this.lineCacheSize) {
+      const oldestKey = this.lineCache.keys().next().value;
+      this.lineCache.delete(oldestKey);
+    }
+    return ranges;
+  }
+
+  /** Sorts ranges and merges overlapping/touching ones. */
+  mergeRanges(ranges) {
+    if (ranges.length <= 1) return ranges;
+    ranges.sort((a, b) => a[0] - b[0]);
+    const merged = [ranges[0]];
+    for (let k = 1; k < ranges.length; k++) {
+      const last = merged[merged.length - 1];
+      const cur = ranges[k];
+      if (cur[0] <= last[1]) {
+        if (cur[1] > last[1]) last[1] = cur[1];
+      } else {
+        merged.push(cur);
+      }
+    }
+    return merged;
+  }
+
+  /**
+   * Main detection entry point.
+   *
+   * PASS 1 — per-line scan (cached per line): the accurate, legacy-equivalent
+   *          scan that handles the vast majority of content.
+   * PASS 2 — bypass-hardening scans on the whole text (each span-gated):
+   *   a) standard normalization across newlines  → catches "f\nu\nc\nk"
+   *   b) digits dropped                          → catches "fu1ck"
+   *   c) repeats fully collapsed + collapsed tries → catches "fuuck"
    */
   checkText(text) {
     if (!text || typeof text !== "string") {
       return { hasOffensiveWord: false, offensiveRanges: [] };
     }
 
-    const cacheKey = text;
-    if (this.cache.has(cacheKey)) {
+    const cached = this.cache.get(text);
+    if (cached) {
       this.cacheHits++;
-      return this.cache.get(cacheKey);
+      return cached;
     }
-
     this.cacheMisses++;
-    let result = { hasOffensiveWord: false, offensiveRanges: [] };
 
+    let ranges = [];
+
+    // ── PASS 1: per-line (cached) ──
     const lines = text.split(/\r?\n/);
-    let overallIndex = 0;
-
+    let offset = 0;
     for (const line of lines) {
-      const normalizedLine = this.stringToAlphanumeric(line);
-
-      // Skip empty lines
-      if (normalizedLine.length === 0) {
-        overallIndex += line.length + 1;
-        continue;
+      const lineRanges = this.checkLine(line);
+      for (const [s, e] of lineRanges) {
+        ranges.push([s + offset, e + offset]);
       }
-
-      let i = 0;
-      while (i < normalizedLine.length) {
-        let maxOffensiveMatchLength = 0;
-        let maxWhitelistMatchLength = 0;
-
-        // Check for offensive word starting at position i
-        let node = this.offensiveTrie.root;
-        let j = i;
-        while (j < normalizedLine.length && node.children[normalizedLine[j]]) {
-          node = node.children[normalizedLine[j]];
-          j++;
-          if (node.isEndOfWord) {
-            maxOffensiveMatchLength = j - i;
-          }
-        }
-
-        // Check for whitelisted word starting at position i
-        node = this.whitelistTrie.root;
-        j = i;
-        while (j < normalizedLine.length && node.children[normalizedLine[j]]) {
-          node = node.children[normalizedLine[j]];
-          j++;
-          if (node.isEndOfWord) {
-            maxWhitelistMatchLength = j - i;
-          }
-        }
-
-        // Flag offensive content if found and not whitelisted
-        if (
-          maxOffensiveMatchLength > 0 &&
-          maxOffensiveMatchLength >= maxWhitelistMatchLength
-        ) {
-          // Additional validation for context and word boundaries
-          if (
-            this.isValidOffensiveMatch(
-              normalizedLine,
-              i,
-              i + maxOffensiveMatchLength
-            )
-          ) {
-            result.hasOffensiveWord = true;
-            const startIndex = this.findOriginalIndex(line, i) + overallIndex;
-            const endIndex =
-              this.findOriginalIndex(line, i + maxOffensiveMatchLength) +
-              overallIndex;
-            result.offensiveRanges.push([startIndex, endIndex]);
-          }
-          i += maxOffensiveMatchLength;
-        } else {
-          i++;
-        }
-      }
-      overallIndex += line.length + 1; // +1 for newline character
+      offset += line.length + 1; // +1 for the newline
     }
 
-    // Cache the result
-    this.cache.set(cacheKey, result);
+    // ── PASS 2: bypass-hardening variant scans (span-gated) ──
+
+    // (a) cross-newline — only useful when there IS more than one line
+    if (lines.length > 1) {
+      ranges.push(
+        ...this.scanVariant(
+          text,
+          {},
+          this.offensiveTrie,
+          this.whitelistTrie,
+          true,
+        ),
+      );
+    }
+
+    // (b) digit padding — only when the text contains a digit
+    if (/[0-9]/.test(text)) {
+      ranges.push(
+        ...this.scanVariant(
+          text,
+          { dropDigits: true },
+          this.offensiveTrie,
+          this.whitelistTrie,
+          true,
+        ),
+      );
+    }
+
+    // (c) doubled letters — collapsed text vs collapsed word lists
+    ranges.push(
+      ...this.scanVariant(
+        text,
+        { maxRun: 1 },
+        this.offensiveTrieCollapsed,
+        this.whitelistTrieCollapsed,
+        true,
+      ),
+    );
+
+    ranges = this.mergeRanges(ranges);
+
+    const result = {
+      hasOffensiveWord: ranges.length > 0,
+      offensiveRanges: ranges,
+    };
+
+    this.cache.set(text, result);
     if (this.cache.size > this.cacheSize) {
       const oldestKey = this.cache.keys().next().value;
       this.cache.delete(oldestKey);
@@ -939,72 +1027,8 @@ class WordFilter {
   }
 
   /**
-   * Validates whether an offensive word match is legitimate
-   */
-  isValidOffensiveMatch(normalizedText, startPos, endPos) {
-    const matchLength = endPos - startPos;
-
-    // Reject very short matches (1-2 characters) as they're prone to false positives
-    if (matchLength <= 2) {
-      return false;
-    }
-
-    // For medium-length matches (3-4 characters), check word boundaries
-    if (matchLength <= 4) {
-      const beforeChar = startPos > 0 ? normalizedText[startPos - 1] : "";
-      const afterChar =
-        endPos < normalizedText.length ? normalizedText[endPos] : "";
-
-      // If surrounded by letters/numbers, it might be part of a larger legitimate word
-      const isEmbedded =
-        /[a-z0-9]/.test(beforeChar) && /[a-z0-9]/.test(afterChar);
-      if (isEmbedded) {
-        return false;
-      }
-    }
-
-    // For longer matches (5+ characters), generally accept them
-    return true;
-  }
-
-  /**
-   * Enhanced original index finding with better Unicode support
-   */
-  findOriginalIndex(originalText, normalizedIndex) {
-    let normalizedText = "";
-    let indexMapping = [];
-
-    // Build mapping between normalized and original indices
-    for (let i = 0; i < originalText.length; i++) {
-      let char = originalText[i];
-      let lowerChar = char.toLowerCase();
-      lowerChar = lowerChar.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-      // Apply the same mapping as in stringToAlphanumeric
-      let mappedChar =
-        this.obfuscationMap[char] ||
-        this.obfuscationMap[lowerChar] ||
-        lowerChar;
-
-      if (/[a-z0-9]/.test(mappedChar)) {
-        normalizedText += mappedChar;
-        indexMapping.push(i);
-      }
-    }
-
-    // Handle boundary cases
-    if (normalizedIndex >= indexMapping.length) {
-      return originalText.length;
-    }
-    if (normalizedIndex < 0) {
-      return 0;
-    }
-
-    return indexMapping[normalizedIndex];
-  }
-
-  /**
-   * Enhanced text filtering with better preservation of text structure
+   * Replaces detected ranges with asterisks. Ranges arrive sorted and
+   * non-overlapping from checkText (mergeRanges).
    */
   filterText(text) {
     const { offensiveRanges } = this.checkText(text);
@@ -1014,25 +1038,18 @@ class WordFilter {
     let lastIndex = 0;
 
     for (const [start, end] of offensiveRanges) {
-      // Add text before the offensive content
       filteredText += text.slice(lastIndex, start);
-
-      // Replace offensive content with asterisks
       const offensiveLength = end - start;
       filteredText += "*".repeat(Math.max(1, offensiveLength));
-
       lastIndex = end;
     }
 
-    // Add remaining text
     filteredText += text.slice(lastIndex);
-
     return filteredText;
   }
 
-  /**
-   * Get detailed cache statistics for performance monitoring
-   */
+  // ── Stats / maintenance ────────────────────────────────────────────────────
+
   getCacheStats() {
     const hitRate =
       this.cacheHits + this.cacheMisses > 0
@@ -1040,29 +1057,26 @@ class WordFilter {
         : 0;
 
     return {
-      size: this.cache.size,
-      maxSize: this.cacheSize,
+      fullTextEntries: this.cache.size,
+      lineEntries: this.lineCache.size,
+      maxFullText: this.cacheSize,
+      maxLines: this.lineCacheSize,
       hits: this.cacheHits,
       misses: this.cacheMisses,
       hitRate: Math.round(hitRate * 100) / 100,
-      memoryUsage: this.cache.size > 0 ? "active" : "empty",
     };
   }
 
-  /**
-   * Clear cache and reset statistics
-   */
   clearCache() {
     this.cache.clear();
+    this.lineCache.clear();
     this.cacheHits = 0;
     this.cacheMisses = 0;
   }
 
-  /**
-   * Test method for debugging normalization behavior
-   */
+  /** Debug helper: shows how a string normalizes, per character. */
   testNormalization(text) {
-    const normalized = this.stringToAlphanumeric(text);
+    const { normalized } = this.buildNormalizedWithMap(text);
     const characterDetails = [...text].map((char) => {
       const code = char.codePointAt(0);
       const lowerChar = char
@@ -1083,8 +1097,8 @@ class WordFilter {
         source: this.obfuscationMap[char]
           ? "direct"
           : this.obfuscationMap[lowerChar]
-          ? "lowercase"
-          : "unchanged",
+            ? "lowercase"
+            : "unchanged",
       };
     });
 
@@ -1092,80 +1106,53 @@ class WordFilter {
       original: text,
       normalized: normalized,
       reduction: `${text.length} → ${normalized.length} chars`,
-      efficiency:
-        normalized.length > 0
-          ? Math.round((normalized.length / text.length) * 100) + "%"
-          : "0%",
       characterDetails: characterDetails,
     };
   }
 
-  /**
-   * Get comprehensive filter statistics and configuration info
-   */
   getFilterStats() {
     return {
-      version: "2.0.0-enhanced",
+      version: "2.1.0-hardened",
       cache: this.getCacheStats(),
       mappings: {
         totalMappings: Object.keys(this.obfuscationMap).length,
-        categories: [
-          "File-based substitutions",
-          "Mathematical Alphanumeric Symbols",
-          "Cyrillic Confusables",
-          "Greek Confusables",
-          "Fullwidth Characters",
-          "Common Substitutions",
-          "Unicode Confusables",
-          "Superscript/Subscript",
-          "Zero-width Characters",
-        ],
       },
       wordLists: {
         offensive: this.offensiveTrie ? "loaded" : "not loaded",
         whitelist: this.whitelistTrie ? "loaded" : "not loaded",
+        offensiveCollapsed: this.offensiveTrieCollapsed
+          ? "loaded"
+          : "not loaded",
+        whitelistCollapsed: this.whitelistTrieCollapsed
+          ? "loaded"
+          : "not loaded",
       },
-      performance: {
-        cacheEnabled: true,
-        unicodeNormalization: true,
-        boundaryDetection: true,
-        realtimeOptimized: true,
+      hardening: {
+        crossNewlineScan: true,
+        digitPaddingScan: true,
+        doubledLetterScan: true,
+        spanGate: true,
+        codePointIndexing: true,
+        perLineCache: true,
       },
     };
   }
 
-  /**
-   * Validate filter configuration and report any issues
-   */
   validateConfiguration() {
     const issues = [];
     const warnings = [];
 
-    // Check word lists
-    if (!this.offensiveTrie) {
-      issues.push("Offensive words trie not initialized");
-    }
-    if (!this.whitelistTrie) {
-      warnings.push("Whitelist trie not initialized");
-    }
-
-    // Check mappings
-    if (Object.keys(this.obfuscationMap).length === 0) {
+    if (!this.offensiveTrie) issues.push("Offensive trie not initialized");
+    if (!this.whitelistTrie) warnings.push("Whitelist trie not initialized");
+    if (!this.offensiveTrieCollapsed)
+      issues.push("Collapsed offensive trie not initialized");
+    if (Object.keys(this.obfuscationMap).length === 0)
       issues.push("No character mappings loaded");
-    }
-    if (Object.keys(this.obfuscationMap).length < 1000) {
-      warnings.push("Character mapping count seems low");
-    }
-
-    // Check cache configuration
-    if (this.cacheSize <= 0) {
-      warnings.push("Cache disabled - may impact performance");
-    }
 
     return {
       status: issues.length === 0 ? "valid" : "invalid",
-      issues: issues,
-      warnings: warnings,
+      issues,
+      warnings,
       summary: `${issues.length} issues, ${warnings.length} warnings`,
     };
   }

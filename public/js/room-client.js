@@ -3,11 +3,25 @@
 // ║                                                                           ║
 // ║  PATCHED (June 2026 anniversary batch):                                   ║
 // ║  • FIX #4: Legacy ?accessCode= URLs are scrubbed from the address bar     ║
-// ║            and browser history on load (history.replaceState). The param  ║
-// ║            is still honored once as a join fallback for old links.        ║
-// ║  • FIX #6: Emoticons button no longer replaces the .room-type element.    ║
-// ║            Both now live side-by-side inside a .room-type-group wrapper,  ║
-// ║            and updateRoomInfo() keeps the room type label up to date.     ║
+// ║            and browser history on load (history.replaceState).            ║
+// ║  • FIX #6: Emoticons button lives beside .room-type, never replaces it.   ║
+// ║                                                                           ║
+// ║  PATCHED (June 2026 anniversary batch — BATCH 1):                         ║
+// ║  • FIX #7: Emote autocomplete no longer breaks after the first insert.    ║
+// ║            findEmoteAtCursor() now handles element-node cursor positions  ║
+// ║            (the caret lands on an element after insertHTML), and          ║
+// ║            insertEmote() guarantees the caret ends up inside a text       ║
+// ║            node so every subsequent ":" lookup succeeds.                  ║
+// ║  • FIX #8: Emote codes are protected from the word filter. Text is        ║
+// ║            filtered in segments AROUND valid :code: tokens, so e.g.       ║
+// ║            an emote whose code matches a filtered word still renders      ║
+// ║            instead of being turned into asterisks.                        ║
+// ║  • FIX #9: Vote counters are cleaned up properly. Counters and "voted"    ║
+// ║            highlights are removed when the room drops below the voting    ║
+// ║            minimum (3 users) or when votes reset, and the vote UI is      ║
+// ║            refreshed when a user leaves.                                  ║
+// ║  • FIX #10: updateInviteLink() no longer renders a broken invite link     ║
+// ║            (empty roomId) before the room has been joined.                ║
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
 // ── 1. CONSTANTS & STATE ────────────────────────────────────────────────────
@@ -45,6 +59,14 @@ const storedMessagesForMutedUsers = new Map();
 
 const MAX_MESSAGE_LENGTH = 5000;
 
+// FIX #9: client-side mirror of the server's CONFIG.LIMITS.MIN_USERS_FOR_VOTING.
+// Used purely for UI cleanup — the server remains the authority on votes.
+const MIN_USERS_FOR_VOTING = 3;
+
+// FIX #9: last vote state received from the server, so the vote UI can be
+// re-rendered after local DOM changes (e.g. a user leaving).
+let currentVotes = {};
+
 const ERROR_CODES = {
   VALIDATION_ERROR: "Validation Error",
   SERVER_ERROR: "Server Error",
@@ -65,11 +87,52 @@ const ERROR_CODES = {
 let clientWordFilter = null;
 let wordFilterEnabled = true;
 
+/**
+ * FIX #8: Filter text while protecting valid emote tokens.
+ *
+ * The word filter normalizes away the colons in ":code:", so an emote whose
+ * code happens to contain a filtered word would be censored into asterisks
+ * before replaceEmotes() ever sees it. To prevent that, the text is split
+ * into segments around each VALID emote token (one that exists in emoteList),
+ * each segment is filtered independently, and the untouched tokens are
+ * stitched back in.
+ *
+ * Unknown ":notanemote:" tokens are NOT protected — they're plain text and
+ * get filtered like everything else.
+ */
+function filterTextPreservingEmotes(text) {
+  if (!text.includes(":")) {
+    return clientWordFilter.filterText(text);
+  }
+
+  const regex = /:([\w]+):/g;
+  let result = "";
+  let lastIndex = 0;
+  let foundEmote = false;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (!emoteList[match[1]]) continue; // not a real emote — leave it filterable
+    foundEmote = true;
+    result += clientWordFilter.filterText(text.slice(lastIndex, match.index));
+    result += match[0]; // the :code: token, untouched
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (!foundEmote) {
+    return clientWordFilter.filterText(text);
+  }
+
+  result += clientWordFilter.filterText(text.slice(lastIndex));
+  return result;
+}
+
 function applyWordFilter(text) {
   if (!wordFilterEnabled || !clientWordFilter || !clientWordFilter.ready) {
     return text;
   }
-  return clientWordFilter.filterText(text);
+  // FIX #8: route ALL display filtering through the emote-protecting wrapper
+  return filterTextPreservingEmotes(text);
 }
 
 function toggleWordFilter() {
@@ -446,14 +509,38 @@ function replaceEmotes(element) {
   }
 }
 
+/**
+ * FIX #7: Find the ":prefix" the user is typing at the caret.
+ *
+ * Previously this returned null whenever the caret's startContainer was an
+ * ELEMENT node — which is exactly where the caret lands right after an emote
+ * <img> is inserted via insertHTML. That made autocomplete dead after the
+ * first insertion. Now, when the caret sits between an element's children,
+ * we step into the text node immediately BEFORE the caret (if there is one)
+ * and continue the lookup from its end.
+ */
 function findEmoteAtCursor() {
   if (!chatInput || document.activeElement !== chatInput) return null;
   const sel = window.getSelection();
   if (sel.rangeCount === 0) return null;
   const range = sel.getRangeAt(0);
-  const node = range.startContainer;
-  const offset = range.startOffset;
+
+  let node = range.startContainer;
+  let offset = range.startOffset;
+
+  // FIX #7: caret on an element node → resolve to the text node before it
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const prev = node.childNodes[offset - 1];
+    if (prev && prev.nodeType === Node.TEXT_NODE) {
+      node = prev;
+      offset = prev.textContent.length;
+    } else {
+      return null; // caret sits after an <img>/<br> — nothing to complete
+    }
+  }
+
   if (node.nodeType !== Node.TEXT_NODE) return null;
+
   const text = node.textContent;
   let start = offset - 1;
   while (start >= 0 && text[start] !== ":") start--;
@@ -588,6 +675,32 @@ function updateSelectedEmote() {
     });
 }
 
+/**
+ * FIX #7: After inserting HTML, the caret usually ends up positioned between
+ * the chat-input's child nodes (an ELEMENT-node selection). Some browsers then
+ * keep it there even as the user types, which breaks findEmoteAtCursor().
+ * This helper guarantees the caret lives inside a TEXT node: if it doesn't,
+ * an empty text node is inserted at the caret and the selection moves into it.
+ * Empty text nodes are invisible and ignored by getPlainText().
+ */
+function ensureCaretInTextNode() {
+  try {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (range.startContainer.nodeType === Node.TEXT_NODE) return;
+
+    const tn = document.createTextNode("");
+    range.insertNode(tn);
+    range.setStart(tn, 0);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  } catch {
+    /* non-fatal — autocomplete will simply skip this position */
+  }
+}
+
 function insertEmote(emoteCode, emoteInfo) {
   if (!chatInput) return;
   chatInput.focus();
@@ -607,10 +720,18 @@ function insertEmote(emoteCode, emoteInfo) {
       document.execCommand("insertHTML", false, html);
     } catch {}
   }
+
+  // FIX #7: make sure the caret lands in a text node after the image,
+  // so the NEXT ":" the user types is found by findEmoteAtCursor().
+  ensureCaretInTextNode();
+
   hideAutocomplete();
   currentEmoteInfo = null;
   updateSentMessage();
-  setTimeout(() => chatInput.focus(), 10);
+  setTimeout(() => {
+    chatInput.focus();
+    ensureCaretInTextNode();
+  }, 10);
 }
 
 function updateSentMessage() {
@@ -693,15 +814,7 @@ function applySelfFilter() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FIX #6: Emoticons button no longer replaces the .room-type element.
-//
-// Before: roomTypeEl.parentNode.replaceChild(button, roomTypeEl) destroyed the
-// room type display permanently. Users could no longer see whether they were
-// in a public / semi-private / private room.
-//
-// After: the .room-type element is wrapped (together with the new button) in
-// a .room-type-group flex container, so both render side-by-side. The wrapper
-// also preserves .second-navbar's three-section layout (group | name | id).
+// FIX #6: Emoticons button lives in a .room-type-group beside .room-type.
 // ─────────────────────────────────────────────────────────────────────────────
 function createEmotesDropdown() {
   // Guard: never create the button twice.
@@ -954,24 +1067,52 @@ function openTalkoboard() {
 
 // ── 8. VOTING ───────────────────────────────────────────────────────────────
 
+/**
+ * FIX #9: Vote UI rendering, now with proper cleanup.
+ *
+ * - Stores the latest vote state in `currentVotes` so it can be re-rendered
+ *   after DOM changes (user leaves, room update) without waiting for the
+ *   server.
+ * - When the room is below MIN_USERS_FOR_VOTING, all counters are REMOVED
+ *   and all "voted" highlights cleared (the server ignores votes below the
+ *   minimum anyway — the UI now agrees with it).
+ * - A counter with 0 votes is removed instead of lingering as "👎 0".
+ */
 function updateVotesUI(votes) {
-  document.querySelectorAll(".chat-row").forEach((row) => {
+  currentVotes = votes || {};
+  const rows = document.querySelectorAll(".chat-row");
+  const votingActive = rows.length >= MIN_USERS_FOR_VOTING;
+
+  rows.forEach((row) => {
     const uid = row.dataset.userId;
     const voteBtn = row.querySelector(".vote-button");
-    const count = Object.values(votes).filter((v) => v === uid).length;
+    const count = votingActive
+      ? Object.values(currentVotes).filter((v) => v === uid).length
+      : 0;
+
+    // Own row: the votes-against-me counter
     if (uid === currentUserId) {
       let counter = row.querySelector(".votes-counter");
-      if (!counter) {
-        counter = document.createElement("div");
-        counter.className = "votes-counter";
-        row.querySelector(".user-info").appendChild(counter);
+      if (!votingActive || count === 0) {
+        if (counter) counter.remove();
+      } else {
+        if (!counter) {
+          counter = document.createElement("div");
+          counter.className = "votes-counter";
+          row.querySelector(".user-info").appendChild(counter);
+        }
+        counter.textContent = `\uD83D\uDC4E ${count}`;
+        counter.style.color = "#ff6b6b";
       }
-      counter.textContent = `\uD83D\uDC4E ${count}`;
-      counter.style.color = count > 0 ? "#ff6b6b" : "#aaa";
     }
+
+    // Other rows: the vote button
     if (voteBtn) {
       voteBtn.innerHTML = `\uD83D\uDC4E ${count}`;
-      voteBtn.classList.toggle("voted", votes[currentUserId] === uid);
+      voteBtn.classList.toggle(
+        "voted",
+        votingActive && currentVotes[currentUserId] === uid,
+      );
     }
   });
 }
@@ -982,7 +1123,8 @@ function adjustVoteButtonVisibility() {
     const btn = row.querySelector(".vote-button");
     if (btn)
       btn.style.display =
-        userCount >= 3 && row.dataset.userId !== currentUserId
+        userCount >= MIN_USERS_FOR_VOTING &&
+        row.dataset.userId !== currentUserId
           ? "inline-block"
           : "none";
   });
@@ -1697,12 +1839,22 @@ function generateInviteLink() {
   return url.href;
 }
 
+/**
+ * FIX #10: don't render an invite link before a room has actually been
+ * joined — the page-load call used to produce a link with an empty roomId.
+ */
 function updateInviteLink() {
   const el = document.getElementById("inviteLink");
+  const copyBtn = document.getElementById("copyInviteLink");
+  if (!currentRoomId) {
+    if (el) el.textContent = "";
+    if (copyBtn) copyBtn.style.display = "none";
+    return;
+  }
   const link = generateInviteLink();
   el.textContent = link;
   el.href = link;
-  document.getElementById("copyInviteLink").style.display = "inline-block";
+  copyBtn.style.display = "inline-block";
 }
 
 function copyInviteLink() {
@@ -1811,6 +1963,9 @@ socket.on("user joined", (data) => {
       updateRoomInfo(data);
       playJoinSound();
 
+      // FIX #9: a new join can cross the voting threshold — re-render votes
+      updateVotesUI(currentVotes);
+
       // DEV MODE: Trigger confetti only on the dev's own screen
       if (data.isDev && !data.isHidden && currentUserIsDev) {
         triggerDevConfetti();
@@ -1827,6 +1982,13 @@ socket.on("user left", (userId) => {
       row.remove();
       adjustLayout();
       playLeaveSound();
+
+      // FIX #9: dropping below the voting minimum (or losing a voter) must
+      // clean up counters, buttons, and highlights immediately — the server
+      // will also send "update votes", but the UI shouldn't show stale state
+      // in the meantime.
+      adjustVoteButtonVisibility();
+      updateVotesUI(currentVotes);
     }
     if (chatInput) setTimeout(() => chatInput.focus(), 10);
   }
@@ -1911,7 +2073,10 @@ socket.on("room update", (roomData) => {
       renderOtherUserMessage(ci, rawVal);
     }
   });
-  if (roomData.votes) updateVotesUI(roomData.votes);
+
+  // FIX #9: always re-render the vote UI after the row set may have changed
+  adjustVoteButtonVisibility();
+  updateVotesUI(roomData.votes || currentVotes);
   adjustLayout();
 
   // DEV MODE: Re-render room context
@@ -1969,12 +2134,6 @@ function joinRoom(roomId, accessCode = null) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FIX #4: Scrub ?accessCode= from the URL and browser history.
-//
-// The lobby no longer puts access codes in redirect URLs (session-validated
-// server-side instead), but old bookmarks / shared links may still carry one.
-// We read it ONCE as a join fallback, then immediately rewrite the URL with
-// history.replaceState so the code never persists in the address bar,
-// history, or analytics.
 // ─────────────────────────────────────────────────────────────────────────────
 function readAndScrubUrlParams() {
   const params = new URLSearchParams(window.location.search);
@@ -2023,7 +2182,7 @@ window.addEventListener("load", () => {
   initRoom();
   updateDateTime();
   adjustLayout();
-  updateInviteLink();
+  updateInviteLink(); // FIX #10: now a no-op until a room is joined
   initializeAppDirectory();
 
   document

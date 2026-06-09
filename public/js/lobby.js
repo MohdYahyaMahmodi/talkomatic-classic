@@ -219,25 +219,28 @@ function showDiscordInviteNotification() {
   button.style.cursor = "pointer";
   button.style.fontWeight = "bold";
 
-  // Click => open the Discord link in new tab
-  button.addEventListener("click", (e) => {
-    e.stopPropagation(); // So clicking button won't also trigger toast click
-    window.open("https://discord.gg/N7tJznESrE", "_blank");
-  });
   container.appendChild(button);
 
-  // Convert container to HTML for Toastr
+  // Convert container to HTML for Toastr (listeners do NOT survive this —
+  // they are attached to the LIVE toast below instead)
   const contentHTML = container.outerHTML;
 
   // Show an info toast
   const $toast = toastr.info(contentHTML, titleText);
 
-  // If the user clicks anywhere on the toast (except the close button),
-  // open the Discord link in a new tab
   if ($toast) {
+    // Button click → open Discord (bound to the rendered toast, so it works)
+    $toast.find("button").on("click", function (e) {
+      e.stopPropagation();
+      window.open("https://discord.gg/N7tJznESrE", "_blank");
+    });
+
+    // Click anywhere else on the toast (except the X) → also open Discord
     $toast.on("click", function (e) {
-      // If user didn't click the close button, open the link
-      if (!$(e.target).hasClass("toast-close-button")) {
+      if (
+        !$(e.target).hasClass("toast-close-button") &&
+        !$(e.target).is("button")
+      ) {
         window.open("https://discord.gg/N7tJznESrE", "_blank");
       }
     });

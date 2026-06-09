@@ -1,6 +1,15 @@
 // ╔═══════════════════════════════════════════════════════════════════════════╗
-// ║  word-filter-client.js — Full browser port of server/word-filter.js     ║
-// ║  Identical algorithm, identical mappings. Loads JSON via fetch.          ║
+// ║  word-filter-client.js — Full browser port of server word-filter.js      ║
+// ║  v2.1.0 — June 2026 anniversary batch                                    ║
+// ║                                                                           ║
+// ║  IDENTICAL algorithm to the server filter (cross-newline scan, digit-    ║
+// ║  padding scan, doubled-letter scan, span gate, code-point indexing,      ║
+// ║  per-line cache). The ONLY differences are:                              ║
+// ║  • async init() with fetch + retry instead of fs.readFileSync            ║
+// ║  • a `ready` flag the room client checks before filtering                ║
+// ║                                                                           ║
+// ║  PARITY RULE: if you change the algorithm here, change word-filter.js    ║
+// ║  in the same commit, and vice versa.                                     ║
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
 class TrieNode {
@@ -36,15 +45,21 @@ class ClientWordFilter {
   constructor() {
     this.offensiveTrie = new Trie();
     this.whitelistTrie = new Trie();
+    this.offensiveTrieCollapsed = new Trie();
+    this.whitelistTrieCollapsed = new Trie();
     this.obfuscationMap = {};
     this.ready = false;
+
+    // Caches (see server file for rationale):
     this.cache = new Map();
     this.cacheSize = 1000;
+    this.lineCache = new Map();
+    this.lineCacheSize = 2000;
     this.cacheHits = 0;
     this.cacheMisses = 0;
   }
 
-  // ── Initialization (replaces fs.readFileSync with fetch + retry) ────────
+  // ── Initialization (replaces fs.readFileSync with fetch + retry) ──────────
 
   async init() {
     try {
@@ -58,18 +73,15 @@ class ClientWordFilter {
       ) {
         throw new Error("Invalid JSON structure");
       }
-      wordsData.offensive_words.forEach((w) =>
-        this.offensiveTrie.insert(w.toLowerCase()),
-      );
-      wordsData.whitelisted_words.forEach((w) =>
-        this.whitelistTrie.insert(w.toLowerCase()),
-      );
+
+      this.buildTries(wordsData.offensive_words, wordsData.whitelisted_words);
+
       console.log(
         `Loaded ${wordsData.offensive_words.length} offensive words and ${wordsData.whitelisted_words.length} whitelisted words`,
       );
       this.obfuscationMap = this.buildComprehensiveObfuscationMap(subsData);
       console.log(
-        `WordFilter initialized successfully with ${Object.keys(this.obfuscationMap).length} character mappings`,
+        `ClientWordFilter v2.1.0 initialized with ${Object.keys(this.obfuscationMap).length} character mappings`,
       );
       this.ready = true;
     } catch (err) {
@@ -100,7 +112,31 @@ class ClientWordFilter {
     throw new Error(`Failed to fetch ${url} after ${retries} retries`);
   }
 
-  // ── Obfuscation map (identical to server) ───────────────────────────────
+  // ── Trie construction (identical to server) ────────────────────────────────
+
+  buildTries(offensiveWords, whitelistedWords) {
+    this.offensiveTrie = new Trie();
+    this.whitelistTrie = new Trie();
+    this.offensiveTrieCollapsed = new Trie();
+    this.whitelistTrieCollapsed = new Trie();
+
+    offensiveWords.forEach((word) => {
+      const w = word.toLowerCase();
+      this.offensiveTrie.insert(w);
+      this.offensiveTrieCollapsed.insert(this.collapseRuns(w));
+    });
+    whitelistedWords.forEach((word) => {
+      const w = word.toLowerCase();
+      this.whitelistTrie.insert(w);
+      this.whitelistTrieCollapsed.insert(this.collapseRuns(w));
+    });
+  }
+
+  collapseRuns(str) {
+    return str.replace(/(.)\1+/g, "$1");
+  }
+
+  // ── Obfuscation map (identical to server) ──────────────────────────────────
 
   buildComprehensiveObfuscationMap(fileSubstitutions) {
     let mappings = {};
@@ -108,8 +144,7 @@ class ClientWordFilter {
       mappings = { ...fileSubstitutions };
     }
     const builtInMappings = this.createBuiltInUnicodeMappings();
-    const combinedMappings = { ...builtInMappings, ...mappings };
-    return combinedMappings;
+    return { ...builtInMappings, ...mappings };
   }
 
   createBuiltInUnicodeMappings() {
@@ -654,159 +689,277 @@ class ClientWordFilter {
     });
   }
 
-  // ── Normalization (identical to server) ─────────────────────────────────
+  // ── Normalization with index mapping (IDENTICAL to server) ────────────────
 
-  stringToAlphanumeric(text) {
-    if (!text || typeof text !== "string") return "";
-    let result = "";
-    for (let char of text) {
+  buildNormalizedWithMap(text, options = {}) {
+    const dropDigits = options.dropDigits === true;
+    const maxRun = options.maxRun || 2;
+
+    let normalized = "";
+    const map = [];
+    let codeUnitIndex = 0;
+    let lastChar = "";
+    let runLength = 0;
+
+    for (const char of text) {
+      const unitLen = char.length; // 1, or 2 for surrogate pairs
+
       let lowerChar = char.toLowerCase();
       lowerChar = lowerChar.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      let mappedChar =
+
+      const mapped =
         this.obfuscationMap[char] ||
         this.obfuscationMap[lowerChar] ||
         lowerChar;
-      if (/[a-z0-9]/.test(mappedChar)) {
-        result += mappedChar;
-      }
-    }
-    result = this.normalizeRepeatedCharacters(result);
-    return result;
-  }
 
-  normalizeRepeatedCharacters(text) {
-    return text.replace(/(.)\1{2,}/g, "$1$1");
-  }
+      for (const out of mapped) {
+        if (!/[a-z0-9]/.test(out)) continue;
+        if (dropDigits && /[0-9]/.test(out)) continue;
 
-  // ── Text checking (identical to server) ─────────────────────────────────
-
-  checkText(text) {
-    if (!text || typeof text !== "string") {
-      return { hasOffensiveWord: false, offensiveRanges: [] };
-    }
-    const cacheKey = text;
-    if (this.cache.has(cacheKey)) {
-      this.cacheHits++;
-      return this.cache.get(cacheKey);
-    }
-    this.cacheMisses++;
-    let result = { hasOffensiveWord: false, offensiveRanges: [] };
-    const lines = text.split(/\r?\n/);
-    let overallIndex = 0;
-
-    for (const line of lines) {
-      const normalizedLine = this.stringToAlphanumeric(line);
-      if (normalizedLine.length === 0) {
-        overallIndex += line.length + 1;
-        continue;
-      }
-      let i = 0;
-      while (i < normalizedLine.length) {
-        let maxOffensiveMatchLength = 0;
-        let maxWhitelistMatchLength = 0;
-
-        let node = this.offensiveTrie.root;
-        let j = i;
-        while (j < normalizedLine.length && node.children[normalizedLine[j]]) {
-          node = node.children[normalizedLine[j]];
-          j++;
-          if (node.isEndOfWord) maxOffensiveMatchLength = j - i;
-        }
-
-        node = this.whitelistTrie.root;
-        j = i;
-        while (j < normalizedLine.length && node.children[normalizedLine[j]]) {
-          node = node.children[normalizedLine[j]];
-          j++;
-          if (node.isEndOfWord) maxWhitelistMatchLength = j - i;
-        }
-
-        if (
-          maxOffensiveMatchLength > 0 &&
-          maxOffensiveMatchLength >= maxWhitelistMatchLength
-        ) {
-          if (
-            this.isValidOffensiveMatch(
-              normalizedLine,
-              i,
-              i + maxOffensiveMatchLength,
-            )
-          ) {
-            result.hasOffensiveWord = true;
-            const startIndex = this.findOriginalIndex(line, i) + overallIndex;
-            const endIndex =
-              this.findOriginalIndex(line, i + maxOffensiveMatchLength) +
-              overallIndex;
-            result.offensiveRanges.push([startIndex, endIndex]);
-          }
-          i += maxOffensiveMatchLength;
+        if (out === lastChar) {
+          runLength++;
+          if (runLength > maxRun) continue;
         } else {
-          i++;
+          lastChar = out;
+          runLength = 1;
         }
+
+        normalized += out;
+        map.push(codeUnitIndex);
       }
-      overallIndex += line.length + 1;
+
+      codeUnitIndex += unitLen;
     }
 
-    this.cache.set(cacheKey, result);
-    if (this.cache.size > this.cacheSize) {
-      const oldestKey = this.cache.keys().next().value;
-      this.cache.delete(oldestKey);
+    return { normalized, map };
+  }
+
+  stringToAlphanumeric(text) {
+    if (!text || typeof text !== "string") return "";
+    return this.buildNormalizedWithMap(text).normalized;
+  }
+
+  // ── Scanning (IDENTICAL to server) ─────────────────────────────────────────
+
+  scanNormalized(normalized, offensiveTrie, whitelistTrie) {
+    const matches = [];
+    let i = 0;
+
+    while (i < normalized.length) {
+      let maxOffensiveMatchLength = 0;
+      let maxWhitelistMatchLength = 0;
+
+      let node = offensiveTrie.root;
+      let j = i;
+      while (j < normalized.length && node.children[normalized[j]]) {
+        node = node.children[normalized[j]];
+        j++;
+        if (node.isEndOfWord) maxOffensiveMatchLength = j - i;
+      }
+
+      node = whitelistTrie.root;
+      j = i;
+      while (j < normalized.length && node.children[normalized[j]]) {
+        node = node.children[normalized[j]];
+        j++;
+        if (node.isEndOfWord) maxWhitelistMatchLength = j - i;
+      }
+
+      if (
+        maxOffensiveMatchLength > 0 &&
+        maxOffensiveMatchLength >= maxWhitelistMatchLength
+      ) {
+        if (
+          this.isValidOffensiveMatch(normalized, i, i + maxOffensiveMatchLength)
+        ) {
+          matches.push([i, i + maxOffensiveMatchLength]);
+        }
+        i += maxOffensiveMatchLength;
+      } else {
+        i++;
+      }
     }
-    return result;
+    return matches;
   }
 
   isValidOffensiveMatch(normalizedText, startPos, endPos) {
     const matchLength = endPos - startPos;
-    if (matchLength <= 2) return false;
+
+    if (matchLength <= 2) {
+      return false;
+    }
+
     if (matchLength <= 4) {
       const beforeChar = startPos > 0 ? normalizedText[startPos - 1] : "";
       const afterChar =
         endPos < normalizedText.length ? normalizedText[endPos] : "";
       const isEmbedded =
         /[a-z0-9]/.test(beforeChar) && /[a-z0-9]/.test(afterChar);
-      if (isEmbedded) return false;
+      if (isEmbedded) {
+        return false;
+      }
     }
+
     return true;
   }
 
-  findOriginalIndex(originalText, normalizedIndex) {
-    let indexMapping = [];
-    for (let i = 0; i < originalText.length; i++) {
-      let char = originalText[i];
-      let lowerChar = char.toLowerCase();
-      lowerChar = lowerChar.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      let mappedChar =
-        this.obfuscationMap[char] ||
-        this.obfuscationMap[lowerChar] ||
-        lowerChar;
-      if (/[a-z0-9]/.test(mappedChar)) {
-        indexMapping.push(i);
-      }
+  scanVariant(text, options, offensiveTrie, whitelistTrie, gate) {
+    const { normalized, map } = this.buildNormalizedWithMap(text, options);
+    if (normalized.length === 0) return [];
+
+    const matches = this.scanNormalized(
+      normalized,
+      offensiveTrie,
+      whitelistTrie,
+    );
+    const ranges = [];
+
+    for (const [start, end] of matches) {
+      const origStart = map[start];
+      const origEnd = end < map.length ? map[end] : text.length;
+      if (gate && origEnd - origStart <= end - start) continue;
+      ranges.push([origStart, origEnd]);
     }
-    if (normalizedIndex >= indexMapping.length) return originalText.length;
-    if (normalizedIndex < 0) return 0;
-    return indexMapping[normalizedIndex];
+    return ranges;
   }
 
-  // ── Text filtering (identical to server) ────────────────────────────────
+  checkLine(line) {
+    if (this.lineCache.has(line)) {
+      this.cacheHits++;
+      return this.lineCache.get(line);
+    }
+    this.cacheMisses++;
+
+    const ranges = this.scanVariant(
+      line,
+      {},
+      this.offensiveTrie,
+      this.whitelistTrie,
+      false, // primary scan: no gate
+    );
+
+    this.lineCache.set(line, ranges);
+    if (this.lineCache.size > this.lineCacheSize) {
+      const oldestKey = this.lineCache.keys().next().value;
+      this.lineCache.delete(oldestKey);
+    }
+    return ranges;
+  }
+
+  mergeRanges(ranges) {
+    if (ranges.length <= 1) return ranges;
+    ranges.sort((a, b) => a[0] - b[0]);
+    const merged = [ranges[0]];
+    for (let k = 1; k < ranges.length; k++) {
+      const last = merged[merged.length - 1];
+      const cur = ranges[k];
+      if (cur[0] <= last[1]) {
+        if (cur[1] > last[1]) last[1] = cur[1];
+      } else {
+        merged.push(cur);
+      }
+    }
+    return merged;
+  }
+
+  checkText(text) {
+    if (!text || typeof text !== "string") {
+      return { hasOffensiveWord: false, offensiveRanges: [] };
+    }
+
+    const cached = this.cache.get(text);
+    if (cached) {
+      this.cacheHits++;
+      return cached;
+    }
+    this.cacheMisses++;
+
+    let ranges = [];
+
+    // ── PASS 1: per-line (cached) ──
+    const lines = text.split(/\r?\n/);
+    let offset = 0;
+    for (const line of lines) {
+      const lineRanges = this.checkLine(line);
+      for (const [s, e] of lineRanges) {
+        ranges.push([s + offset, e + offset]);
+      }
+      offset += line.length + 1; // +1 for the newline
+    }
+
+    // ── PASS 2: bypass-hardening variant scans (span-gated) ──
+
+    if (lines.length > 1) {
+      ranges.push(
+        ...this.scanVariant(
+          text,
+          {},
+          this.offensiveTrie,
+          this.whitelistTrie,
+          true,
+        ),
+      );
+    }
+
+    if (/[0-9]/.test(text)) {
+      ranges.push(
+        ...this.scanVariant(
+          text,
+          { dropDigits: true },
+          this.offensiveTrie,
+          this.whitelistTrie,
+          true,
+        ),
+      );
+    }
+
+    ranges.push(
+      ...this.scanVariant(
+        text,
+        { maxRun: 1 },
+        this.offensiveTrieCollapsed,
+        this.whitelistTrieCollapsed,
+        true,
+      ),
+    );
+
+    ranges = this.mergeRanges(ranges);
+
+    const result = {
+      hasOffensiveWord: ranges.length > 0,
+      offensiveRanges: ranges,
+    };
+
+    this.cache.set(text, result);
+    if (this.cache.size > this.cacheSize) {
+      const oldestKey = this.cache.keys().next().value;
+      this.cache.delete(oldestKey);
+    }
+
+    return result;
+  }
 
   filterText(text) {
     const { offensiveRanges } = this.checkText(text);
     if (offensiveRanges.length === 0) return text;
+
     let filteredText = "";
     let lastIndex = 0;
+
     for (const [start, end] of offensiveRanges) {
       filteredText += text.slice(lastIndex, start);
       const offensiveLength = end - start;
       filteredText += "*".repeat(Math.max(1, offensiveLength));
       lastIndex = end;
     }
+
     filteredText += text.slice(lastIndex);
     return filteredText;
   }
 
   clearCache() {
     this.cache.clear();
+    this.lineCache.clear();
     this.cacheHits = 0;
     this.cacheMisses = 0;
   }
