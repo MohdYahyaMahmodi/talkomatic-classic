@@ -5,7 +5,7 @@
 class TalkomaticPopupManager {
   constructor() {
     // Current version - update this when you release new versions
-    this.currentVersion = "3.2.1";
+    this.currentVersion = "4.0.0";
     // Cookie names
     this.cookieNames = {
       lastShown: "talkomatic_popup_last_shown",
@@ -23,10 +23,9 @@ class TalkomaticPopupManager {
    * Initialize the popup manager - call this on page load
    */
   init() {
-    // Wait for DOM to be ready
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", () =>
-        this.checkAndShowPopup()
+        this.checkAndShowPopup(),
       );
     } else {
       this.checkAndShowPopup();
@@ -49,15 +48,15 @@ class TalkomaticPopupManager {
   shouldShowPopup() {
     const lastShown = this.getCookie(this.cookieNames.lastShown);
     const lastVersion = this.getCookie(this.cookieNames.lastVersion);
-    // If no cookies exist, this is a first visit - show popup
+    // First visit - show popup
     if (!lastShown || !lastVersion) {
       return true;
     }
-    // If version has changed, show popup regardless of time
+    // Version changed - show popup regardless of time
     if (lastVersion !== this.currentVersion) {
       return true;
     }
-    // If same version, check if 30 days have passed
+    // Same version - check if 30 days have passed
     const lastShownDate = new Date(parseInt(lastShown));
     const now = new Date();
     const timeDifference = now.getTime() - lastShownDate.getTime();
@@ -100,11 +99,11 @@ class TalkomaticPopupManager {
                 to { opacity: 0; }
             }
             @keyframes talkomaticSlideIn {
-                from { 
+                from {
                     transform: translateY(-30px);
                     opacity: 0;
                 }
-                to { 
+                to {
                     transform: translateY(0);
                     opacity: 1;
                 }
@@ -167,6 +166,18 @@ class TalkomaticPopupManager {
                 opacity: 0.9;
                 font-weight: 500;
             }
+            .talkomatic-version-pill {
+                display: inline-block;
+                background: #FF9800;
+                color: #000000;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 3px 12px;
+                border-radius: 2px;
+                margin-top: 10px;
+                letter-spacing: 1px;
+                text-transform: uppercase;
+            }
             .talkomatic-popup-body {
                 padding: 2rem;
                 line-height: 1.6;
@@ -204,7 +215,7 @@ class TalkomaticPopupManager {
                 padding-right: 10px;
             }
             .talkomatic-feature-list li:before {
-                content: "•";
+                content: "\\2022";
                 color: #FF9800;
                 font-weight: bold;
                 position: absolute;
@@ -224,20 +235,25 @@ class TalkomaticPopupManager {
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
             }
-            .talkomatic-badge.new { 
-                background: #FF9800; 
-                color: #000000; 
+            .talkomatic-badge.new {
+                background: #FF9800;
+                color: #000000;
                 box-shadow: 0 2px 4px rgba(255, 152, 0, 0.3);
             }
-            .talkomatic-badge.improved { 
-                background: #01ffff; 
-                color: #000000; 
+            .talkomatic-badge.improved {
+                background: #01ffff;
+                color: #000000;
                 box-shadow: 0 2px 4px rgba(1, 255, 255, 0.3);
             }
-            .talkomatic-badge.fixed { 
-                background: #616161; 
-                color: #ffffff; 
+            .talkomatic-badge.fixed {
+                background: #616161;
+                color: #ffffff;
                 box-shadow: 0 2px 4px rgba(97, 97, 97, 0.3);
+            }
+            .talkomatic-badge.privacy {
+                background: #4caf50;
+                color: #000000;
+                box-shadow: 0 2px 4px rgba(76, 175, 80, 0.3);
             }
             .talkomatic-feature-grid {
                 display: grid;
@@ -312,36 +328,6 @@ class TalkomaticPopupManager {
                 font-size: 16px;
                 line-height: 1.6;
             }
-            .talkomatic-image-container {
-                margin: 2rem 0;
-                text-align: center;
-            }
-            .talkomatic-update-image {
-                max-width: 100%;
-                height: auto;
-                border-radius: 2px;
-                border: 1px solid #616161;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-                transition: transform 0.3s ease;
-            }
-            .talkomatic-update-image:hover {
-                transform: scale(1.02);
-                border-color: #FF9800;
-            }
-            .talkomatic-image-caption {
-                margin-top: 1rem;
-                font-size: 14px;
-                color: #01ffff;
-                font-style: italic;
-                text-align: center;
-            }
-            .talkomatic-two-column {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 2rem;
-                align-items: center;
-                margin: 2rem 0;
-            }
             .talkomatic-popup-footer {
                 padding: 24px 2rem;
                 background: linear-gradient(to bottom, #000000, #1a1a1a);
@@ -369,33 +355,6 @@ class TalkomaticPopupManager {
                 transform: translateY(-2px);
                 box-shadow: 0 6px 16px rgba(255, 152, 0, 0.4);
             }
-            .talkomatic-link-button {
-                display: inline-block;
-                padding: 14px 24px;
-                background: linear-gradient(135deg, #000000, #1a1a1a);
-                color: white;
-                border: 2px solid #FF9800;
-                border-radius: 2px;
-                text-decoration: none;
-                font-size: 16px;
-                font-weight: bold;
-                transition: all 0.3s ease;
-                font-family: inherit;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-            }
-            .talkomatic-link-button:hover {
-                background: linear-gradient(135deg, #FF9800, #ff8c42);
-                color: #000000;
-                transform: translateY(-3px);
-                box-shadow: 0 8px 20px rgba(255, 152, 0, 0.4);
-            }
-            .talkomatic-link-button:visited {
-                color: white;
-            }
-            .talkomatic-link-button:visited:hover {
-                color: #000000;
-            }
             .talkomatic-popup-content::-webkit-scrollbar {
                 width: 12px;
             }
@@ -403,11 +362,8 @@ class TalkomaticPopupManager {
                 background: #202020;
             }
             .talkomatic-popup-content::-webkit-scrollbar-thumb {
-                background:#FF9800;
-                border-radius: 2px;
-            }
-            .talkomatic-popup-content::-webkit-scrollbar-thumb:hover {
                 background: #FF9800;
+                border-radius: 2px;
             }
             @media (min-width: 768px) {
                 .talkomatic-feature-grid {
@@ -425,57 +381,38 @@ class TalkomaticPopupManager {
                     margin: 1rem;
                     max-height: 95vh;
                 }
-                
                 .talkomatic-popup-header {
                     padding: 1.5rem;
                 }
-                
                 .talkomatic-popup-body {
                     padding: 1.5rem;
                 }
-                
                 .talkomatic-popup-title {
                     font-size: 22px;
                     margin-bottom: 1rem;
                 }
-                
                 .talkomatic-update-section h3 {
                     font-size: 20px;
                     margin-bottom: 1rem;
                 }
-                
                 .talkomatic-feature-item {
                     padding: 1.5rem;
                 }
-                
                 .talkomatic-feature-item h4 {
                     font-size: 16px;
                 }
-                
                 .talkomatic-feature-item p {
                     font-size: 14px;
                 }
-                
                 .talkomatic-popup-close {
                     right: 0.5rem;
                     top: 0.5rem;
                 }
-                
-                .talkomatic-two-column {
-                    grid-template-columns: 1fr;
-                    gap: 1.5rem;
-                }
-                
                 .talkomatic-feature-grid {
                     grid-template-columns: 1fr;
                 }
             }
             @media (max-width: 600px) {
-                .talkomatic-link-button {
-                    padding: 12px 20px;
-                    font-size: 14px;
-                }
-                
                 .talkomatic-popup-footer button {
                     padding: 12px 20px;
                     font-size: 14px;
@@ -498,163 +435,114 @@ class TalkomaticPopupManager {
                 <div class="talkomatic-popup-content">
                     <div class="talkomatic-popup-header">
                         <button class="talkomatic-popup-close" data-action="close">&times;</button>
-                        <h2 class="talkomatic-popup-title">🎉 Talkomatic v${this.currentVersion} is Here!</h2>
+                        <h2 class="talkomatic-popup-title">🚀 Talkomatic v${this.currentVersion} is Here!</h2>
                         <p class="talkomatic-popup-version">Major Update - ${currentDate}</p>
+                        <span class="talkomatic-version-pill">Biggest update yet</span>
                     </div>
-                    
+
                     <div class="talkomatic-popup-body">
-                        <!-- App Directory Introduction -->
-                        <div class="talkomatic-update-section">
-                            <h3>Introducing the App Directory</h3>
-                            <div class="talkomatic-two-column">
-                                <div>
-                                    <div class="talkomatic-highlight-box">
-                                        <h4>Transform Your Chat Experience</h4>
-                                        <p>We've revolutionized Talkomatic with a brand new App Directory! Now you can enhance your conversations with interactive apps, games, and collaborative tools - all accessible directly from your chat rooms.</p>
-                                    </div>
-                                </div>
-                                <div class="talkomatic-image-container">
-                                    <!-- Add your app directory screenshot here -->
-                                    <img src="images/updates/app-directory-room.png" alt="App Directory Interface" class="talkomatic-update-image" >
-                                    <!-- Placeholder for when you add the image -->
 
-                                    <div class="talkomatic-image-caption">The new App Directory in action</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- WatchParty Feature -->
+                        <!-- Intro -->
                         <div class="talkomatic-update-section">
-                            <h3>🍿 WatchParty by Talkomatic</h3>
                             <div class="talkomatic-highlight-box">
-                                <h4>Watch YouTube Videos Together!</h4>
-                                <p>Our first app is here! WatchParty lets you create synchronized viewing sessions where you can watch YouTube videos together in perfect sync while chatting in real-time. It's like having a movie night with friends from anywhere in the world.</p>
-                                <div style="text-align: center; margin-top: 1.5rem;">
-                                    <a href="https://watchparty.talkomatic.co/" target="_blank" class="talkomatic-link-button">
-                                        🎬 Launch WatchParty
-                                    </a>
-                                </div>
-                            </div>
-                            
-                            <!-- WatchParty Image -->
-                            <div class="talkomatic-image-container">
-                                <img src="https://watchparty.talkomatic.co/images/logo.png" alt="WatchParty Logo" style="max-height: 120px; background: white; padding: 20px; border-radius: 2px; border: 1px solid #616161;">
-                                <div class="talkomatic-image-caption">WatchParty - Synchronized video watching made easy</div>
+                                <h4>A Faster, Safer, More Fun Talkomatic</h4>
+                                <p>Version 4 is the largest release in Talkomatic history. We rebuilt the word filter from the ground up, added link safety protection, fixed every major reported bug, and made your privacy a priority. Here's everything that's new.</p>
                             </div>
                         </div>
 
-                        <!-- What's New -->
+                        <!-- Headline features -->
                         <div class="talkomatic-update-section">
                             <h3>✨ Major New Features</h3>
-                            <ul class="talkomatic-feature-list">
-                                <li>Complete App Directory system integrated into all chat rooms <span class="talkomatic-badge new">NEW</span></li>
-                                <li>WatchParty app for synchronized YouTube viewing <span class="talkomatic-badge new">NEW</span></li>
-                                <li>Beautiful app discovery interface with real app icons <span class="talkomatic-badge new">NEW</span></li>
-                                <li>Seamless app launching directly from chat rooms <span class="talkomatic-badge new">NEW</span></li>
-                                <li>Professional app grid layout with hover effects <span class="talkomatic-badge new">NEW</span></li>
-                                <li>Mobile-responsive app directory design <span class="talkomatic-badge improved">IMPROVED</span></li>
-                            </ul>
-                        </div>
-
-                        <!-- Room Improvements -->
-                        <div class="talkomatic-update-section">
-                            <h3>🏠 Room Experience Enhancements</h3>
                             <div class="talkomatic-feature-grid">
                                 <div class="talkomatic-feature-item">
-                                    <div class="talkomatic-feature-icon">📱</div>
-                                    <h4>Apps Button</h4>
-                                    <p>Every room now has a dedicated Apps button in the navigation bar for quick access to the directory.</p>
+                                    <div class="talkomatic-feature-icon">🛡️</div>
+                                    <h4>Optional Word Filter</h4>
+                                    <p>The automod is now your choice. Click the shield icon in any room to filter offensive words for yourself, or turn it off to see chat unfiltered. It only affects what you see.</p>
                                 </div>
                                 <div class="talkomatic-feature-item">
-                                    <div class="talkomatic-feature-icon">🎨</div>
-                                    <h4>Visual Redesign</h4>
-                                    <p>Consistent 2px border radius throughout the interface for a modern, polished look.</p>
+                                    <div class="talkomatic-feature-icon">🔗</div>
+                                    <h4>Link Safety Warnings</h4>
+                                    <p>Links posted by other users now show a warning before you visit. No more surprise IP grabbers or scam sites. You decide before you click.</p>
                                 </div>
                                 <div class="talkomatic-feature-item">
                                     <div class="talkomatic-feature-icon">⚡</div>
-                                    <h4>Better Performance</h4>
-                                    <p>Improved room loading times and smoother user interface interactions.</p>
+                                    <h4>Instant Guest Sign-In</h4>
+                                    <p>New visitors get a guest name automatically and land straight in the lobby. Zero clicks to start chatting. Change your name anytime.</p>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Technical Improvements -->
+                        <!-- Automod rebuild -->
                         <div class="talkomatic-update-section">
-                            <h3>🔧 Under the Hood</h3>
+                            <h3>🧠 Smarter Automod</h3>
                             <ul class="talkomatic-feature-list">
-                                <li>Fixed rooms not loading properly on slower connections <span class="talkomatic-badge fixed">FIXED</span></li>
-                                <li>Enhanced auto-moderation with better word filtering <span class="talkomatic-badge improved">IMPROVED</span></li>
-                                <li>Resolved rate limiting issues causing error pages <span class="talkomatic-badge fixed">FIXED</span></li>
-                                <li>Improved mobile responsiveness across all interfaces <span class="talkomatic-badge improved">IMPROVED</span></li>
-                                <li>Better error handling and user feedback messages <span class="talkomatic-badge improved">IMPROVED</span></li>
+                                <li>Filter completely rebuilt to catch bypass tricks: split letters, number padding, doubled letters, and fancy unicode fonts <span class="talkomatic-badge improved">IMPROVED</span></li>
+                                <li>Emoticons no longer get censored by the filter, all emote codes render correctly <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li>Zalgo and glitchy text spam can no longer lag the room for everyone <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li>Filtering is faster thanks to smarter caching while you type <span class="talkomatic-badge improved">IMPROVED</span></li>
                             </ul>
                         </div>
 
-                        <!-- Coming Soon -->
+                        <!-- Privacy -->
                         <div class="talkomatic-update-section">
-                            <h3>🔮 Coming Soon to App Directory</h3>
+                            <h3>🔒 Privacy & Security</h3>
+                            <ul class="talkomatic-feature-list">
+                                <li>Room access codes never appear in your URL, address bar, or browser history anymore <span class="talkomatic-badge privacy">PRIVACY</span></li>
+                                <li>Outside links open in a protected new tab after a clear warning <span class="talkomatic-badge privacy">PRIVACY</span></li>
+                                <li>You stay signed in across server updates, no more random logouts <span class="talkomatic-badge fixed">FIXED</span></li>
+                            </ul>
+                        </div>
+
+                        <!-- Bug fixes -->
+                        <div class="talkomatic-update-section">
+                            <h3>🔧 Bug Fixes & Polish</h3>
+                            <ul class="talkomatic-feature-list">
+                                <li>Emoticon autocomplete no longer breaks after inserting your first emote <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li>White bar at the bottom of the screen on mobile and when zoomed is gone <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li>Mobile keyboard no longer breaks the room layout <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li>Room type (Public / Semi-Private) stays visible next to the Emoticons button <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li>Vote kick is now enforced by the server and cleans up properly when users leave <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li>Message length limits now match everywhere, no more oversized messages from modified clients <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li>Active rooms now sort to the top of the lobby, spam rooms get cleaned up automatically <span class="talkomatic-badge improved">IMPROVED</span></li>
+                                <li>Smoother resizing with fewer layout recalculations <span class="talkomatic-badge improved">IMPROVED</span></li>
+                            </ul>
+                        </div>
+
+                        <!-- Coming soon -->
+                        <div class="talkomatic-update-section">
+                            <h3>🔮 Coming Soon</h3>
                             <div class="talkomatic-feature-grid">
-                                <div class="talkomatic-feature-item">
-                                    <div class="talkomatic-feature-icon">🎨</div>
-                                    <h4>InfiniteBoard</h4>
-                                    <p>Collaborative whiteboard for drawing, brainstorming, and visual communication in real-time.</p>
-                                </div>
                                 <div class="talkomatic-feature-item">
                                     <div class="talkomatic-feature-icon">🎮</div>
                                     <h4>Mini Games</h4>
-                                    <p>Play Uno, Hangman, Tic Tac Toe, and other classic games directly in your chat rooms.</p>
+                                    <p>Tic Tac Toe and more classic games, playable right inside your chat rooms.</p>
                                 </div>
                                 <div class="talkomatic-feature-item">
-                                    <div class="talkomatic-feature-icon">📁</div>
-                                    <h4>File Share</h4>
-                                    <p>Secure file and image sharing with drag-and-drop functionality for easy collaboration.</p>
+                                    <div class="talkomatic-feature-icon">🎨</div>
+                                    <h4>Themes</h4>
+                                    <p>Full custom theme support across the whole site, including inside rooms.</p>
+                                </div>
+                                <div class="talkomatic-feature-item">
+                                    <div class="talkomatic-feature-icon">⭐</div>
+                                    <h4>Moderation Team</h4>
+                                    <p>Trusted moderators to keep rooms clean and the community safe, around the clock.</p>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- How to Access -->
+                        <!-- Community -->
                         <div class="talkomatic-update-section">
-                            <h3>🎯 How to Access Apps</h3>
+                            <h3>💬 Found a Bug? Have an Idea?</h3>
                             <div class="talkomatic-highlight-box">
-                                <h4>It's Simple!</h4>
-                                <p><strong>In Chat Rooms:</strong> Look for the "Apps" button in the top navigation bar. Click it to see all available apps and launch them instantly.</p>
-                                <p style="margin-top: 1rem;"><strong>From Lobby:</strong> Check out the full app directory from the main lobby for detailed descriptions and features of each app.</p>
+                                <h4>Talkomatic Is Built With You</h4>
+                                <p>Talkomatic Classic is open source and shaped by community feedback. Report bugs, suggest features, or just hang out with us on Discord. Every report in this update came from users like you.</p>
                             </div>
                         </div>
 
-                        <!-- Developer Note -->
-                        <div class="talkomatic-update-section">
-                            <h3>👨‍💻 For Developers</h3>
-                            <div class="talkomatic-two-column">
-                                <div>
-                                    <div class="talkomatic-highlight-box">
-                                        <h4>Build Your Own Apps</h4>
-                                        <p>Interested in creating apps for Talkomatic? We're working on developer APIs and tools. Contact us to learn about becoming a Talkomatic app developer!</p>
-                                    </div>
-                                </div>
-                                <div class="talkomatic-image-container">
-                                    <!-- Developer placeholder -->
-                                    <div style="background: linear-gradient(135deg, #1a1a1a, #000); color: #FF9800; padding: 2rem; border-radius: 2px; border: 1px solid #616161; text-align: center; font-family: monospace;">
-                                        <div style="font-size: 24px; margin-bottom: 1rem;">{ }</div>
-                                        <div style="font-size: 16px;">API Coming Soon</div>
-                                    </div>
-                                    <div class="talkomatic-image-caption">Developer tools in development</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Privacy & Security -->
-                        <div class="talkomatic-update-section">
-                            <h3>🛡️ Privacy & Security</h3>
-                            <div class="talkomatic-highlight-box">
-                                <h4>Your Safety Comes First</h4>
-                                <p>All apps in our directory are carefully vetted for security and privacy. We maintain the same high standards for apps as we do for our core chat platform. Your conversations and data remain private and secure.</p>
-                            </div>
-                        </div>
                     </div>
-                    
+
                     <div class="talkomatic-popup-footer">
-                        <button data-action="close">Continue to Talkomatic</button>
+                        <button data-action="close">Start Chatting</button>
                     </div>
                 </div>
             </div>
@@ -666,17 +554,11 @@ class TalkomaticPopupManager {
    */
   createAndShowPopup() {
     try {
-      // Create styles first
       this.createPopupStyles();
-      // Create popup container
       this.createPopupContainer();
-      // Add HTML content
       this.popupContainer.innerHTML = this.createPopupHTML();
-      // Add to document body
       document.body.appendChild(this.popupContainer);
-      // Show the popup
       this.showPopup();
-      // Set up event handlers
       this.setupEventHandlers();
       this.isPopupVisible = true;
     } catch (error) {
@@ -707,7 +589,6 @@ class TalkomaticPopupManager {
   showPopup() {
     if (this.popupContainer) {
       this.popupContainer.style.display = "block";
-      // Prevent body scrolling while popup is open
       document.body.style.overflow = "hidden";
     }
   }
@@ -716,17 +597,14 @@ class TalkomaticPopupManager {
    * Set up event handlers for closing the popup
    */
   setupEventHandlers() {
-    // Event delegation for close buttons
     this.popupContainer.addEventListener("click", (e) => {
       if (e.target.dataset.action === "close") {
         this.closePopup();
       }
-      // Click outside to close
       if (e.target.classList.contains("talkomatic-popup-overlay")) {
         this.closePopup();
       }
     });
-    // Escape key to close
     this.keyHandler = (e) => {
       if (e.key === "Escape" && this.isPopupVisible) {
         this.closePopup();
@@ -741,21 +619,16 @@ class TalkomaticPopupManager {
   closePopup() {
     if (!this.isPopupVisible) return;
     const popupElement = this.popupContainer?.querySelector(
-      ".talkomatic-popup-overlay"
+      ".talkomatic-popup-overlay",
     );
     if (popupElement) {
-      // Animate out
       popupElement.style.animation = "talkomaticFadeOut 0.3s ease-in-out";
       setTimeout(() => {
-        // Remove from DOM
         if (this.popupContainer && this.popupContainer.parentNode) {
           this.popupContainer.parentNode.removeChild(this.popupContainer);
         }
-        // Restore body scrolling
         document.body.style.overflow = "";
-        // Save state to cookies
         this.savePopupState();
-        // Clean up event listeners
         if (this.keyHandler) {
           document.removeEventListener("keydown", this.keyHandler);
           this.keyHandler = null;
@@ -772,20 +645,17 @@ class TalkomaticPopupManager {
   savePopupState() {
     const now = new Date().getTime();
     const expiryDate = new Date();
-    expiryDate.setFullYear(expiryDate.getFullYear() + 1); // Expire in 1 year
+    expiryDate.setFullYear(expiryDate.getFullYear() + 1);
     this.setCookie(this.cookieNames.lastShown, now.toString(), expiryDate);
     this.setCookie(
       this.cookieNames.lastVersion,
       this.currentVersion,
-      expiryDate
+      expiryDate,
     );
   }
 
   /**
    * Set a cookie
-   * @param {string} name - Cookie name
-   * @param {string} value - Cookie value
-   * @param {Date} expiry - Expiry date
    */
   setCookie(name, value, expiry) {
     const expires = expiry ? "; expires=" + expiry.toUTCString() : "";
@@ -794,8 +664,6 @@ class TalkomaticPopupManager {
 
   /**
    * Get a cookie value
-   * @param {string} name - Cookie name
-   * @returns {string|null} - Cookie value or null if not found
    */
   getCookie(name) {
     const nameEQ = name + "=";
@@ -825,7 +693,6 @@ class TalkomaticPopupManager {
 
   /**
    * Update the current version (call this when deploying new versions)
-   * @param {string} newVersion - The new version string
    */
   updateVersion(newVersion) {
     this.currentVersion = newVersion;
@@ -834,9 +701,5 @@ class TalkomaticPopupManager {
 
 // Auto-initialize when script loads
 const talkomaticPopup = new TalkomaticPopupManager();
-
-// Initialize on DOM ready
 talkomaticPopup.init();
-
-// Expose to global scope for manual control if needed
 window.TalkomaticPopup = talkomaticPopup;
