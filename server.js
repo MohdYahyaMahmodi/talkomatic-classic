@@ -83,59 +83,57 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      useDefaults: true,
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: [
-          "'self'",
-          (req, res) => `'nonce-${res.locals.nonce}'`,
-          "https://cdnjs.cloudflare.com",
-          "https://classic.talkomatic.co",
-          "https://unpkg.com",
-          "https://static.cloudflareinsights.com",
-        ],
-        scriptSrcElem: [
-          "'self'",
-          (req, res) => `'nonce-${res.locals.nonce}'`,
-          "https://cdnjs.cloudflare.com",
-          "https://classic.talkomatic.co",
-          "https://unpkg.com",
-          "https://static.cloudflareinsights.com",
-        ],
-        styleSrc: [
-          "'self'",
-          "'unsafe-inline'",
-          "https://cdnjs.cloudflare.com",
-          "https://fonts.googleapis.com",
-        ],
-        styleSrcElem: [
-          "'self'",
-          "'unsafe-inline'",
-          "https://cdnjs.cloudflare.com",
-          "https://fonts.googleapis.com",
-        ],
-        imgSrc: ["'self'", "data:", "https:", "blob:"],
-        fontSrc: [
-          "'self'",
-          "https://fonts.gstatic.com",
-          "https://cdnjs.cloudflare.com",
-          "https://classic.talkomatic.co",
-        ],
-        connectSrc: ["'self'", "https://classic.talkomatic.co"],
-        mediaSrc: ["'self'", "data:"],
-        frameAncestors: ["'self'", "*"],
-        frameSrc: ["'none'"],
-        objectSrc: ["'none'"],
-      },
+const helmetMiddleware = helmet({
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'",
+        (req, res) => `'nonce-${res.locals.nonce}'`,
+        "https://cdnjs.cloudflare.com",
+        "https://classic.talkomatic.co",
+        "https://unpkg.com",
+        "https://static.cloudflareinsights.com",
+      ],
+      scriptSrcElem: [
+        "'self'",
+        (req, res) => `'nonce-${res.locals.nonce}'`,
+        "https://cdnjs.cloudflare.com",
+        "https://classic.talkomatic.co",
+        "https://unpkg.com",
+        "https://static.cloudflareinsights.com",
+      ],
+      styleSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        "https://cdnjs.cloudflare.com",
+        "https://fonts.googleapis.com",
+      ],
+      styleSrcElem: [
+        "'self'",
+        "'unsafe-inline'",
+        "https://cdnjs.cloudflare.com",
+        "https://fonts.googleapis.com",
+      ],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      fontSrc: [
+        "'self'",
+        "https://fonts.gstatic.com",
+        "https://cdnjs.cloudflare.com",
+        "https://classic.talkomatic.co",
+      ],
+      connectSrc: ["'self'", "https://classic.talkomatic.co"],
+      mediaSrc: ["'self'", "data:"],
+      frameAncestors: ["'self'", "*"],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
     },
-    crossOriginEmbedderPolicy: false,
-    crossOriginResourcePolicy: { policy: "cross-origin" },
-    crossOriginOpenerPolicy: false,
-  }),
-);
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: false,
+});
 
 app.use(xss());
 app.use(hpp());
@@ -161,6 +159,13 @@ app.use(
     },
   }),
 );
+
+app.use((req, res, next) => {
+  // TalkoBrowser is a self-contained page that needs inline JS,
+  // external icon images, and iframes — exempt it from the strict CSP
+  if (req.path === "/browser.html") return next();
+  return helmetMiddleware(req, res, next);
+});
 
 // ── Session ─────────────────────────────────────────────────────────────────
 // SESSION_SECRET must be set in .env for sessions to survive restarts.
