@@ -1,0 +1,77 @@
+/* Talkomatic × World Cup 2026 — theme override (injects after lobby.css) */
+:root {
+  --background-color: #0a1a0f;
+  --right-panel-background-color: transparent;
+  --left-panel-background-color: #14241a;
+  --external-links-background-color: #0d1a12;
+  --hover-external-links-background-color: #1a3322;
+  --room-background-color: #050d08;
+  --room-top-border-color: rgba(255, 255, 255, 0.35);
+  --room-details-color: #6fdc97;
+  --hover-go-chat-button-background-color: #1db954;
+  --learn-more-section-background-color: #1a3322;
+  --hide-menu-button-background-color: #14241a;
+  --toggle-menu-button-background-color: #1a3322;
+  --known-as-section-background-color: #fdf5e6;
+  --create-room-section-background-color: #fdf5e6;
+}
+
+/* Night-stadium pitch: dark grass stripes + floodlight glow from the top */
+body {
+  background:
+    radial-gradient(
+      ellipse 90% 50% at 50% -10%,
+      rgba(255, 235, 180, 0.1),
+      transparent 60%
+    ),
+    repeating-linear-gradient(90deg, #0a1a0f 0 120px, #0c1f12 120px 240px) !important;
+}
+
+/* Chalk halfway line down the panel seam */
+.right-panel {
+  border-left: 2px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Room cards: penalty-box corner ticks + orange/green hover */
+.room {
+  border-left: 2px solid transparent;
+  transition: border-color 0.2s ease;
+}
+.room:hover {
+  border-left-color: var(--primary);
+}
+.room::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 12px;
+  height: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+/* Header: trophy gold underline on the brand */
+.panel-header .talkomatic {
+  text-shadow: 0 0 16px rgba(255, 152, 0, 0.4);
+}
+.panel-header::after {
+  content: "";
+  display: block;
+  width: 120px;
+  height: 2px;
+  margin: 8px auto 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    #ff9800,
+    #ffd75e,
+    #ff9800,
+    transparent
+  );
+}
+
+/* "Join A Room" heading gets the matchday treatment */
+.right-panel h2::before {
+  content: "⚽ ";
+}

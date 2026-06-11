@@ -640,6 +640,28 @@ async function start() {
   });
 }
 
+// World Cup live scores proxy (60s cache, shields upstream)
+const WC_PROXY_CACHE = { data: null, ts: 0 };
+app.get(`${API}/wc/games`, async (req, res) => {
+  try {
+    if (WC_PROXY_CACHE.data && Date.now() - WC_PROXY_CACHE.ts < 60000) {
+      return res.json(WC_PROXY_CACHE.data);
+    }
+    const r = await fetch("https://worldcup26.ir/get/games", {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) throw new Error("upstream " + r.status);
+    const data = await r.json();
+    WC_PROXY_CACHE.data = data;
+    WC_PROXY_CACHE.ts = Date.now();
+    res.json(data);
+  } catch (e) {
+    if (WC_PROXY_CACHE.data) return res.json(WC_PROXY_CACHE.data); // stale ok
+    res.status(502).json({ error: "World Cup data unavailable" });
+  }
+});
+
 // Graceful shutdown: save rooms before exit
 async function shutdown(signal) {
   console.log(`${signal} received. Saving rooms and shutting down...`);
